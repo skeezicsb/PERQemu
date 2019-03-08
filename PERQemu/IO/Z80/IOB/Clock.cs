@@ -102,7 +102,7 @@ namespace PERQemu.IO.Z80.IOB
             if (_enabled)
             {
                 int tickInterval = ((Z80System.Frequency / 60) / PERQCpu.IOFudge);
-                int elapsed = ((Z80System.Instance.Clocks() - _lastTick) / tickInterval);
+                int elapsed = ((int)(Z80System.Instance.Clocks() - _lastTick) / tickInterval);
 
                 fifo.Enqueue(Z80System.SOM);                    // SOM
                 fifo.Enqueue((byte)Z80toPERQMessage.ClockData); // Clock data message type
@@ -122,6 +122,6 @@ namespace PERQemu.IO.Z80.IOB
         private byte[] _messageData;
         private int _messageIndex;
         private bool _enabled = false;
-        private int _lastTick;
+        private long _lastTick;
     }
 }

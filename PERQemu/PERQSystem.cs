@@ -1,4 +1,4 @@
-// perqsystem.cs - Copyright 2006-2016 Josh Dersch (derschjo@gmail.com)
+// perqsystem.cs - Copyright 2006-2019 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -61,6 +61,7 @@ namespace PERQemu
         public void Shutdown()
         {
             Display.Display.Instance.Shutdown();
+            HighResolutionTimer.Instance.Shutdown();
         }
 
         public void Execute(string[] args)
@@ -147,10 +148,11 @@ namespace PERQemu
             }
         }
 
+        // User break into debugger
         public void Break()
         {
-            // User break into debugger
             _state = RunState.Debug;
+            PERQCpu.Instance.Break();
         }
 
         /// <summary>

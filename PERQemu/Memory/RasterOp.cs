@@ -29,9 +29,6 @@ namespace PERQemu.Memory
     {
         public PowerOffException()
         {
-            // someday when we're multithreaded, this will be significant;
-            // abort the Z80 and video controller threads (turn the display dark :-)
-            // and return to the configurator/debugger console.  it'll be rad.
         }
     }
 
@@ -152,7 +149,7 @@ namespace PERQemu.Memory
                 // than paused) the call is safe (a no-op).
                 Setup();
 
-                // CntlRasterOp is always called in T1, two cycles ahead of the Fetch/Fetch4R
+                // CntlRasterOp is always called in T1, two cycles ahead of the Fetch4/Fetch4R
                 // which starts the source-dest-idle cycle.  This means that state transitions
                 // happen in the next machine cycle (T2), four cycles from the T2 when dest or
                 // source fetch data appears on MDI.  Due to this latency, here the Idle phase
@@ -769,7 +766,7 @@ namespace PERQemu.Memory
                 Console.WriteLine("RasterOp: FetchNextWord in {0} while MDI was invalid!", _state);
                 w.Clear();
 #else
-	            throw new InvalidOperationException("RasterOp: FetchNextWord while MDI was invalid!");
+                throw new InvalidOperationException("RasterOp: FetchNextWord while MDI was invalid!");
 #endif
             }
             return w;

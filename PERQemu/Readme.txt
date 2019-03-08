@@ -1,5 +1,6 @@
 ﻿PERQemu Readme
 
+3/07/2019 - skeezicsb - v0.4.5
 6/24/2018 - skeezicsb - v0.4 - v0.4.4
 6/24/2010 - jdersch - v0.1 - v0.3
 
@@ -64,9 +65,13 @@ yet incorporate those enhancements.
 2.0 Getting Started
 ===================
 
-You will need a Windows machine with the .NET Framework 2.0 installed, or
-a Linux/UNIX/Mac OS machine with Mono installed.  It helps if the machine 
-is quite fast as the emulation is currently not particularly swift.
+UPDATE: You will need a Windows machine with the .NET Framework 4.5 installed,
+or a Linux/UNIX/Mac OS machine with a recent-ish Mono installed.  It has become
+untenable to maintain support for older hosts or .NET/Mono versions.  We are
+no longer able to test on SPARC or PowerPC, unfortunately.
+
+It helps if the machine is quite fast as the emulation is currently not
+particularly swift.
 
 If you've gotten this far you've unpacked the Zip archive and you have a 
 directory containing the emulator executable, PERQemu.exe.
@@ -300,12 +305,10 @@ debugger window and hit Ctrl-c to stop execution, save or reset as desired.
 2.4 PNX
 -------
 
-Unfortunately, we do not yet have a complete PNX 1.0 hard disk image.  It is
-possible to boot from floppy, prepare the hard disk, and lay down the boot-
-strap (essentially a "miniroot" in Unix parlance) which is bootable.  But the
-other floppies in the Bitsavers collection are missing track 0, and the rest
-of the PNX loading process cannot be completed at this time.  I hope to remedy
-this very soon.
+We have assembled a complete PNX 1.3 hard disk image!  It contains only the
+basic PNX installation; there is no additional software available to us at
+this time, but if anyone has a lead on PNX utilities, documentation or other
+goodies please get in touch!
 
 PNX, another unfortunately named PERQ operating system, was a very early Unix
 V7/System III mashup that included an in-kernel window manager - possibly one
@@ -318,7 +321,34 @@ PERQ Q-codes.  However, PERQemu's debugger cannot accurately disassemble PNX
 C-codes, since we don't currently have access to any PNX source code or
 documentation.
 
-Watch this space.
+PNX 1.3 is available for download at github.com/skeezicsb/PERQmedia/.
+
+
+2.5 MPOS
+--------
+
+The multi-process version of POS has been found, and it runs on PERQemu!
+Identified as MPOS E.29, this experimental, unreleased operating system gives
+POS the ability to run up to 32 separate tasks, in overlapping windows, while
+maintaining command-line compatibility with POS.  It's fairly polished for an
+OS that was, ultimately, abandoned.  It definitely has a few quirks, but is a
+very interesting effort.
+
+MPOS E.29 will be available for download at github.com/skeezicsb/PERQmedia/.
+
+
+2.6 FLEX
+--------
+
+Holy cow, word has come from across the pond that a working PERQ with the
+FLEX OS still exists, and efforts are underway to archive its hard disk for
+posterity!  It is unclear at this time if the machine is a PERQ-2 (not yet
+supported by PERQemu), but this is a real find nonetheless.  While there may
+be some technical and legal hurdles to clear before this unique and very rare
+OS can be included here, it is a thrill to know it has not been entirely lost.
+
+
+Stay tuned!
 
 
 3.0 Debugger Operations
@@ -483,7 +513,8 @@ it is reasonably functional (though there may still be issues):
 - PERQLink.  Unimplemented other than a stub that tells the microcode that
   there's nothing connected to it.
  
-- Sound.  Implemented, but not hooked up to any sort of host output device.    
+- Sound.  Implemented, but not hooked up to any sort of host output device.
+  Unfortunately appears to cause the emulator to hang running the talking demo.    
 
 - Option boards: Canon, streamer tape.  On the list.
    
@@ -497,11 +528,16 @@ it is reasonably functional (though there may still be issues):
 v0.5 - TBD
   - Ethernet would be awwwwwwesommme!
   - Double-density floppy and PFD header support
+  - Possible change to read/write IMD format floppy disks directly
   - Dynamic memory size configuration; other configuration options
-  - Display/CPU sync for fast platforms, speed improvements for slow ones :-/
   - Split off the Getting Started section into a Users Guide, move this into
     a HISTORY or CHANGES file, restrain my verbosity and make the Readme far
     more succinct.
+
+v0.4.5 - Interim VCF PNW release
+  - Display/CPU performance refinements to regulate the speed of the emulated
+    CPU to match the original hardware.
+  - Changes to optimize video updates if/when we are able to do 64-bit builds.
 
 v0.4.4 - Fourth major release
   - RasterOp streamlining and refinements allowed us to remove the

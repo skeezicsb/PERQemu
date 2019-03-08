@@ -34,7 +34,6 @@ namespace PERQemu.IO.HardDisk
         private ShugartDiskController()
         {
             Reset();
-            LoadImage(null);
         }
 
         public static ShugartDiskController Instance
@@ -52,6 +51,14 @@ namespace PERQemu.IO.HardDisk
             _sector = 0;
             _busyTime = 0;
             _seekState = SeekState.WaitForStepSet;
+
+            // For now we always have to have a hard disk attached.
+            // Moved this here since calling it in the constructor seemed
+            // to leak a 25MB chunk of memory.  Oof.
+            if (_disk == null)
+            {
+                LoadImage(null);
+            }
         }
 
         public void Clock()

@@ -152,7 +152,7 @@ namespace PERQemu.IO.Z80.IOB
             get { return _instance; }
         }
 
-        public int Clocks()
+        public long Clocks()
         {
             return _clocks;
         }
@@ -655,7 +655,7 @@ namespace PERQemu.IO.Z80.IOB
         private bool _running;
 
         // Counts clock ticks when running (for computing 60Hz "jiffies")
-        private int _clocks;
+        private long _clocks;
 
         private MessageParseState _state;
         private PERQtoZ80Message _messageType;

@@ -23,6 +23,7 @@ namespace PERQemu
 {
     class EntryPoint
     {
+        [STAThread]
         static void Main(string[] args)
         {
             EntryPoint p = new EntryPoint();
@@ -31,7 +32,16 @@ namespace PERQemu
 
         public EntryPoint()
         {
-            CreateSystem();
+            //
+            // When running under the Profiler, our working directory is off in some
+            // app wrapper directory, so we can't locate the PROM/ or Scripts/ folders
+            // and initialization fails.  Try to set our working directory to the
+            // location of PERQemu.exe.  We have to do this before instantiating the
+            // EntryPoint, since that creates PERQSystem.  Oof.
+            //
+            var path = new Uri(System.Reflection.Assembly.GetExecutingAssembly().CodeBase).LocalPath;
+            Environment.CurrentDirectory = System.IO.Path.GetDirectoryName(path);
+
             Console.CancelKeyPress += new ConsoleCancelEventHandler(OnCtrlC);
         }
 
@@ -40,7 +50,12 @@ namespace PERQemu
             // Cancel the event since we don't actually want to kill the emulator,
             // just break into the execution.
             e.Cancel = true;
+            Console.Write("^C");    // FIXME
+            Break();
+        }
 
+        public void Break()
+        {
             if (_system != null)
             {
                 _system.Break();
@@ -50,12 +65,8 @@ namespace PERQemu
         public void Run(string[] args)
         {
             PrintBanner();
-            _system.Execute(args);
-        }
-
-        private void CreateSystem()
-        {
             _system = PERQSystem.Instance;
+            _system.Execute(args);
         }
 
         private void PrintBanner()
@@ -69,6 +80,7 @@ namespace PERQemu
             Console.WriteLine();
 #if DEBUG
             Console.WriteLine("DEBUG version.");
+            Console.WriteLine("[Working directory is {0}]", Environment.CurrentDirectory);
             Console.WriteLine("[Host is configured for {0} processor(s)]", Environment.ProcessorCount);
 #endif
 #if TRACING_ENABLED

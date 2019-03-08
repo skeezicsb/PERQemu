@@ -166,6 +166,8 @@
     <Compile Include="IO\Z80\IOB\HardDiskSeekControl.cs" />
     <Compile Include="Display\FrameBuffer.cs" />
     <Compile Include="Memory\MemoryArray.cs" />
+    <Compile Include="SystemTimer.cs" />
+    <Compile Include="HighResolutionTimer.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="COPYING.txt" />

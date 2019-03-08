@@ -22,7 +22,8 @@ using System.Text;
 
 namespace PERQemu.PhysicalDisk
 {
-    // Represents a single or double-sided 8" floppy disk in RAW format    
+    // Represents a single or double-sided 8" floppy disk in RAW format,
+    // with or without the 9-byte magic cookie ("PFD" header).
     public sealed class RawFloppyDisk : PhysicalDisk
     {
         public RawFloppyDisk(DiskGeometry geometry) : base()
@@ -36,14 +37,64 @@ namespace PERQemu.PhysicalDisk
             base.Load(fs);
         }
 
+        //
+        // The cheap & cheerful "header" format for PERQemu floppy disk images is:
+        //
+        // 7 bytes - "PERQflp"
+        // 1 byte  - sector size + # of sides
+        // 1 byte  - filesystem type hint (not used by PERQemu)
+        //
+        // This is a silly hack; we should consider reading and writing the "IMD"
+        // format directly, at least for floppies (if not hard disks too?).
         public override void ReadHeader(System.IO.FileStream fs)
         {
-            // No header info on raw floppy disk images.
+            // No header info on raw floppy disk images.  But since
+            // none of the known PERQ floppy formats (including PNX)
+            // use sector (0,0,0), we write our "PFD" cookie there,
+            // and remain compatible.
+
+            byte[] pfd = new byte[9];
+
+            fs.Read(pfd, 0, 9);
+            fs.Position = 0;        // Rewind
+
+            for (int i = 0; i < 7; i++)
+            {
+                if (pfd[i] != _cookie[i])
+                {
+                    return;         // No cookie for you
+                }
+            }
+
+            byte geom = pfd[7];
+
+            Console.WriteLine("** Floppy header geometry hint is {0:x2}", geom);
+
+            if ((geom & 0xfc) * 2 != _diskType.SectorSize)
+            {
+                Console.WriteLine("** Floppy header byte says sector size is {0}, was set to {1}",
+                                  (geom & 0xfc) * 2, _diskType.SectorSize);
+            }
+
+            if ((geom & 0x03) != _diskType.Tracks)
+            {
+                Console.WriteLine("** Floppy header says disk has {0} tracks, was set to {1}",
+                                  (geom & 0x03), _diskType.Tracks);
+            }
+
+            byte fsHint = pfd[8];
+
+            Console.WriteLine("** Floppy header filesystem hint is {0:x2}", fsHint);
         }
 
         public override void WriteHeader(System.IO.FileStream fs)
         {
-            // No header info on raw floppy disk images.
+            // Here we tuck our pseudo-header into the first 9 bytes of the
+            // first sector, rather than write it out to the file stream directly.
         }
+
+        private static byte[] _cookie = { (byte)'P', (byte)'E', (byte)'R', (byte)'Q',
+                                          (byte)'f', (byte)'l', (byte)'p' };
+
     }
 }

@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Diagnostics;
 
 using PERQemu.IO;
 using PERQemu.Memory;
@@ -74,6 +75,11 @@ namespace PERQemu.CPU
             _memory = MemoryBoard.Instance;
             _ioBus = IOBus.Instance;
 
+            // A high-resolution timer to regulate CPU execution rate.
+            // For now we set our interval to ~1/60th (one "jiffy") to
+            // strike a balance between overhead and responsiveness...
+            _heartBeat = new SystemTimer(16.5f);
+
             Reset();
         }
 
@@ -111,6 +117,12 @@ namespace PERQemu.CPU
         /// </summary>
         public void Reset()
         {
+            _runState = RunState.Debug;
+
+            _heartBeat.StartTimer(false);
+            _adjInterval = (long)(Frequency / 1000 * _heartBeat.Interval);
+            Console.WriteLine("CPU heartbeat interval is {0}ms, adjustment every {1} microcycles", _heartBeat.Interval, _adjInterval);
+
             _romEnabled = true;
             _interruptFlag = InterruptType.None;
 
@@ -168,180 +180,232 @@ namespace PERQemu.CPU
 #endif
         }
 
+        /// <summary>
+        /// Signal a user break (or debug/error) into the debugger.
+        /// </summary>
+        public void Break()
+        {
+            // User break into debugger
+            _runState = RunState.Debug;
+        }
 
         /// <summary>
-        /// Executes a single microinstruction and runs associated hardware for one cycle.
+        /// Runs the PERQ microengine.  In SingleStep or RunStep mode, runs only
+        /// one microinstruction or executes one Q-code, then returns to the
+        /// debugger.  In Run mode, loops until the user signals a break or an
+        /// exception is thrown, and attempts to regulate the execution rate to
+        /// within a few nanoseconds of the target rate (170ns).
         /// </summary>
         public RunState Execute(RunState currentState)
         {
-            // Decode the next instruction
-            Instruction uOp = GetInstruction(PC);
+            // Set the machine's run state
+            _runState = currentState;
 
-            _clocks++;
-
-            // Clock the memory state machine and set up any pending fetches
-            _memory.Tick(uOp.MemoryRequest);
-
-            //
-            // Several conditions may stall the processor:
-            //  1.  In the T0 & T1 after any Fetch, attempting to access MDI or MDX causes
-            //      the processor to stall, but other instructions may run in those cycles;
-            //  2.  The memory system may assert a "hold" if the IO or DMA is accessing
-            //      memory; we don't actually enforce that, yet, but the "wait" may be set
-            //      for stores issued in the wrong cycle;
-            //  3.  WCS writes actually take two cycles to execute; we fake one wait state
-            //      here with the _wcsHold boolean.
-            // If any of those conditions are true we "abort" the current instruction until
-            // the correct cycle comes around.
-            //
-            bool abort = (_wcsHold || _memory.Wait || (uOp.WantMDI && !_memory.MDIValid));
-
-            if (abort)
+            if (_runState == RunState.Run || _runState == RunState.RunInst)
             {
-                // We're waiting for the next T3 or T2 cycle to come around on the guitar is
-                // what we're doing.  We can't cheat and skip the wait states, as RasterOp
-                // depends on T-state cycling through each word during overlapped fetch/stores.
-#if TRACING_ENABLED
-                if (Trace.TraceOn)
-                    Trace.Log(LogType.MemoryState,
-                        "CPU: Abort in T{0}\n\twait={1} needMDO={2} wantMDI={3} MDIvalid={4} WCShold={5}",
-                        _memory.TState, _memory.Wait, _memory.MDONeeded, uOp.WantMDI, _memory.MDIValid, _wcsHold);
-#endif
-
-                // On aborts, no memory writes occur - no Tock()                    
-
-                // Clock video
-                VideoController.Instance.Clock();
-
-                // Clock the IO here, since it's an otherwise blown cycle
-                if ((_clocks % IOFudge) == 0)
-                {
-                    _ioBus.Clock();
-                }
-
-                // WCS writes take two cycles to run on the real hardware, but just
-                // one cycle here -- enough to screw up memory timing during the loop
-                // when microcode is being loaded!  Clear the hold flag to continue.
-                _wcsHold = false;
-
-                // So we can single step through aborts for debugging
-                if (currentState == RunState.SingleStep)
-                {
-                    return RunState.Debug;
-                }
-                return currentState;
-            }
-
-            //
-            // Run the microinstruction
-            //
-
-#if TRACING_ENABLED
-            // This is a very expensive log, so only call it if we have to
-            if (Trace.TraceOn && (LogType.Instruction & Trace.TraceLevel) != 0)
-            {
-                Trace.Log(LogType.Instruction, "uPC={0:x4}: {1}", PC, Disassembler.Disassemble(PC, uOp));
-            }
-
-            // Catch cases where the CPU is looping forever
-            if (_lastPC == PC &&
-                uOp.CND == Condition.True &&
-                uOp.JMP == JumpOperation.Goto)
-            {
-                throw new UnimplementedInstructionException(String.Format("CPU has halted in a loop at {0:x5}", PC));
-            }
-#endif
-
-            // If the last instruction was NextOp or NextInst, increment BPC at the start of this instruction
-            if (_incrementBPC)
-            {
-                _bpc++;
-                _incrementBPC = false;
-
-#if TRACING_ENABLED
-                if (Trace.TraceOn) Trace.Log(LogType.OpFile, "OpFile: BPC incremented to {0:x1}", BPC);
-#endif
-            }
-
-            // Latch the ALU registers from the last micro-op before we do this instruction's
-            // ALU operation since we need them for conditional jumps later.
-            _oldALURegisters = _alu.Registers;
-
-            // Now decode and execute the actual instruction:
-
-            // Select ALU inputs
-            int bmux = _lastBmux = GetBmuxInput(uOp);
-            int amux = GetAmuxInput(uOp);
-
-#if SIXTEEN_K
-            // If the hardware multiply unit is enabled, run the (possibly modified) ALU op
-            if (_mqEnabled)
-            {
-                DoMulDivALUOp(amux, bmux, _mq, uOp.ALU);
+                _heartBeat.StartTimer(true);    // Restart our heartbeat timer
             }
             else
-#endif
             {
-                // Do ALU operation
-                _alu.DoALUOp(amux, bmux, uOp.ALU);
+                _heartBeat.StartTimer(false);   // Don't bother in single step mode
             }
 
-            // Do writeback if W bit is set
-            DoWriteBack(uOp);
-
-            // Clock IO devices every N cycles (fudged, this is ugly)
-            if ((_clocks % IOFudge) == 0)
+            // Run the CPU in a big loop to avoid 5.88M method calls/sec. :-)
+            do
             {
-                _ioBus.Clock();
-            }
+                // Decode the next instruction
+                Instruction uOp = GetInstruction(PC);
 
-            // If enabled, clock the RasterOp pipeline
-            if (_rasterOp.Enabled)
-            {
-                _rasterOp.Clock();
-            }
+                _clocks++;
 
-            // Is a memory store operation in progress?  Pending RasterOp stores
-            // supercede the ALU; otherwise write the last ALU result
-            if (MemoryBoard.Instance.MDONeeded)
-            {
-                if (_rasterOp.ResultReady)
+                // Clock the memory state machine and set up any pending fetches
+                _memory.Tick(uOp.MemoryRequest);
+
+                //
+                // Several conditions may stall the processor:
+                //  1.  In the T0 & T1 after any Fetch, attempting to access MDI or MDX causes
+                //      the processor to stall, but other instructions may run in those cycles;
+                //  2.  The memory system may assert a "hold" if the IO or DMA is accessing
+                //      memory; we don't actually enforce that, yet, but the "wait" may be set
+                //      for stores issued in the wrong cycle;
+                //  3.  WCS writes actually take two cycles to execute; we fake one wait state
+                //      here with the _wcsHold boolean.
+                // If any of those conditions are true we "abort" the current instruction until
+                // the correct cycle comes around.
+                //
+                bool abort = (_wcsHold || _memory.Wait || (uOp.WantMDI && !_memory.MDIValid));
+
+                if (abort)
                 {
-                    _memory.Tock(_rasterOp.Result());
+                    // We're waiting for the next T3 or T2 cycle to come around on the guitar is
+                    // what we're doing.  We can't cheat and skip the wait states, as RasterOp
+                    // depends on T-state cycling through each word during overlapped fetch/stores.
+#if TRACING_ENABLED
+                    if (Trace.TraceOn)
+                        Trace.Log(LogType.MemoryState,
+                            "CPU: Abort in T{0}\n\twait={1} needMDO={2} wantMDI={3} MDIvalid={4} WCShold={5}",
+                            _memory.TState, _memory.Wait, _memory.MDONeeded, uOp.WantMDI, _memory.MDIValid, _wcsHold);
+#endif
+
+                    // On aborts, no memory writes occur - no Tock()                    
+
+                    // Clock video
+                    VideoController.Instance.Clock();
+
+                    // Clock the IO here, since it's an otherwise blown cycle
+                    if ((_clocks % IOFudge) == 0)
+                    {
+                        _ioBus.Clock();
+                    }
+
+                    // WCS writes take two cycles to run on the real hardware, but just
+                    // one cycle here -- enough to screw up memory timing during the loop
+                    // when microcode is being loaded!  Clear the hold flag to continue.
+                    _wcsHold = false;
                 }
                 else
                 {
-                    _memory.Tock((ushort)_alu.Registers.R);
-                }
-            }
-
-            // Always clock video (used for system timing by some OSes)
-            VideoController.Instance.Clock();
-
-            // Execute whatever function this op calls for
-            DispatchFunction(uOp);
+                    //
+                    // Run the microinstruction
+                    //
 
 #if TRACING_ENABLED
-            _lastPC = PC;
-            _lastInstruction = uOp;
+                    // This is a very expensive log, so only call it if we have to
+                    if (Trace.TraceOn && (LogType.Instruction & Trace.TraceLevel) != 0)
+                    {
+                        Trace.Log(LogType.Instruction, "uPC={0:x4}: {1}", PC, Disassembler.Disassemble(PC, uOp));
+                    }
+
+                    // Catch cases where the CPU is looping forever
+                    if (_lastPC == PC &&
+                        uOp.CND == Condition.True &&
+                        uOp.JMP == JumpOperation.Goto)
+                    {
+                        throw new UnimplementedInstructionException(String.Format("CPU has halted in a loop at {0:x5}", PC));
+                    }
 #endif
 
-            // Jump to where we need to go...
-            DispatchJump(uOp);
+                    // If the last instruction was NextOp or NextInst, increment BPC at the start of this instruction
+                    if (_incrementBPC)
+                    {
+                        _bpc++;
+                        _incrementBPC = false;
 
-            // And we're done.  Handle debugging state, if any
-            if (currentState == RunState.SingleStep)
-            {
-                return RunState.Debug;
-            }
+#if TRACING_ENABLED
+                        if (Trace.TraceOn) Trace.Log(LogType.OpFile, "OpFile: BPC incremented to {0:x1}", BPC);
+#endif
+                    }
 
-            // If we're debugging one Qcode at a time and we just finished one, break now
-            if (_incrementBPC && currentState == RunState.RunInst)
-            {
-                return RunState.Debug;
-            }
+                    // Latch the ALU registers from the last micro-op before we do this instruction's
+                    // ALU operation since we need them for conditional jumps later.
+                    _oldALURegisters = _alu.Registers;
 
-            return currentState;
+                    // Now decode and execute the actual instruction:
+
+                    // Select ALU inputs
+                    int bmux = _lastBmux = GetBmuxInput(uOp);
+                    int amux = GetAmuxInput(uOp);
+
+#if SIXTEEN_K
+                    // If the hardware multiply unit is enabled, run the (possibly modified) ALU op
+                    if (_mqEnabled)
+                    {
+                        DoMulDivALUOp(amux, bmux, _mq, uOp.ALU);
+                    }
+                    else
+#endif
+                    {
+                        // Do ALU operation
+                        _alu.DoALUOp(amux, bmux, uOp.ALU);
+                    }
+
+                    // Do writeback if W bit is set
+                    DoWriteBack(uOp);
+
+                    // Clock IO devices every N cycles (fudged, this is ugly)
+                    if ((_clocks % IOFudge) == 0)
+                    {
+                        _ioBus.Clock();
+                    }
+
+                    // If enabled, clock the RasterOp pipeline
+                    if (_rasterOp.Enabled)
+                    {
+                        _rasterOp.Clock();
+                    }
+
+                    // Is a memory store operation in progress?  Pending RasterOp stores
+                    // supercede the ALU; otherwise write the last ALU result
+                    if (MemoryBoard.Instance.MDONeeded)
+                    {
+                        if (_rasterOp.ResultReady)
+                        {
+                            _memory.Tock(_rasterOp.Result());
+                        }
+                        else
+                        {
+                            _memory.Tock((ushort)_alu.Registers.R);
+                        }
+                    }
+
+                    // Always clock video (used for system timing by some OSes)
+                    VideoController.Instance.Clock();
+
+                    // Execute whatever function this op calls for
+                    DispatchFunction(uOp);
+
+#if TRACING_ENABLED
+                    _lastPC = PC;
+                    _lastInstruction = uOp;
+#endif
+
+                    // Jump to where we need to go...
+                    DispatchJump(uOp);
+                }
+
+                //
+                // Microcycle complete!  Now check our loop condition:
+                //
+                if (currentState == RunState.SingleStep)
+                {
+                    _runState = RunState.Debug;         // One microcyle complete
+                }
+                else if (_incrementBPC && currentState == RunState.RunInst)
+                {
+                    _runState = RunState.Debug;         // One Q-code complete
+                }
+                else if (_runState == RunState.Run || _runState == RunState.RunInst)
+                {
+                    //
+                    // Regulate our execution rate to try to match the hardware.
+                    // Because the video refresh is intimately tied to the PERQ's
+                    // microcycle timing, we get 60FPS "for free" when the CPU is
+                    // properly regulated.  Cheeeeeese! :-)
+                    //
+                    if (_clocks % _adjInterval == 0)
+                    {
+                        _heartBeat.WaitForHeartbeat();
+                    }
+
+//#if DEBUG
+                    // Once each CPU-second sample the Stopwatch to see how close
+                    // we came to our desired cycle time.
+                    if (_clocks % Frequency == 0)
+                    {
+                        //double _avgCycleTime = (_watch.Elapsed.TotalMilliseconds / Frequency) * 1000000.0;
+                        //int delta = (int)(_desiredCycleTime - _avgCycleTime + .5) / 2;   // fudgy
+                        //Console.WriteLine("--> Avg. uCycle time: {0}  (Adjust: {1}, Delta: {2})", _avgCycleTime, _adjTime, delta);
+                        // Restart the timer, then test and apply any adjustments
+                        //_watch.Restart();
+                    }
+//#endif
+                }
+            } while (_runState == currentState);
+
+            // Pause the timer when going back to the debugger
+            _heartBeat.StartTimer(false);
+
+            return _runState;
         }
 
         #region Getters and setters
@@ -2037,9 +2101,6 @@ namespace PERQemu.CPU
         // Interrupt flags
         private InterruptType _interruptFlag;
 
-        // CPU cycles elapsed
-        private long _clocks;
-
         // Arithmetic unit
         private ALU _alu;
 
@@ -2074,6 +2135,12 @@ namespace PERQemu.CPU
 
         // IO bus reference
         private IOBus _ioBus;
+
+        // Execution control and cycle timing
+        private RunState _runState;
+        private SystemTimer _heartBeat;
+        private long _clocks;               // Total elapsed CPU cycles
+        private long _adjInterval;          // How often to sync our run rate
 
         private static PERQCpu _instance = new PERQCpu();
     }

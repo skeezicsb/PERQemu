@@ -194,6 +194,8 @@ namespace PERQemu.Debugger
             // then we need to erase a few chars at the end.
             string clear = String.Empty;
 
+            int row, column;
+
             if (_input.Length < _lastInputLength)
             {
                 StringBuilder sb = new StringBuilder(_lastInputLength - _input.Length);
@@ -205,8 +207,25 @@ namespace PERQemu.Debugger
                 clear = sb.ToString();
             }
 
-            int column = ((_textPosition + _originColumn) % Console.BufferWidth) ;
-            int row = ((_textPosition + _originColumn) / Console.BufferWidth) + _originRow;
+            // Console.BufferWidth is unimplemented on Mono (at least on non-Windows
+            // platforms).  Somehow it works on external consoles, but fails when run
+            // in Xamarin Studio or Xamarin Profiler -- and the "Application Console"
+            // in both programs doesn't allow for any input from the keyboard anyway.
+            // So you can invoke it with a script that loads a disk image and starts
+            // the emulator for profiling, but you can't control it from the keyboard
+            // after it starts.  Because obviously nobody who has ever used any of the
+            // Xamarin apps has ever written a console application?  Hack here is to
+            // avoid the looping divide-by-zero problem.  Sigh.
+            if (Console.BufferWidth == 0)
+            {
+                column = _textPosition + _originColumn;
+                row = _originRow;
+            }
+            else
+            {
+                column = ((_textPosition + _originColumn) % Console.BufferWidth);
+                row = ((_textPosition + _originColumn) / Console.BufferWidth) + _originRow;
+            }
 
             // Move cursor to origin to draw string
             Console.CursorLeft = _originColumn;
