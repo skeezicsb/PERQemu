@@ -69,6 +69,7 @@ namespace PERQemu
             Console.WriteLine();
 #if DEBUG
             Console.WriteLine("DEBUG version.");
+            Console.WriteLine("[Host is configured for {0} processor(s)]", Environment.ProcessorCount);
 #endif
 #if TRACING_ENABLED
             Console.WriteLine("Tracing is available.");

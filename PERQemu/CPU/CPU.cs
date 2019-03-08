@@ -1794,7 +1794,6 @@ namespace PERQemu.CPU
 
             Console.WriteLine("R[{0:x2}]={1:x5} (dec {2})", reg, _r[reg], _r[reg]);
         }
-#endif
 
         [DebugFunction("show memory", "Dumps the PERQ's memory (@ [addr])")]
         private void ShowMemory(uint startAddress)
@@ -1813,7 +1812,7 @@ namespace PERQemu.CPU
                 return;
             }
 
-            ushort[] mem = _memory.Memory;
+            ushort[] mem = _memory.Memory;      // TODO: fix this for new memory Core...
 
             // Format and display 8 words per line
             for (uint i = startAddress; i < endAddr; i += 8)
@@ -1846,7 +1845,6 @@ namespace PERQemu.CPU
             }
         }
 
-#if DEBUG
         [DebugFunction("find memory", "Find a specific value in the PERQ's memory")]
         private void FindMemory(ushort val)
         {

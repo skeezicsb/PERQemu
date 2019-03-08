@@ -1,4 +1,4 @@
-// videocontroller.cs - Copyright 2006-2018 Josh Dersch (derschjo@gmail.com)
+// videocontroller.cs - Copyright 2006-2019 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -315,6 +315,15 @@ namespace PERQemu.Display
         {
             int renderLine = _scanLine;
 
+            // Using the DirectBitmap approach, the display buffer doesn't exist
+            // until we create the form, so to preserve our lazy initialization
+            // we'll hold off until our first line of data is drawn (not the first
+            // full screen refresh).  This is cheesy.
+            if (!Display.Instance.IsInitialized)
+            {
+                Display.Instance.Refresh();
+            }
+
             // The PERQ video driver could run free when the microcode was ignoring
             // interrupts, producing a visual display of a rolling retrace across the
             // entire height of the tube.  It'd be fun to simulate that for accuracy's
@@ -324,12 +333,17 @@ namespace PERQemu.Display
                 renderLine = _scanLine % PERQ_DISPLAYHEIGHT;
             }
 
-            for (int x = 0; x < PERQ_DISPLAYWIDTH_IN_WORDS; x++)
-            {
-                int dataAddress = renderLine * PERQ_DISPLAYWIDTH_IN_WORDS + x + _displayAddress;
-                int screenAddress = renderLine * PERQ_DISPLAYWIDTH_IN_BYTES + (x * 2);
+            // Start of this scanline for writing into the screen buffer (in quads)
+            int screenAddress = renderLine * PERQ_DISPLAYWIDTH_IN_QUADS;
 
-                Display.Instance.DrawWord(screenAddress, TransformDisplayWord(MemoryBoard.Instance.FetchWord(dataAddress)));
+            // Offset into PERQ's screen segment (word address) converted to quads
+            int dataAddress = (_displayAddress >> 2) + screenAddress;
+
+            for (int x = 0; x < PERQ_DISPLAYWIDTH_IN_QUADS; x++)
+            {
+                ulong dataQuad = MemoryBoard.Instance.Core.ReadQuad(dataAddress + x);
+
+                Display.Instance.DrawQuad(screenAddress + x, TransformDisplayQuad(dataQuad));
             }
 
             if (CursorEnabled)
@@ -345,13 +359,17 @@ namespace PERQemu.Display
         {
             // Calc the starting address of this line of the cursor data
             int cursorAddress = ((_cursorAddress << 1) + (_scanLine - _cursorY) * 8);
-
             int cursorStartByte = _cursorX;
-            int backgroundStartByte = _scanLine * PERQ_DISPLAYWIDTH_IN_BYTES + (_displayAddress << 1);
-            int screenAddress = _scanLine * PERQ_DISPLAYWIDTH_IN_BYTES;
 
-            // We draw 8 bytes (4 words) of horizontal cursor data combined with
-            // the background data on that line based on the current cursor function.
+            // Now compute the start of the background and screen, byte addressed
+            int screenAddress = _scanLine * PERQ_DISPLAYWIDTH_IN_BYTES;
+            int backgroundStartByte = (_displayAddress << 1) + screenAddress;
+
+            //Console.WriteLine("cursaddr {0}, startbyte {1}, background {2}, screenadd {3}",
+            //                 cursorAddress, cursorStartByte, backgroundStartByte, screenAddress);
+
+            // Draw 8 bytes of horizontal cursor data combined with the background
+            // data on that line based on the current cursor function
             for (int x = cursorStartByte; x < cursorStartByte + 8; x++)
             {
                 if (x >= 0 && x < PERQ_DISPLAYWIDTH_IN_BYTES)
@@ -366,7 +384,7 @@ namespace PERQemu.Display
 
         private byte GetByte(int byteAligned)
         {
-            ushort word = MemoryBoard.Instance.FetchWord(byteAligned >> 1);
+            ushort word = MemoryBoard.Instance.Core.ReadWord(byteAligned >> 1);
 
             if ((byteAligned % 2) == 0)
             {
@@ -381,7 +399,7 @@ namespace PERQemu.Display
         /// <summary>
         /// Transforms the display word based on the current Cursor function.
         /// </summary>
-        private ushort TransformDisplayWord(ushort word)
+        private ulong TransformDisplayQuad(ulong quad)
         {
             switch (_cursorFunc)
             {
@@ -389,10 +407,10 @@ namespace PERQemu.Display
                 case CursorFunction.NandCursorInvertedDisplay:
                 case CursorFunction.NorCursorInvertedDisplay:
                 case CursorFunction.XnorCursorInvertedDisplay:
-                    return (ushort)~word;
+                    return (ulong)~quad;
             }
 
-            return word;
+            return quad;
         }
 
         /// <summary>
@@ -497,7 +515,7 @@ namespace PERQemu.Display
         /// Various handy portrait display constants
         /// </summary>
         public static int PERQ_DISPLAYWIDTH = 768;
-        public static int PERQ_DISPLAYWIDTH_IN_WORDS = 48;
+        public static int PERQ_DISPLAYWIDTH_IN_QUADS = 12;
         public static int PERQ_DISPLAYWIDTH_IN_BYTES = 96;
         public static int PERQ_DISPLAYHEIGHT = 1024;
 

@@ -47,6 +47,11 @@ namespace PERQemu.Display
             get { return _instance; }
         }
 
+        public bool IsInitialized
+        {
+            get; private set;
+        }
+
         public void Refresh()
         {
             // Lazy init the display on first refresh.
@@ -65,7 +70,6 @@ namespace PERQemu.Display
                 // done blitting before returning.  On single CPU systems, it makes no sense
                 // to render on a separate thread, as it offers no improvement.
                 SyncRefresh();
-                System.Threading.Thread.Sleep(0);
             }
             else
             {
@@ -73,7 +77,6 @@ namespace PERQemu.Display
                 // This means the video is slightly out of sync with the CPU, but this is
                 // rarely an important issue (and makes a pretty decent perf gain).
                 AsyncRefresh();
-                System.Threading.Thread.Sleep(0);
             }
         }
 
@@ -91,31 +94,52 @@ namespace PERQemu.Display
 
         private void SyncRefreshInternal()
         {
-            _dispBox.Invalidate();
+            //_dispBox.RenderBitmap();      use this if FrameBufferControl is double buffering
+            _dispBox.Invalidate();      // otherwise just force a repaint of the DirectBitmap
         }
 
-        public void DrawWord(int displayAddress, ushort word)
+        /// <summary>
+        /// Write a 64-bit chunk of display data.  We have to byte swap each
+        /// 16-bit word within the quad, however, which is odd considering the
+        /// PERQ, and the x86/x64 processors this emulator is undoubtedly
+        /// running on, are both little-endien.  Hmm.
+        /// </summary>
+        public void DrawQuad(int displayAddress, ulong q)
         {
-            _displayData[displayAddress] = (byte)((word & 0xff00) >> 8);
-            _displayData[displayAddress + 1] = (byte)(word & 0xff);
+            // Byte swap each word in the quad.  Avert your eyes.
+            ulong dest = (((q & 0x00ff00ff00ff00ff) << 8) | ((q & 0xff00ff00ff00ff00) >> 8));
+            _dispBox.WriteDisplayQuad(displayAddress, dest);
         }
 
-        public void DrawByte(int displayAddress, byte b)
+        /// <summary>
+        /// Update an 8-bit chunk of a quad word's worth of display data.  Used
+        /// only during cursor line updates, so while costly it's only called
+        /// when the cursor is tracking.  Not pretty.
+        /// </summary>
+        public void DrawByte(int byteAddress, byte b)
         {
-            _displayData[displayAddress] = b;
+            // Sorry, this is even uglier.  To read-modify-write the correct byte
+            // from the display buffer, we have to account for the byte swapping
+            // done by the DrawQuad routine.  I hide this here so that the video
+            // controller doesn't have to worry about any of this.  This is likely
+            // all wrong on a non-x86 machine.  Oof.
+            int quadAddress = byteAddress / 8;
+            int offset = (byteAddress % 8) * 8;
+            ulong mask = (ulong)0xff << offset;
+            ulong q = _dispBox.ReadDisplayQuad(quadAddress);
+
+            _dispBox.WriteDisplayQuad(quadAddress, ((q & ~mask) | ((ulong)b << offset)));
         }
 
         public void SaveScreenshot(string path)
         {
             EncoderParameters p = new EncoderParameters(1);
-            p.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 100L);
-            _buffer.Save(path, GetEncoderForFormat(ImageFormat.Jpeg), p);
+            p.Param[0] = new EncoderParameter(Encoder.Quality, 100L);
+            _dispBox.Save(path, GetEncoderForFormat(ImageFormat.Jpeg), p);
         }
 
         public void Shutdown()
         {
-            // Check if inited here; prevents a small annoyance if program exited before display
-            // inited (FIXME: sometimes still whines about a cross-thread call...)
             if (_display != null)
             {
                 _display.Close();
@@ -144,17 +168,15 @@ namespace PERQemu.Display
 
         private void Initialize()
         {
-            // Initialize our event, used to wait for initialization as well as screen refresh.
+            // Reset to wait for Form initialization
             _initDoneEvent = new System.Threading.AutoResetEvent(false);
-
-            // Create byte array for display data
-            _displayData = new byte[DISPLAY_BUFFER_SIZE];
 
             // Set up .NET/Mono host keyboard -> PERQ mapping
             _keymap = KeyboardMap.Instance;
 
             _clickFlag = false;
             _mouseButton = 0x0;
+            IsInitialized = false;      // Waaaaaait for it
         }
 
         private void StartDisplayThread()
@@ -165,12 +187,15 @@ namespace PERQemu.Display
 
         private void DisplayThread()
         {
+            Size screenSize = new Size(VideoController.PERQ_DISPLAYWIDTH, VideoController.PERQ_DISPLAYHEIGHT);
+
             _display = new Form();
             _display.CreateControl();
             _display.BackColor = Color.Black;
             _display.Text = "PERQ";
             _display.ControlBox = false;
-            _display.ClientSize = new Size(VideoController.PERQ_DISPLAYWIDTH, VideoController.PERQ_DISPLAYHEIGHT);
+            _display.ClientSize = screenSize;
+            _display.MaximizeBox = false;
             _display.SizeGripStyle = SizeGripStyle.Hide;
             _display.WindowState = FormWindowState.Normal;
             _display.KeyPreview = true;
@@ -178,22 +203,14 @@ namespace PERQemu.Display
             _display.KeyDown += new KeyEventHandler(OnKeyDown);
             _display.MouseWheel += new MouseEventHandler(OnMouseWheel);
 
-            _buffer = new Bitmap(VideoController.PERQ_DISPLAYWIDTH,
-                                 VideoController.PERQ_DISPLAYHEIGHT,
-                                 PixelFormat.Format1bppIndexed);
-
-            _dispBox = new PictureBox();
-            _dispBox.Image = _buffer;
-            _dispBox.Size = new Size(VideoController.PERQ_DISPLAYWIDTH, VideoController.PERQ_DISPLAYHEIGHT);
+            _dispBox = new FrameBufferControl(screenSize);
             _dispBox.Cursor = Cursors.Cross;
-            _dispBox.Paint += new PaintEventHandler(OnPaint);
+            //_dispBox.Paint += new PaintEventHandler(OnPaint);     // not used if single DirectBitmap
             _dispBox.MouseDown += new MouseEventHandler(OnMouseDown);
             _dispBox.MouseUp += new MouseEventHandler(OnMouseUp);
             _dispBox.MouseMove += new MouseEventHandler(OnMouseMove);
 
             _display.Controls.Add(_dispBox);
-
-            _displayRect = new Rectangle(0, 0, VideoController.PERQ_DISPLAYWIDTH, VideoController.PERQ_DISPLAYHEIGHT);
 
 #if TRACING_ENABLED
             if (Trace.TraceOn) Trace.Log(LogType.EmuState, "Display thread started, display initialized.");
@@ -209,6 +226,7 @@ namespace PERQemu.Display
         {
             // Signal that we're done initializing the dialog.
             _initDoneEvent.Set();
+            IsInitialized = true;
         }
 
         void OnMouseWheel(object sender, MouseEventArgs e)
@@ -313,7 +331,7 @@ namespace PERQemu.Display
                 case Keys.CapsLock:
                 case Keys.NumLock:
                 case Keys.Scroll:
-                    _keymap.setLockKeyState(e.KeyCode);
+                    _keymap.SetLockKeyState(e.KeyCode);
                     e.Handled = true;
                     break;
 
@@ -374,7 +392,7 @@ namespace PERQemu.Display
             // If the key wasn't handled above, let's see if we can get the ASCII equivalent.
             if (!e.Handled)
             {
-                perqCode = _keymap.getKeyMapping(e);
+                perqCode = _keymap.GetKeyMapping(e);
                 if (perqCode != 0)
                 {
                     Z80System.Instance.Keyboard.QueueInput(perqCode);   // Ship it!
@@ -410,8 +428,6 @@ namespace PERQemu.Display
         /// <summary>
         /// Only used to handle the mouse button hacks.
         /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
         void OnKeyUp(object sender, KeyEventArgs e)
         {
             // Reset mouse tweaks if modifier keys are released
@@ -424,16 +440,6 @@ namespace PERQemu.Display
             {
                 _mouseAltButton = false;
             }
-        }
-
-        private void OnPaint(object sender, PaintEventArgs e)
-        {
-            BitmapData data = _buffer.LockBits(_displayRect, ImageLockMode.WriteOnly, PixelFormat.Format1bppIndexed);
-
-            IntPtr ptr = data.Scan0;
-            System.Runtime.InteropServices.Marshal.Copy(_displayData, 0, ptr, _displayData.Length);
-
-            _buffer.UnlockBits(data);
         }
 
         private ImageCodecInfo GetEncoderForFormat(ImageFormat format)
@@ -451,17 +457,9 @@ namespace PERQemu.Display
         }
 
 
-        private int DISPLAY_BUFFER_SIZE = (VideoController.PERQ_DISPLAYHEIGHT *
-                                           VideoController.PERQ_DISPLAYWIDTH_IN_BYTES);
-
-        // Bitmap data (from the PERQ's memory buffer)
-        private byte[] _displayData;
-
         // Display
         private Form _display;
-        private Bitmap _buffer;
-        private PictureBox _dispBox;
-        private Rectangle _displayRect;
+        private FrameBufferControl _dispBox;
         private System.Threading.Thread _displayThread;
         private System.Threading.AutoResetEvent _initDoneEvent;
 

@@ -39,8 +39,7 @@ namespace PERQemu.Memory
 
         public void Reset()
         {
-            _memory = new ushort[_memSize];
-
+            _memory = new MemoryArray(_memSize * 2);
             _mdiQueue = new MemoryController("MDI");
             _mdoQueue = new MemoryController("MDO");
 
@@ -66,7 +65,7 @@ namespace PERQemu.Memory
             get { return _memSize; }
         }
 
-        public ushort[] Memory
+        public MemoryArray Core
         {
             get { return _memory; }
         }
@@ -276,7 +275,7 @@ namespace PERQemu.Memory
         public ushort FetchWord(int address)
         {
             // Clip address to memsize range and read
-            ushort data = _memory[address & _memSizeMask];
+            ushort data = _memory.ReadWord(address & _memSizeMask);
 
 #if TRACING_ENABLED
             if (Trace.TraceOn)
@@ -295,7 +294,7 @@ namespace PERQemu.Memory
                 Trace.Log(LogType.MemoryStore, "Memory: Store addr {0:x5} <-- {1:x4}", address & _memSizeMask, data);
 #endif
             // Clip address to memsize range and write
-            _memory[address & _memSizeMask] = data;
+            _memory.WriteWord(address & _memSizeMask, data);
         }
 
         /// <summary>
@@ -361,7 +360,7 @@ namespace PERQemu.Memory
         /// <summary>
         /// The PERQ memory array.
         /// </summary>
-        private ushort[] _memory;
+        private MemoryArray _memory;
 
         /// <summary>
         /// The opfile.  This probably belongs to the CPU, but since it's loaded

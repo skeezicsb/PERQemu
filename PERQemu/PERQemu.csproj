@@ -15,7 +15,6 @@
     <UpgradeBackupLocation>
     </UpgradeBackupLocation>
     <OldToolsVersion>3.5</OldToolsVersion>
-    <TargetFrameworkVersion>v2.0</TargetFrameworkVersion>
     <IsWebBootstrapper>false</IsWebBootstrapper>
     <PublishUrl>publish\</PublishUrl>
     <Install>true</Install>
@@ -31,6 +30,7 @@
     <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
     <UseApplicationTrust>false</UseApplicationTrust>
     <BootstrapperEnabled>true</BootstrapperEnabled>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -164,6 +164,8 @@
     <Compile Include="QCode\QCode.cs" />
     <Compile Include="Trace.cs" />
     <Compile Include="IO\Z80\IOB\HardDiskSeekControl.cs" />
+    <Compile Include="Display\FrameBuffer.cs" />
+    <Compile Include="Memory\MemoryArray.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="COPYING.txt" />
