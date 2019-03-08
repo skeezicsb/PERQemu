@@ -1,4 +1,4 @@
-// cpu.cs - Copyright 2006-2018 Josh Dersch (derschjo@gmail.com)
+// cpu.cs - Copyright (c) 2006-2019 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //

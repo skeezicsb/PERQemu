@@ -93,7 +93,6 @@ namespace PERQemu
         /// </summary>
         private HighResolutionTimer()
         {
-            Console.WriteLine("HRTimer private constructor called.");   // FIXME
             _stopwatch = new Stopwatch();
             _requesters = new List<TimerThing>();
             _thread = null;
@@ -136,8 +135,9 @@ namespace PERQemu
             int tag = 0;
             double next = period;
 
+#if DEBUG
             Console.WriteLine("Register called, requesters length = " + _requesters.Count);   // FIXME
-
+#endif
             // Loop to see if we have an existing subscriber with the same
             // period; if so, adjust our new request to fire at the same time,
             // in effect coalescing the two and slightly improving efficiency :-)
@@ -146,7 +146,9 @@ namespace PERQemu
                 if (_requesters[i].Interval == period && !_requesters[i].Free)
                 {
                     next = _requesters[i].NextTrigger;
+#if DEBUG
                     Console.WriteLine("Coalesced new timer at " + next);   // FIXME
+#endif
                 }
             }
 
@@ -159,8 +161,10 @@ namespace PERQemu
                     _requesters[tag].Interval = period;
                     _requesters[tag].NextTrigger = next;
                     _requesters[tag].Callback = cb;
+#if DEBUG
                     Console.WriteLine("Registered timer {0}, interval {1}, next trigger {2}",
                                       tag, period, next);   // FIXME
+#endif
 
                     return tag;
                 }
@@ -168,8 +172,10 @@ namespace PERQemu
 
             // None free?  Extend...
             _requesters.Add(new TimerThing(period, cb));
+#if DEBUG
             Console.WriteLine("Extended list for new timer {0}, interval {1}, next trigger {2}",
                               tag, period, next);   // FIXME
+#endif
             return tag;
         }
 
@@ -240,8 +246,9 @@ namespace PERQemu
                 _thread.Name = "HighResTimer";
                 _thread.Start();
             }
-
+#if DEBUG
             Console.WriteLine("Timer thread started.");   // FIXME
+#endif
         }
 
         /// <summary>
@@ -253,7 +260,9 @@ namespace PERQemu
 
             _isRunning = false;
             _throttle.Reset();
+#if DEBUG
             Console.WriteLine("Timer thread paused.");   // FIXME
+#endif
         }
 
         /// <summary>
@@ -271,7 +280,9 @@ namespace PERQemu
             {
                 _thread.Join();
             }
+#if DEBUG
             Console.WriteLine("Timer thread shutting down.");   // FIXME
+#endif
         }
 
         /// <summary>
@@ -282,8 +293,10 @@ namespace PERQemu
             const double tolerance = 0.001d;    // some wiggle room
             double now, next, diff, skew;
 
+#if DEBUG
             // curiosity
             long shortSpin, longSpin, shortSleep, longSleep;
+#endif
 
             // Set our processor affinity so the timer thread doesn't bounce
             // around from cpu to cpu.  Should help accuracy and performance?
@@ -292,10 +305,12 @@ namespace PERQemu
             ResetIntervals();
 
             _stopwatch.Reset();
+#if DEBUG
             Console.WriteLine("Stopwatch initialized, HRT thread {0} running {1} timers",
                               Thread.CurrentThread.ManagedThreadId, _requesters.Count);   // FIXME
 
             shortSpin = longSpin = shortSleep = longSleep = 0;
+#endif
 
             now = next = 0d;
             _stopwatch.Start();
@@ -314,22 +329,30 @@ namespace PERQemu
 
                     if (diff < 1d)
                     {
+#if DEBUG
                         shortSpin++;
+#endif
                         Thread.SpinWait(10);
                     }
                     else if (diff < 5d)
                     {
+#if DEBUG
                         longSpin++;
+#endif
                         Thread.SpinWait(100);
                     }
                     else if (diff < 15d)
                     {
+#if DEBUG
                         shortSleep++;
+#endif
                         _throttle.WaitOne(1);
                     }
                     else
                     {
+#if DEBUG
                         longSleep++;
+#endif
                         _throttle.WaitOne(10);
                     }
                 }
@@ -370,11 +393,12 @@ namespace PERQemu
 
             // This is probably irrelevant
             Thread.EndThreadAffinity();
-
+#if DEBUG
             // for posterity
             Console.WriteLine("Stopwatch stopped, HRT thread exiting");   // FIXME
             Console.WriteLine("--> SpinWaits short={0} long={1}", shortSpin, longSpin);
             Console.WriteLine("--> Sleeps    short={0} long={1}", shortSleep, longSleep);
+#endif
         }
 
         /// <summary>
@@ -387,7 +411,9 @@ namespace PERQemu
             {
                 _requesters[i].NextTrigger = _requesters[i].Interval;
             }
+#if DEBUG
             Console.WriteLine("Interval timers reset.");   // FIXME
+#endif
         }
 
         private double NextInterval(double now)
@@ -411,7 +437,9 @@ namespace PERQemu
             }
             else
             {
+#if DEBUG
                 Console.WriteLine("No active requesters? Pausing HR timer.");   // FIXME
+#endif
                 _isRunning = false;
                 return now;
             }
@@ -422,6 +450,7 @@ namespace PERQemu
             return _stopwatch.ElapsedTicks * TickLength;
         }
 
+#if DEBUG
         public void DumpTimers()
         {
             Console.WriteLine("HighResTimer status:");
@@ -430,6 +459,7 @@ namespace PERQemu
                 Console.WriteLine("\t" + _requesters[i]);
             }
         }
+#endif
 
         /// <summary>
         /// The timer is running and firing events

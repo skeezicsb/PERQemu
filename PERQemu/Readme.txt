@@ -1,7 +1,6 @@
 ﻿PERQemu Readme
 
-3/07/2019 - skeezicsb - v0.4.5
-6/24/2018 - skeezicsb - v0.4 - v0.4.4
+3/07/2019 - skeezicsb - v0.4 - v0.4.5
 6/24/2010 - jdersch - v0.1 - v0.3
 
 

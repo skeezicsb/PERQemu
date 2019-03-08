@@ -1,4 +1,4 @@
-// debuggerprompt.cs - Copyright 2006-2018 Josh Dersch (derschjo@gmail.com)
+// debuggerprompt.cs - Copyright (c) 2006-2019 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //

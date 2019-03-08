@@ -1,4 +1,4 @@
-// entrypoint.cs - Copyright 2006-2018 Josh Dersch (derschjo@gmail.com)
+// entrypoint.cs - Copyright (c) 2006-2019 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -50,7 +50,7 @@ namespace PERQemu
             // Cancel the event since we don't actually want to kill the emulator,
             // just break into the execution.
             e.Cancel = true;
-            Console.Write("^C");    // FIXME
+            Console.Write("^C");
             Break();
         }
 

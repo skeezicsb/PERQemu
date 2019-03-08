@@ -33,7 +33,9 @@ namespace PERQemu
             _handle = _hrTimer.Register(_interval, _callback);
 
             _sync = new ManualResetEventSlim(false);
+#if DEBUG
             Console.WriteLine("SystemTimer constructed, HR timer handle is {0}", _handle);  // FIXME
+#endif
         }
 
         ~SystemTimer()
@@ -58,7 +60,9 @@ namespace PERQemu
         public void StartTimer(bool enabled)
         {
             _hrTimer.Enable(_handle, enabled);
+#if DEBUG
             Console.WriteLine("Heartbeat " + (enabled ? "started" : "stopped"));    // FIXME
+#endif
         }
 
         public float Interval
@@ -94,4 +98,3 @@ namespace PERQemu
         private ManualResetEventSlim _sync;
     }
 }
-
