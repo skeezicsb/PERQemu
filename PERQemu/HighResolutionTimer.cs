@@ -420,13 +420,11 @@ namespace PERQemu
         {
             double next = 0.0;
 
-            if (_requesters.Count > 0)
+            for (int i = 0; i < _requesters.Count; i++)
             {
-                next = _requesters[0].NextTrigger;
-
-                for (int i = 1; i < _requesters.Count; i++)
+                if (_requesters[i].Enabled)
                 {
-                    if (_requesters[i].Enabled && (_requesters[i].NextTrigger < next))
+                    if (next == 0.0 || _requesters[i].NextTrigger < next)
                         next = _requesters[i].NextTrigger;
                 }
             }
@@ -438,7 +436,7 @@ namespace PERQemu
             else
             {
 #if DEBUG
-                Console.WriteLine("No active requesters? Pausing HR timer.");   // FIXME
+                Console.WriteLine("No active requesters, pausing HR timer.");   // FIXME
 #endif
                 _isRunning = false;
                 return now;
@@ -450,16 +448,28 @@ namespace PERQemu
             return _stopwatch.ElapsedTicks * TickLength;
         }
 
-#if DEBUG
+        //#if DEBUG
         public void DumpTimers()
         {
-            Console.WriteLine("HighResTimer status:");
+            Console.Write("HighResTimer thread is ");
+            if (_thread == null)
+            {
+                Console.WriteLine("not running.");
+            }
+            else
+            {
+                Console.WriteLine(_thread.ThreadState);
+                Console.WriteLine("Event loop is " + (_isRunning ? "running" : "not running"));
+                Console.WriteLine("Stopwatch is " + (_stopwatch.IsRunning ? "running" : "not running"));
+            }
+
+            Console.WriteLine("Registered timer clients:");
             for (int i = 0; i < _requesters.Count; i++)
             {
                 Console.WriteLine("\t" + _requesters[i]);
             }
         }
-#endif
+        //#endif
 
         /// <summary>
         /// The timer is running and firing events

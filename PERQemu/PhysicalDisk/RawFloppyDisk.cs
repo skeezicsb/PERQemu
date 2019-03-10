@@ -67,24 +67,26 @@ namespace PERQemu.PhysicalDisk
             }
 
             byte geom = pfd[7];
-
+#if DEBUG
             Console.WriteLine("** Floppy header geometry hint is {0:x2}", geom);
+#endif
 
             if ((geom & 0xfc) * 2 != _diskType.SectorSize)
             {
                 Console.WriteLine("** Floppy header byte says sector size is {0}, was set to {1}",
-                                  (geom & 0xfc) * 2, _diskType.SectorSize);
+                                  (geom & 0xfc) * 2, _diskType.SectorSize); // FIXME
             }
 
             if ((geom & 0x03) != _diskType.Tracks)
             {
                 Console.WriteLine("** Floppy header says disk has {0} tracks, was set to {1}",
-                                  (geom & 0x03), _diskType.Tracks);
+                                  (geom & 0x03), _diskType.Tracks);     // FIXME
             }
 
             byte fsHint = pfd[8];
-
+#if DEBUG
             Console.WriteLine("** Floppy header filesystem hint is {0:x2}", fsHint);
+#endif
         }
 
         public override void WriteHeader(System.IO.FileStream fs)

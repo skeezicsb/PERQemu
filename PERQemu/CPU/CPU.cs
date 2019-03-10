@@ -78,7 +78,7 @@ namespace PERQemu.CPU
             // A high-resolution timer to regulate CPU execution rate.
             // For now we set our interval to ~1/60th (one "jiffy") to
             // strike a balance between overhead and responsiveness...
-            _heartBeat = new SystemTimer(16.5f);
+            _heartBeat = new SystemTimer(16.667f);
 
             Reset();
         }
@@ -121,7 +121,9 @@ namespace PERQemu.CPU
 
             _heartBeat.StartTimer(false);
             _adjInterval = (long)(Frequency / 1000 * _heartBeat.Interval);
+#if DEBUG
             Console.WriteLine("CPU heartbeat interval is {0}ms, adjustment every {1} microcycles", _heartBeat.Interval, _adjInterval);
+#endif
 
             _romEnabled = true;
             _interruptFlag = InterruptType.None;
@@ -198,6 +200,8 @@ namespace PERQemu.CPU
         /// </summary>
         public RunState Execute(RunState currentState)
         {
+            double lastAdjTime = HighResolutionTimer.ElapsedHiRes();
+
             // Set the machine's run state
             _runState = currentState;
 
@@ -392,11 +396,9 @@ namespace PERQemu.CPU
                     // we came to our desired cycle time.
                     if (_clocks % Frequency == 0)
                     {
-                        //double _avgCycleTime = (_watch.Elapsed.TotalMilliseconds / Frequency) * 1000000.0;
-                        //int delta = (int)(_desiredCycleTime - _avgCycleTime + .5) / 2;   // fudgy
-                        //Console.WriteLine("--> Avg. uCycle time: {0}  (Adjust: {1}, Delta: {2})", _avgCycleTime, _adjTime, delta);
-                        // Restart the timer, then test and apply any adjustments
-                        //_watch.Restart();
+                        double avgCycleTime = HighResolutionTimer.ElapsedHiRes() - lastAdjTime;
+                        Console.WriteLine("--> Avg. uCycle time: {0:F}ns", avgCycleTime / Frequency * 1000000.0);
+                        lastAdjTime = HighResolutionTimer.ElapsedHiRes();
                     }
 //#endif
                 }
@@ -1860,15 +1862,15 @@ namespace PERQemu.CPU
         }
 
         [DebugFunction("show memory", "Dumps the PERQ's memory (@ [addr])")]
-        private void ShowMemory(uint startAddress)
+        private void ShowMemory(int startAddress)
         {
             ShowMemory(startAddress, 64);
         }
 
         [DebugFunction("show memory", "Dumps the PERQ's memory (@ [addr, len])")]
-        private void ShowMemory(uint startAddress, uint length)
+        private void ShowMemory(int startAddress, int length)
         {
-            uint endAddr = (uint)(startAddress + length);
+            int endAddr = (startAddress + length);
 
             if (startAddress >= _memory.MemSize || endAddr - 8 >= _memory.MemSize)
             {
@@ -1876,21 +1878,26 @@ namespace PERQemu.CPU
                 return;
             }
 
-            ushort[] mem = _memory.Memory;      // TODO: fix this for new memory Core...
-
             // Format and display 8 words per line
-            for (uint i = startAddress; i < endAddr; i += 8)
+            for (int i = startAddress; i < endAddr; i += 8)
             {
                 StringBuilder line = new StringBuilder();
 
                 line.AppendFormat("{0:x5}: {1:x4} {2:x4} {3:x4} {4:x4} {5:x4} {6:x4} {7:x4} {8:x4} ",
-                    i, mem[i], mem[i + 1], mem[i + 2], mem[i + 3], mem[i + 4], mem[i + 5], mem[i + 6], mem[i + 7]);
+                                  i, _memory.FetchWord(i),
+                                  _memory.FetchWord(i + 1),
+                                  _memory.FetchWord(i + 2),
+                                  _memory.FetchWord(i + 3),
+                                  _memory.FetchWord(i + 4),
+                                  _memory.FetchWord(i + 5),
+                                  _memory.FetchWord(i + 6),
+                                  _memory.FetchWord(i + 7));
 
-                for (uint j = i; j < i + 8; j++)
+                for (int j = i; j < i + 8; j++)
                 {
                     // Build ascii representation...
-                    char high = (char)((mem[j] & 0xff00) >> 8);
-                    char low = (char)((mem[j] & 0xff));
+                    char high = (char)((_memory.FetchWord(j) & 0xff00) >> 8);
+                    char low = (char)((_memory.FetchWord(j) & 0xff));
 
                     if (!Debugger.Debugger.IsPrintable(high))
                     {
@@ -1916,7 +1923,7 @@ namespace PERQemu.CPU
         }
 
         [DebugFunction("find memory", "Find a specific value in the PERQ's memory [@start, val]")]
-        private void FindMemory(uint startAddress, ushort val)
+        private void FindMemory(int startAddress, ushort val)
         {
             if (startAddress >= _memory.MemSize)
             {
@@ -1924,11 +1931,9 @@ namespace PERQemu.CPU
                 return;
             }
 
-            ushort[] mem = _memory.Memory;
-
-            for (uint i = startAddress; i < _memory.MemSize; i++)
+            for (int i = startAddress; i < _memory.MemSize; i++)
             {
-                if (mem[i] == val) ShowMemory((i & 0xffffc), 4);        // show the quadword
+                if (_memory.FetchWord(i) == val) ShowMemory((i & 0xffffc), 4);        // show the quadword
             }
         }
 
@@ -1950,6 +1955,11 @@ namespace PERQemu.CPU
             MemoryBoard.Instance.DumpQueues();
         }
 #endif
+        [DebugFunction("show timers", "Show the status of the high resolution timers")]
+        private void ShowTimers()
+        {
+            HighResolutionTimer.Instance.DumpTimers();
+        }
 
         [DebugFunction("show opfile", "Displays the contents of the opcode file")]
         private void ShowOpfile()

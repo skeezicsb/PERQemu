@@ -1,4 +1,4 @@
-// z80system.cs - Copyright 2006-2018 Josh Dersch (derschjo@gmail.com)
+// z80system.cs - Copyright (c) 2006-2019 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -475,6 +475,7 @@ namespace PERQemu.IO.Z80.IOB
                             done = _rs232.RunStateMachine(_messageType, data);
                             break;
 
+                        case PERQtoZ80Message.SetSpeechStatus:
                         case PERQtoZ80Message.Speech:
                             done = _speech.RunStateMachine(_messageType, data);
                             break;
@@ -543,13 +544,13 @@ namespace PERQemu.IO.Z80.IOB
             if (oldFlags != _deviceReadyState)
             {
 #if TRACING_ENABLED
-            if (Trace.TraceOn)
-                Trace.Log(LogType.Z80State, "Sending Z80 device ready status @ {0}: {1}.",
-                                            _clocks, _deviceReadyState);
+                if (Trace.TraceOn)
+                    Trace.Log(LogType.Z80State, "Sending Z80 device ready status @ {0}: {1}.",
+                                                _clocks, _deviceReadyState);
 #endif
-            _outputFifo.Enqueue(Z80System.SOM);             // SOM
-            _outputFifo.Enqueue((byte)Z80toPERQMessage.Z80StatusChange);
-            _outputFifo.Enqueue((byte)_deviceReadyState);   // Data
+                _outputFifo.Enqueue(Z80System.SOM);             // SOM
+                _outputFifo.Enqueue((byte)Z80toPERQMessage.Z80StatusChange);
+                _outputFifo.Enqueue((byte)_deviceReadyState);   // Data
             }
         }
 
@@ -578,10 +579,9 @@ namespace PERQemu.IO.Z80.IOB
                             _tablet.GetStatus(ref _outputFifo);
                             break;
 
-                        // Keyboard has no GetStatus method, but has a bit in DeviceStatus?
-                        // Voltage (Speech) has no GetStatus method either
-                        // Clock has no GetStatus method, and I've never seen it enabled...
-                        // If any of these is ever set, we'll see the error on the console. :-/
+                        case DeviceStatus.Speech:
+                            _speech.GetStatus(ref _outputFifo);
+                            break;
 
                         case DeviceStatus.Floppy:
                             _floppyDisk.GetStatus(ref _outputFifo);
@@ -596,6 +596,9 @@ namespace PERQemu.IO.Z80.IOB
                             Console.WriteLine("Z80 GetStatus bit set");     // fixme
                             break;
 
+                        // Keyboard has no GetStatus method, but has a bit in DeviceStatus?
+                        // Clock has no GetStatus method, and I've never seen it enabled...
+                        // If any of these is ever set, we'll see the error on the console. :-/
                         default:
                             Console.WriteLine("Unhandled GetStatus type {0}", (DeviceStatus)i); // fixme
                             break;
@@ -638,7 +641,7 @@ namespace PERQemu.IO.Z80.IOB
             RS232 = 0x1,
             Tablet = 0x2,
             Keyboard = 0x4,
-            Voltage = 0x8,          // Speech, as of v8.6 (voltage/temp removed)
+            Speech = 0x8,           // as of ROM v8.6 (voltage/temp removed)
             Clock = 0x10,
             Floppy = 0x20,
             GPIB = 0x40,

@@ -60,8 +60,8 @@ namespace PERQemu
 
         public void Shutdown()
         {
-            Display.Display.Instance.Shutdown();
             HighResolutionTimer.Instance.Shutdown();
+            Display.Display.Instance.Shutdown();
         }
 
         public void Execute(string[] args)
@@ -312,7 +312,7 @@ namespace PERQemu
             {
                 Console.WriteLine("unset");
             }
-        }       
+        }
 
         #endregion
 
