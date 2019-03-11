@@ -105,15 +105,15 @@ namespace PERQemu
                         {
                             // This is thrown when the microcode tells the PERQ to power down.
                             // Catch here and tell the user.  Go back to debug state.
-                            _state = RunState.Debug;
                             _debugMessage = "The PERQ has powered itself off.  Use the 'reset' command to restart the PERQ.";
+                            Break();
                         }
                         catch (Exception e)
                         {
                             // The emulation has hit a serious error.
                             // Enter the debugger.
-                            _state = RunState.Debug;
                             _debugMessage = String.Format("Break due to internal emulation error: {0}.  System state may be inconsistent.", e.Message);
+                            Break();
 #if DEBUG
                             Console.WriteLine(Environment.StackTrace);
 #endif
@@ -122,11 +122,11 @@ namespace PERQemu
 
                     case RunState.Debug:
                         // Enter the debugger.  On return from debugger, switch to the specified state
-                        _state = PERQemu.Debugger.Debugger.Instance.Enter(_debugMessage);
+                        _state = Debugger.Debugger.Instance.Enter(_debugMessage);
                         break;
 
                     case RunState.DebugScript:
-                        _state = PERQemu.Debugger.Debugger.Instance.RunScript(args[0]);
+                        _state = Debugger.Debugger.Instance.RunScript(args[0]);
                         break;
 
                     case RunState.Pause:

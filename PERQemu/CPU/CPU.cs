@@ -112,15 +112,15 @@ namespace PERQemu.CPU
         //
         public static readonly int IOFudge = 8;
 
+
         /// <summary>
         /// Reset the CPU, clear the writable control store and re-enable the boot ROM.
         /// </summary>
         public void Reset()
         {
-            _runState = RunState.Debug;
 
-            _heartBeat.StartTimer(false);
             _adjInterval = (long)(Frequency / 1000 * _heartBeat.Interval);
+            _showTiming = false;
 #if DEBUG
             Console.WriteLine("CPU heartbeat interval is {0}ms, adjustment every {1} microcycles", _heartBeat.Interval, _adjInterval);
 #endif
@@ -189,6 +189,10 @@ namespace PERQemu.CPU
         {
             // User break into debugger
             _runState = RunState.Debug;
+
+            // Stop the heartbeat
+            _heartBeat.StartTimer(false);
+
         }
 
         /// <summary>
@@ -394,7 +398,7 @@ namespace PERQemu.CPU
 //#if DEBUG
                     // Once each CPU-second sample the Stopwatch to see how close
                     // we came to our desired cycle time.
-                    if (_clocks % Frequency == 0)
+                    if (_clocks % Frequency == 0 && _showTiming)
                     {
                         double avgCycleTime = HighResolutionTimer.ElapsedHiRes() - lastAdjTime;
                         Console.WriteLine("--> Avg. uCycle time: {0:F}ns", avgCycleTime / Frequency * 1000000.0);
@@ -1959,6 +1963,10 @@ namespace PERQemu.CPU
         private void ShowTimers()
         {
             HighResolutionTimer.Instance.DumpTimers();
+            // For now, just toggle this on and off; eventually this ought to be
+            // a real fps display or integrated into the gui...
+            _showTiming = !_showTiming;
+            Console.WriteLine("Cycle timing display is now " + _showTiming);
         }
 
         [DebugFunction("show opfile", "Displays the contents of the opcode file")]
@@ -2151,6 +2159,7 @@ namespace PERQemu.CPU
         private SystemTimer _heartBeat;
         private long _clocks;               // Total elapsed CPU cycles
         private long _adjInterval;          // How often to sync our run rate
+        private bool _showTiming;
 
         private static PERQCpu _instance = new PERQCpu();
     }
