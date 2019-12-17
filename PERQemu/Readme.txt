@@ -1,6 +1,6 @@
 ﻿PERQemu Readme
 
-3/07/2019 - skeezicsb - v0.4 - v0.4.5
+3/14/2019 - skeezicsb - v0.4 - v0.4.5
 6/24/2010 - jdersch - v0.1 - v0.3
 
 
@@ -513,7 +513,6 @@ it is reasonably functional (though there may still be issues):
   there's nothing connected to it.
  
 - Sound.  Implemented, but not hooked up to any sort of host output device.
-  Unfortunately appears to cause the emulator to hang running the talking demo.    
 
 - Option boards: Canon, streamer tape.  On the list.
    
@@ -537,6 +536,8 @@ v0.4.5 - Interim VCF PNW release
   - Display/CPU performance refinements to regulate the speed of the emulated
     CPU to match the original hardware.
   - Changes to optimize video updates if/when we are able to do 64-bit builds.
+  - Adding missing Z80 message handler for SpeechSetStatus so the "talking demo"
+    no longer hangs (but no audio output yet).
 
 v0.4.4 - Fourth major release
   - RasterOp streamlining and refinements allowed us to remove the
