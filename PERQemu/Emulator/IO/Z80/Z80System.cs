@@ -89,6 +89,7 @@ namespace PERQemu.IO.Z80
         public abstract void DumpFifos();
         public abstract void DumpPortAStatus();
         public abstract void DumpPortBStatus();
+        public abstract void DumpIRQStatus();
 
 
         /// <summary>
@@ -154,9 +155,9 @@ namespace PERQemu.IO.Z80
 
             Log.Debug(Category.Controller, "[Z80 running on thread {0}]", Thread.CurrentThread.ManagedThreadId);
 
-            do
+            try
             {
-                try
+                do
                 {
                     Run();
 
@@ -165,13 +166,13 @@ namespace PERQemu.IO.Z80
                         _sync.Wait(10);     // don't hang forever...
                     }
                 }
-                catch (Exception e)
-                {
-                    _stopAsyncThread = true;
-                    _system.Halt(e);
-                }
+                while (!_stopAsyncThread);
             }
-            while (!_stopAsyncThread);
+            catch (Exception e)
+            {
+                _stopAsyncThread = true;
+                _system.Halt(e);
+            }
 
             Log.Debug(Category.Controller, "[Z80 thread stopped]");
 
@@ -189,7 +190,8 @@ namespace PERQemu.IO.Z80
                 return;
             }
 
-            Log.Detail(Category.Controller, "[Stop() called on Z80 thread]");
+            Log.Detail(Category.Controller, "[Z80 Stop() called from thread {0}]",
+                                            Thread.CurrentThread.ManagedThreadId);
             _stopAsyncThread = true;
             _sync.Set();
 
@@ -227,6 +229,16 @@ namespace PERQemu.IO.Z80
         {
             Log.Debug(Category.Controller, "[Z80 state change event -> {0}]", s.State);
             _stopAsyncThread = (s.State != RunState.Running);
+        }
+
+        public void ShowThreadStatus()
+        {
+            if (_asyncThread != null)
+            {
+                Console.WriteLine("Z80 thread is ID {0}, status {1}",
+                                  Thread.CurrentThread.ManagedThreadId,
+                                  Thread.CurrentThread.ThreadState);
+            }
         }
 
         // FIXME: should move this to PERQsystem or DebugCommands?

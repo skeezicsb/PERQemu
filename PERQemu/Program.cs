@@ -90,8 +90,6 @@ namespace PERQemu
 
             // Set up command-line parser and GUI manager
             _cli = new CommandProcessor();
-
-            //_gui = new FormsManager();
             _gui = new EventLoop();
 
             // Create main objects

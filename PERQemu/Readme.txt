@@ -161,8 +161,8 @@ There are several subdirectories:
 
     Output/
         When logging debug output to disk is enabled, log files go here by
-        default.  When screenshots and printing are implemented, that output
-        will land here too.  (Output directory is a settable preference.)
+        default.  Screenshots and Canon laser printer output is directed
+        here as well.  (Output directory is a settable preference.)
 
     PROM/
     Resources/
@@ -253,10 +253,11 @@ As of v0.4.6, these PERQ operating systems also boot:
 
 Fixed in v0.5.3:
   - A workaround for PNX 2 video support is included (disk image TBA).
+  - Accent S7 (Release III, unreleased) also verified as well.
 
 NOTE: PNX 1 drops into its microcode debugger (i.e., crashes) after booting if
 2MB of memory is configured; it runs fine with 1MB.  PNX 2, POS, MPOS and Accent
-have no trouble with a full megaword of memory.
+have no trouble with a full megaword (2MB) of memory.
 
 Accent mouse tracking takes a little getting used to since it runs in relative
 mode.  To simulate mouse "swipes" you have to use the Alt key (Option key on
@@ -357,8 +358,8 @@ The following hardware has been implemented in the emulator:
       but with caveats.  Check the User Guide for details.
 
   Canon:
-    - Laser printer interface provides high quality output in PNG or TIFF format
-      at 240- or 300-dpi.
+    - Laser printer interface can now be enabled as an OIO option.  It provides
+      high quality output in PNG or TIFF format at 240- or 300-dpi.
 
 
 There is a ton of additional detail about the internals of PERQemu itself in
@@ -423,7 +424,7 @@ window back onto the screen.  This was fixed?  Kind of?  Except when it isn't?
 Symptoms:  On Linux, reading data from a COM port (/dev/ttyS0) stalls unless
 output is transmitted (to prod the receiver).  Windows and Mac serial devices
 seem to struggle less, but this isn't exactly "production ready."  Flow control
-on all three plaltforms is unreliable and data may be garbled or lost.
+on all three platforms is unreliable and data may be garbled or lost.
 
 Workaround:  None, yet.  This is largely due to serious deficiencies in the
 C#/Mono System.IO.Ports.SerialPort implementation that will require a reworking

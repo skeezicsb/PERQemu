@@ -137,8 +137,8 @@ namespace PERQemu.IO.Z80
                 }
 
                 byte value = _readRegs[_selectedRegister];
-                Log.Debug(Category.SIO, "Channel {0} read 0x{1:x2} from register {2}",
-                                        _channelNumber, value, _selectedRegister);
+                Log.Detail(Category.SIO, "Channel {0} read 0x{1:x2} from register {2}",
+                                         _channelNumber, value, _selectedRegister);
                 return value;
             }
 
@@ -165,15 +165,15 @@ namespace PERQemu.IO.Z80
                 UpdateFlags();
 
                 Log.Debug(Category.SIO, "Channel {0} read data 0x{1:x2}, {2} remaining",
-                                            _channelNumber, data, _rxFifo.Count);
+                                        _channelNumber, data, _rxFifo.Count);
                 return data;
             }
 
 
             public void WriteRegister(byte value)
             {
-                Log.Debug(Category.SIO, "Channel {0} write 0x{1:x2} to register {2}",
-                                        _channelNumber, value, _selectedRegister);
+                Log.Detail(Category.SIO, "Channel {0} write 0x{1:x2} to register {2}",
+                                         _channelNumber, value, _selectedRegister);
 
                 _writeRegs[_selectedRegister] = value;
 
@@ -187,7 +187,7 @@ namespace PERQemu.IO.Z80
                     // Execute command:
                     var cmd = (WReg0Cmd)((value & 0x38) >> 3);
 
-                    Log.Debug(Category.SIO, "Channel {0} command is {1}", _channelNumber, cmd);
+                    Log.Detail(Category.SIO, "Channel {0} command is {1}", _channelNumber, cmd);
 
                     switch (cmd)
                     {
@@ -502,9 +502,9 @@ namespace PERQemu.IO.Z80
                 // PERQ may or may not even rely on this bit...
                 _readRegs[0] |= (byte)(InterruptLatched ? RReg0.IntPending : 0);
 
-                Log.Debug(Category.SIO, "Channel {0} RR0 = {1}", _channelNumber, (RReg0)_readRegs[0]);
-                Log.Debug(Category.SIO, "Channel {0} RR1 = {1}", _channelNumber, (RReg1)_readRegs[1]);
-                Log.Debug(Category.SIO, "Channel {0} IRQ status: Tx {1}/{2}, Rx {3}/{4}, Ext {5}/{6}, Vec {7}",
+                Log.Detail(Category.SIO, "Channel {0} RR0 = {1}", _channelNumber, (RReg0)_readRegs[0]);
+                Log.Detail(Category.SIO, "Channel {0} RR1 = {1}", _channelNumber, (RReg1)_readRegs[1]);
+                Log.Detail(Category.SIO, "Channel {0} IRQ status: Tx {1}/{2}, Rx {3}/{4}, Ext {5}/{6}, Vec {7}",
                           _channelNumber, _txInterruptLatched, TxInterruptEnabled,
                                           _rxInterruptLatched, RxInterruptEnabled,
                                           _extInterruptLatched, ExtInterruptEnabled, _interruptOffset);

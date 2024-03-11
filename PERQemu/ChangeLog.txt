@@ -6,6 +6,20 @@ notes moved to ChangeLog-Old.txt.  New entries here will be added at the top, to
 avoid wasting precious time scrolling to the end. :-)
 
 
+March, 2024:
+
+    3. Starting on the i8237 (aka Am9517) DMA controller.
+
+    2. Have put some meat on the bones of the Am9519 and worked out how to route
+    interrupts on the EIO, and it's pretty reasonable.  EIO boots to DDS 013 so
+    basic initializations work; lots of work to get the FIFOs, DMA and hard disk
+    (Micropolis, MFM) going.  Some cleanups to mitigate/fix lingering Execution
+    Controller bugs or annoyances.
+
+    1. A number of small tweaks to get back into PERQ-2.  Studying the Am9519
+    and starting to flesh out the EIO's Z80 interrupt scheme.
+
+
 February, 2024:
 
     4. Small Ethernet, DMA tweaks plus a few guardrails on the Canon driver to
@@ -212,4 +226,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Sun Feb 18 23:02:08 PST 2024
+Last update: skeezics    Mon Mar  4 23:50:55 PST 2024

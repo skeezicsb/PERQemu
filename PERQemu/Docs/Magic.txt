@@ -58,6 +58,7 @@
 #
 # .IMD files are a generic floppy imaging format:
 0   string  IMD\040    IMD archived floppy image
+>4  string  1.16:   (version 1.16)
 >4  string  1.18:   (version 1.18)
 #
 # (This barebones definition should be provided elsewhere; included here

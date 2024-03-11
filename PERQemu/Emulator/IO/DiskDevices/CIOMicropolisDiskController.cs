@@ -227,26 +227,6 @@ namespace PERQemu.IO.DiskDevices
                     Log.Write(Category.HardDisk, "Micropolis Sector # set to 0x{0:x2}", _sector);
                     break;
 
-                case 0xd0:      // Micropolis Data Buffer Address High register
-                    _dataBuffer.Hi = ~value;
-                    Log.Write(Category.HardDisk, "Micropolis Data Buffer Address (high) set to 0x{0:x}", _dataBuffer.Hi);
-                    break;
-
-                case 0xd1:      // Micropolis Header Address High register
-                    _headerAddress.Hi = ~value;
-                    Log.Write(Category.HardDisk, "Micropolis Header Address (high) set to 0x{0:x}", _headerAddress.Hi);
-                    break;
-
-                case 0xd8:      // Micropolis Data Buffer Address Low register
-                    _dataBuffer.Lo = (ushort)value;
-                    Log.Write(Category.HardDisk, "Micropolis Data Buffer Address (low) set to 0x{0:x4}", _dataBuffer.Lo);
-                    break;
-
-                case 0xd9:      // Micropolis Header Address low register
-                    _headerAddress.Lo = (ushort)value;
-                    Log.Write(Category.HardDisk, "Micropolis Header Address (low) set to 0x{0:x4}", _headerAddress.Lo);
-                    break;
-
                 default:
                     throw new InvalidOperationException($"Bad register write 0x{address:x2}");
             }
@@ -273,7 +253,7 @@ namespace PERQemu.IO.DiskDevices
         /// since it's used to turn the Z80 off and on.  So on the CIO, for which we
         /// have no *$)!#*& schematics, does that bit do double duty?
         /// </remarks>
-        public void LoadCommandRegister(int data)
+        void LoadCommandRegister(int data)
         {
             var command = (Command)(data & 0x07);
             var nibCommand = (NibbleSelect)(data & 0x78);

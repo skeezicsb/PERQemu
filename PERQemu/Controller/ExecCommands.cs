@@ -42,6 +42,8 @@ namespace PERQemu
             Console.WriteLine("The Z80 {0} running", PERQemu.Sys.IOB.Z80System.IsRunning ? "is" : "is not");
 
             // DEBUG
+            PERQemu.Sys.ShowThreadStatus();
+            PERQemu.Sys.IOB.Z80System.ShowThreadStatus();
             PERQemu.Sys.Display.Status();
             PERQemu.Sys.Mouse.Status();
             PERQemu.Sys.VideoController.Status();

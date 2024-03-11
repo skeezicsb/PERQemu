@@ -170,7 +170,7 @@ namespace PERQemu.IO.DiskDevices
         ///         5     fault clear         /
         ///       6:7     unit select!?      /    Z80 control bit (conflict!)
         /// </remarks>
-        public void LoadCommandRegister(int data)
+        void LoadCommandRegister(int data)
         {
             _command = (Command)(data & 0x07);
             _seekCommand = (SeekCommand)(data & 0x78);

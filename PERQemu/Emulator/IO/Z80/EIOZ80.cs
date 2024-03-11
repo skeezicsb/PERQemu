@@ -44,8 +44,8 @@ namespace PERQemu.IO.Z80
             // Set up the EIO peripherals
             _tms9914a = new TMS9914A(0);
             _fdc = new NECuPD765A(0x20, _scheduler);
-            _z80sioA = new Z80SIO(0x10, _scheduler, true);
-            _z80sioB = new Z80SIO(0x40, _scheduler, true);
+            _z80sioA = new Z80SIO(0x10, _scheduler);
+            _z80sioB = new Z80SIO(0x40, _scheduler);
             _timerA = new i8254PIT(0x50);
             _timerB = new i8254PIT(0x54);
             _rtc = new Oki5832RTC(0x76);
@@ -61,7 +61,7 @@ namespace PERQemu.IO.Z80
             DeviceInit();
         }
 
-        // Port "A" is public, since it's a DMA-capable device...
+        // Port "A" is public, since it's a DMA-capable device
         public override Z80SIO SIOA => _z80sioA;
 
         // No hard disk seek circuit on the EIO
@@ -72,6 +72,9 @@ namespace PERQemu.IO.Z80
         protected override bool FIFOInputReady => _perqToZ80Fifo.IsReady;
         protected override bool FIFOOutputReady => _z80ToPerqFifo.IsReady;
 
+        /// <summary>
+        /// Initializes the EIO devices and attaches them to the bus.
+        /// </summary>
         void DeviceInit()
         {
             // Attach the configured tablet(s)
@@ -135,16 +138,25 @@ namespace PERQemu.IO.Z80
             }
 
             // All aboard the bus
+            _bus.RegisterDevice(_irqControl);
             _bus.RegisterDevice(_perqToZ80Fifo);
             _bus.RegisterDevice(_z80ToPerqFifo);
-            _bus.RegisterDevice(_fdc);
-            _bus.RegisterDevice(_rtc);
-            _bus.RegisterDevice(_dmac);
-            _bus.RegisterDevice(_timerA);
-            _bus.RegisterDevice(_timerB);
+            _bus.RegisterDevice(_fdc, false);
+            _bus.RegisterDevice(_rtc, false);
+            _bus.RegisterDevice(_dmac, false);
+            _bus.RegisterDevice(_timerA, false);
+            _bus.RegisterDevice(_timerB, false);
+            _bus.RegisterDevice(_tms9914a, false);
             _bus.RegisterDevice(_z80sioA);
             _bus.RegisterDevice(_z80sioB);
-            _bus.RegisterDevice(_tms9914a);
+
+            // Register clients of the interrupt controller
+            _irqControl.RegisterDevice(Am9519.IRQNumber.GPIB, _tms9914a);
+            _irqControl.RegisterDevice(Am9519.IRQNumber.Floppy, _fdc);
+            _irqControl.RegisterDevice(Am9519.IRQNumber.Z80DMA, _dmac);
+            _irqControl.RegisterDevice(Am9519.IRQNumber.PERQInput, _perqToZ80Fifo);
+            _irqControl.RegisterDevice(Am9519.IRQNumber.PERQOutput, _z80ToPerqFifo);
+            // not sure yet how to do the perq dma completion interrupt...
         }
 
         protected override void DeviceReset()
@@ -201,9 +213,12 @@ namespace PERQemu.IO.Z80
                 return;
             }
 
-            // No WAIT line INIR/OTIR shenanigans on the EIO!
-            // TODO: However, we might have to clock the interrupt controller here?
-            // _irqControl.Clock();
+            // No WAIT line INIR/OTIR shenanigans on the EIO!  However, we clock
+            // the interrupt controller here to see if it requires attention
+            _irqControl.Clock();
+
+            // Debugging
+            _bus.ActiveInterrupts();
 
             // Run an instruction
             var ticks = _cpu.ExecuteNextInstruction();
@@ -306,6 +321,12 @@ namespace PERQemu.IO.Z80
         public override void DumpPortBStatus()
         {
             _z80sioB.DumpPortStatus(0);
+        }
+
+        public override void DumpIRQStatus()
+        {
+            _bus.DumpInterrupts();
+            _irqControl.DumpStatus();
         }
 
         //

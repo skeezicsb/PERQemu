@@ -412,8 +412,10 @@ namespace PERQemu
             }
             else
             {
-                // throw new InvalidOperationException()
-                Console.WriteLine("Sorry, ya cahnt get theyah from heeyah.");
+                if (current == RunState.Halted)
+                    Console.WriteLine("The PERQ has halted; can only reset or power off.");
+                else
+                    Console.WriteLine("Sorry, ya cahnt get theyah from heeyah.");
             }
 
             Log.Debug(Category.Controller, "Transition result is {0}", State);
@@ -523,6 +525,10 @@ namespace PERQemu
                     new SMKey(RunState.Running, RunState.SingleStep), new List<Transition> {
                         new Transition(() => { SetState(RunState.Paused); }, RunState.Paused),
                         new Transition(() => { SetState(RunState.SingleStep); }, RunState.Paused) }
+                },
+                {
+                    new SMKey(RunState.Running, RunState.Halted), new List<Transition> {
+                        new Transition(() => { SetState(RunState.Halted); }, RunState.Halted) }
                 },
                 {
                     new SMKey(RunState.Running, RunState.Off), new List<Transition> {

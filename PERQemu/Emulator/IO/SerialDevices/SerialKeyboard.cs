@@ -50,7 +50,8 @@ namespace PERQemu.IO.SerialDevices
 
         public void QueueInput(byte key)
         {
-            Log.Detail(Category.Keyboard, "Queuing key '{0}' (0x{1:x2})", (char)key, key);
+            // Key bytes transmitted inverted; for logging, flip it back
+            Log.Detail(Category.Keyboard, "Queuing key '{0}' (0x{1:x2})", (char)(~key & 0x7f), key);
             _rxDelegate(key);
         }
 
@@ -66,7 +67,7 @@ namespace PERQemu.IO.SerialDevices
 
         public void TransmitBreak()
         {
-            throw new NotImplementedException();
+            Log.Detail(Category.Keyboard, "VT100 Keyboard received a Break?");
         }
 
 

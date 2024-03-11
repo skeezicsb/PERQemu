@@ -18,9 +18,7 @@
 //
 
 using System;
-
-using PERQemu.IO;
-using PERQemu.Debugger;
+using System.Diagnostics;
 
 namespace PERQemu
 {
@@ -68,13 +66,6 @@ namespace PERQemu
             PERQemu.Sys.IOB.Z80System.ShowZ80State();
         }
 
-        //[Conditional("DEBUG")]
-        [Command("debug z80 dump scheduler queue")]
-        void DumpZ80Scheduler()
-        {
-            PERQemu.Sys.IOB.Z80System.Scheduler.DumpEvents("Z80");
-        }
-
         // todo: bare bones right now - just display one byte.  expand this to
         // allow ranges and output options (radix, ascii, etc?)
         [Command("debug z80 show memory", "Display contents of a given memory location")]
@@ -89,6 +80,20 @@ namespace PERQemu
             {
                 Console.WriteLine($"Couldn't read {addr}: {e.Message}");
             }
+        }
+
+        //[Conditional("DEBUG")]
+        [Command("debug z80 dump interrupts")]
+        void DumpIRQs()
+        {
+            PERQemu.Sys.IOB.Z80System.DumpIRQStatus();
+        }
+
+        //[Conditional("DEBUG")]
+        [Command("debug z80 dump scheduler queue")]
+        void DumpZ80Scheduler()
+        {
+            PERQemu.Sys.IOB.Z80System.Scheduler.DumpEvents("Z80");
         }
 
         [Command("debug z80 dump rtc")]

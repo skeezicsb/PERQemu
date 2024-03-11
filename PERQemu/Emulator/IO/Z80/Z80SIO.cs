@@ -33,7 +33,7 @@ namespace PERQemu.IO.Z80
     /// </summary>
     public partial class Z80SIO : IZ80Device, IDMADevice
     {
-        public Z80SIO(byte baseAddress, Scheduler scheduler, bool isEio = false)
+        public Z80SIO(byte baseAddress, Scheduler scheduler)
         {
             _baseAddress = baseAddress;
             _ports = new byte[] {
@@ -47,7 +47,8 @@ namespace PERQemu.IO.Z80
             _channels[0] = new Channel(0, scheduler);
             _channels[1] = new Channel(1, scheduler);
 
-            _isEIO = isEio;
+            _isEIO = PERQemu.Config.Current.IOBoard == Config.IOBoardType.EIO ||
+                     PERQemu.Config.Current.IOBoard == Config.IOBoardType.NIO;
         }
 
         public void Reset()
@@ -150,15 +151,13 @@ namespace PERQemu.IO.Z80
                     return _channels[0].ReadData();
 
                 case 1:
-                    if (_isEIO)
-                        return _channels[1].ReadData();
-                    
+                    if (_isEIO) return _channels[1].ReadData();
+
                     return _channels[0].ReadRegister();
 
                 case 2:
-                    if (_isEIO)
-                        return _channels[0].ReadRegister();
-                    
+                    if (_isEIO) return _channels[0].ReadRegister();
+
                     return _channels[1].ReadData();
 
                 case 3:

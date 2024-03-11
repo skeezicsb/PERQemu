@@ -59,8 +59,8 @@ namespace PERQemu.IO.Z80
 
         public string Name => "PERQ->Z80 FIFO";
         public byte[] Ports => _ports;
-        public byte? ValueOnDataBus => 0x14;    // PERQI.ISR
 
+        public byte? ValueOnDataBus => null;        // Supplied by the Am9519
         public bool IsReady => !_fifo.IsEmpty;
         public bool IntLineIsActive => _interruptEnabled && IsReady;
 

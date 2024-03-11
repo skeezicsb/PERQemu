@@ -74,6 +74,22 @@ namespace PERQemu.IO.Z80
             }
         }
 
+        // Debugging
+        public void DumpInterrupts()
+        {
+            var count = 0;
+
+            Console.WriteLine("Z80 active interrupts:");
+            for (var d = 0; d < _devices.Count; d++)
+            {
+                if (_devices[d].IntLineIsActive)
+                {
+                    Console.Write($"  {_devices[d].Name}");
+                    count++;
+                }
+            }
+            Console.WriteLine((count == 0) ? "  <none>" : "");
+        }
 
         //
         // IMemory Implementation
@@ -92,7 +108,7 @@ namespace PERQemu.IO.Z80
         //
         // Implementation
         //
-        public void RegisterDevice(IZ80Device device)
+        public void RegisterDevice(IZ80Device device, bool irqSource = true)
         {
             // Add to (the local copy of) the device list
             if (_devices.Contains(device))
@@ -112,8 +128,11 @@ namespace PERQemu.IO.Z80
                 _devicePorts[portAddress] = device;
             }
 
-            // Tell the Z80 about it
-            _z80System.CPU.RegisterInterruptSource(device);
+            if (irqSource)
+            {
+                // Tell the Z80 this device raises interrupts
+                _z80System.CPU.RegisterInterruptSource(device);
+            }
         }
 
         byte ReadPort(int port)

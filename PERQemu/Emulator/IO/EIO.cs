@@ -37,7 +37,7 @@ namespace PERQemu.IO
         static EIO()
         {
             _name = "EIO";
-            _desc = "PERQ-2 I/O Board, new Z80, Microp/MFM, Ethernet";
+            _desc = "PERQ-2 I/O Board, Z80A, Microp/MFM, Ethernet";
 
             _z80CycleTime = 250;    // 4Mhz!
 

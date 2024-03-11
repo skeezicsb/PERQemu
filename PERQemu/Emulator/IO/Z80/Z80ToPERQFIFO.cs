@@ -60,8 +60,8 @@ namespace PERQemu.IO.Z80
 
         public string Name => "Z80->PERQ FIFO";
         public byte[] Ports => _ports;
-        public byte? ValueOnDataBus => 0x12;        // TODO: PERQO.ISR ??
-        public bool IntLineIsActive => false;       // But it never interrupts?
+        public byte? ValueOnDataBus => null;        // Supplied by the Am9519
+        public bool IntLineIsActive => false;       // fixme for eio!
 
         public bool IsReady => _outputReady;
         public bool IsEmpty => _fifo.IsEmpty;

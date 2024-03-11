@@ -78,7 +78,7 @@ namespace PERQemu.IO.Z80
 
         public string Name => "TMS9914A";
         public byte[] Ports => _ports;
-        public byte? ValueOnDataBus => 0x22;    // GPIVEC
+        public byte? ValueOnDataBus => 0x22;            // GPIVEC (IOB/CIO)
         public bool IntLineIsActive => _interruptActive;
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }

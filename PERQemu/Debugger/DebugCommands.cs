@@ -24,7 +24,6 @@ using System.Collections.Generic;
 
 using PERQemu.Debugger;
 using PERQemu.Processor;
-using PERQemu.IO;
 
 namespace PERQemu
 {

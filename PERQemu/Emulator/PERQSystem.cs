@@ -264,10 +264,10 @@ namespace PERQemu
                             {
                                 _cpu.Run();
                                 _iob.Run();
-                            }
-                            while (!CPU.IncrementBPC);
 
-                            _state = RunState.Paused;
+                                if (CPU.IncrementBPC) _state = RunState.Paused;
+                            }
+                            while (_state == RunState.RunInst);
                         });
                     break;
 
@@ -280,14 +280,16 @@ namespace PERQemu
                     RunGuarded(() =>
                         {
                             var startTime = _iob.Z80System.Clocks;
+
                             do
                             {
                                 _cpu.Run();
                                 _iob.Run();
-                            }
-                            while (_iob.Z80System.Clocks == startTime);
 
-                            _state = RunState.Paused;
+                                if (_iob.Z80System.Clocks != startTime)
+                                    _state = RunState.Paused;
+                            }
+                            while (_state == RunState.RunZ80Inst);
                         });
                     break;
 
@@ -395,6 +397,11 @@ namespace PERQemu
             }
         }
 
+        // Debugging
+        public void ShowThreadStatus()
+        {
+            _cpu.ShowThreadStatus();
+        }
 
         #region The white zone is for media loading and unloading only
 

@@ -67,11 +67,11 @@ namespace PERQemu.IO.Z80
             DeviceInit();
         }
 
-        // Allow for external CTC triggers (disk seeks)
-        public override Z80CTC CTC => _z80ctc;
-
         // Expose to the DMA router
         public override Z80SIO SIOA => _z80sio;
+
+        // Allow for external CTC triggers (disk seeks)
+        public override Z80CTC CTC => _z80ctc;
 
         // Do we need a wait state?
         protected override bool FIFOInputReady => _perqToZ80Fifo.IsReady;
@@ -118,16 +118,16 @@ namespace PERQemu.IO.Z80
             }
 
             // Everybody get on the bus!
-            _bus.RegisterDevice(_seekControl);
-            _bus.RegisterDevice(_perqToZ80Fifo);
-            _bus.RegisterDevice(_z80ToPerqFifo);
+            _bus.RegisterDevice(_fdc);
             _bus.RegisterDevice(_z80ctc);
             _bus.RegisterDevice(_z80sio);
             _bus.RegisterDevice(_z80dma);
-            _bus.RegisterDevice(_fdc);
             _bus.RegisterDevice(_tms9914a);
             _bus.RegisterDevice(_keyboard);
-            _bus.RegisterDevice(_ioReg3);
+            _bus.RegisterDevice(_perqToZ80Fifo);
+            _bus.RegisterDevice(_z80ToPerqFifo, false);
+            _bus.RegisterDevice(_seekControl, false);
+            _bus.RegisterDevice(_ioReg3, false);
         }
 
         protected override void DeviceReset()
@@ -357,6 +357,12 @@ namespace PERQemu.IO.Z80
         {
             Console.WriteLine($"{_system.Config.IOBoard} board does not have a serial port B.");
         }
+
+        public override void DumpIRQStatus()
+        {
+            _bus.DumpInterrupts();
+        }
+
 
         Z80SIO _z80sio;
         Z80CTC _z80ctc;

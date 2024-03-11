@@ -53,10 +53,6 @@ namespace PERQemu.IO.DiskDevices
             // ExtendedRegisters to glom the register writes together!
             _cylinder = new ExtendedRegister(4, 8);
             _nibLatch = new ExtendedRegister(4, 4);
-
-            // 8" drives are only supported on the 20-bit machines, for now
-            _dataBuffer = new ExtendedRegister(4, 16);
-            _headerAddress = new ExtendedRegister(4, 16);
         }
 
         /// <summary>
@@ -93,8 +89,6 @@ namespace PERQemu.IO.DiskDevices
 
             _nibSaved = 0;
             _nibLatch.Value = 0;
-            _headerAddress.Value = 0;
-            _dataBuffer.Value = 0;
         }
 
         /// <summary>
@@ -129,15 +123,13 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         public void LoadRegister(byte address, int value)
         {
-            // FIXME:  redo all of this for the EIO!
-
             switch (address)
             {
-                case 0xc1:      // Command register
-                    LoadCommandRegister(value);
-                    break;
+                //case 0xc1:      // Command register
+                //    LoadCommandRegister(value);
+                //    break;
 
-                case 0xc2:      // Micropolis Nibble Bus register
+                //case 0xc2:      // Micropolis Nibble Bus register
                     //
                     // We save the low 4 bits here.  The nibble command byte tracks
                     // transitions of the BusEn pin to shift the low nibble into the
@@ -146,11 +138,11 @@ namespace PERQemu.IO.DiskDevices
                     // In others this is still treated like the Shugart head select!?
                     // ARGH.
                     //
-                    _nibLatch.Lo = (ushort)value;
-                    Log.Write(Category.HardDisk, "Micropolis Nibble latch (low) set to 0x{0:x}", _nibLatch.Lo);
-                    break;
+                //    _nibLatch.Lo = (ushort)value;
+                //    Log.Write(Category.HardDisk, "Micropolis Nibble latch (low) set to 0x{0:x}", _nibLatch.Lo);
+                //    break;
 
-                case 0xc8:      // "MicZero"
+                //case 0xc8:      // "MicZero"
                     //
                     // Unused by the actual "ICL CIO" board?  Original version of
                     // the Micropolis microcode (mdsk.micro, B. Rosen, 1982) uses
@@ -158,15 +150,15 @@ namespace PERQemu.IO.DiskDevices
                     // register.  On that board cioboot and ciosysb assign a 0 and
                     // don't touch this again.  Hmm.
                     //
-                    _sector = (ushort)(value & 0x1f);
-                    _head = (byte)((value & 0xe0) >> 5);
-                    _cylinder.Lo = (ushort)((value & 0xff00) >> 8);
+                    //_sector = (ushort)(value & 0x1f);
+                    //_head = (byte)((value & 0xe0) >> 5);
+                    //_cylinder.Lo = (ushort)((value & 0xff00) >> 8);
 
-                    Log.Write(Category.HardDisk, "Shugart cyl/head/sector set to {0}/{1}/{2}", _cylinder.Lo, _head, _sector);
-                    Log.Write(Category.HardDisk, "Micropolis Zero register set to 0x{0:x}", value);
-                    break;
+                    //Log.Write(Category.HardDisk, "Shugart cyl/head/sector set to {0}/{1}/{2}", _cylinder.Lo, _head, _sector);
+                    //Log.Write(Category.HardDisk, "Micropolis Zero register set to 0x{0:x}", value);
+                //    break;
 
-                case 0xc9:      // "MicSync"
+                //case 0xc9:      // "MicSync"
                     //
                     // Does this set up the sync character used by the hardware to
                     // identify address marks (?) - low level format byte (?) is
@@ -174,25 +166,25 @@ namespace PERQemu.IO.DiskDevices
                     // cases it's still used as the File SN (which we don't actually
                     // use to compare with the header bytes...)
                     //
-                    Log.Write(Category.HardDisk, "Micropolis Sync register set to 0x{0:x}", value);
+                    //Log.Write(Category.HardDisk, "Micropolis Sync register set to 0x{0:x}", value);
 
                     //_serialNumber.Lo = (ushort)value;
                     //Log.Write(Category.HardDisk, "Shugart File Serial # Low set to 0x{0:x4}", value);
-                    break;
+                //    break;
 
-                case 0xca:      // "MicCylin"
+                //case 0xca:      // "MicCylin"
                     //
                     // Low byte of the desired cylinder inverted!?  Or high word
                     // of the File SN?  Yes.  No.  Who knows?
                     //
-                    _cylinder.Lo = (ushort)~value;
-                    Log.Write(Category.HardDisk, "Micropolis Cyl # (low) set to 0x{0:x2}", _cylinder.Lo);
+                    //_cylinder.Lo = (ushort)~value;
+                    //Log.Write(Category.HardDisk, "Micropolis Cyl # (low) set to 0x{0:x2}", _cylinder.Lo);
 
                     //_serialNumber.Hi = value;
                     //Log.Write(Category.HardDisk, "Shugart File Serial # High set to 0x{0:x}", value);
-                    break;
+                //    break;
 
-                case 0xcb:      // "MicCylHd"
+                //case 0xcb:      // "MicCylHd"
                     //
                     // Bits 7:4 are cylinder 11:8
                     // Bits 3:0 are the head select (inverted!?)
@@ -200,44 +192,32 @@ namespace PERQemu.IO.DiskDevices
                     // Wheeee!  No documentation or schematics!  Looks like manual
                     // disassembly and step by step instruction traces ahead  arrrgh
                     //
-                    _cylinder.Hi = (~value & 0xf0) >> 4;
-                    _head = (byte)(~value & 0x0f);
-                    Log.Write(Category.HardDisk, "Micropolis Cyl # (high) set to 0x{0:x}, Head 0x{1:x}", _cylinder.Hi, _head);
+                    //_cylinder.Hi = (~value & 0xf0) >> 4;
+                    //_head = (byte)(~value & 0x0f);
+                    //Log.Write(Category.HardDisk, "Micropolis Cyl # (high) set to 0x{0:x}, Head 0x{1:x}", _cylinder.Hi, _head);
 
                     //_blockNumber = value & 0xffff;
                     //Log.Write(Category.HardDisk, "Shugart Block # set to 0x{0:x}", value);
-                    break;
+                //    break;
 
-                case 0xcc:      // "MicSecNo"
+                //case 0xcc:      // "MicSecNo"
                     //
                     // Sector number (8 bits, though only 5 are significant?)
                     // And yet, haven't seen a version of the code that actually
                     // sets this even though it (sometimes) is loaded into the
                     // controlstore.  Sigh.
                     //
-                    _sector = (ushort)(value & 0xff);
+                    //_sector = (ushort)(value & 0xff);
 
-                    Log.Write(Category.HardDisk, "Micropolis Sector # set to 0x{0:x2}", _sector);
-                    break;
+                    //Log.Write(Category.HardDisk, "Micropolis Sector # set to 0x{0:x2}", _sector);
+                    //break;
 
-                case 0xd0:      // Micropolis Data Buffer Address High register
-                    _dataBuffer.Hi = ~value;
-                    Log.Write(Category.HardDisk, "Micropolis Data Buffer Address (high) set to 0x{0:x}", _dataBuffer.Hi);
-                    break;
-
-                case 0xd1:      // Micropolis Header Address High register
-                    _headerAddress.Hi = ~value;
-                    Log.Write(Category.HardDisk, "Micropolis Header Address (high) set to 0x{0:x}", _headerAddress.Hi);
-                    break;
-
-                case 0xd8:      // Micropolis Data Buffer Address Low register
-                    _dataBuffer.Lo = (ushort)value;
-                    Log.Write(Category.HardDisk, "Micropolis Data Buffer Address (low) set to 0x{0:x4}", _dataBuffer.Lo);
-                    break;
-
-                case 0xd9:      // Micropolis Header Address low register
-                    _headerAddress.Lo = (ushort)value;
-                    Log.Write(Category.HardDisk, "Micropolis Header Address (low) set to 0x{0:x4}", _headerAddress.Lo);
+                case 0xd0:
+                case 0xd1:
+                case 0xd2:
+                case 0xd3:
+                    //LoadCommandRegister(value);
+                    Log.Warn(Category.HardDisk, "Micropolis: Write of 0x{0:x4} to register 0x{1:x2} (unimplemented)", value, address);
                     break;
 
                 default:
@@ -266,7 +246,7 @@ namespace PERQemu.IO.DiskDevices
         /// since it's used to turn the Z80 off and on.  So on the CIO, for which we
         /// have no *$)!#*& schematics, does that bit do double duty?
         /// </remarks>
-        public void LoadCommandRegister(int data)
+        void LoadCommandRegister(int data)
         {
             var command = (Command)(data & 0x07);
             var nibCommand = (NibbleSelect)(data & 0x78);
@@ -785,10 +765,6 @@ namespace PERQemu.IO.DiskDevices
         byte _head;
         ushort _sector;
         ExtendedRegister _cylinder;
-
-        ExtendedRegister _headerAddress;
-        ExtendedRegister _dataBuffer;
-
         ExtendedRegister _nibLatch;
         NibbleSelect _nibCommand;
         byte _nibSaved;
