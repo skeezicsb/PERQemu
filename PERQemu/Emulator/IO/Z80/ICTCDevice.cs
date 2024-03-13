@@ -29,9 +29,10 @@ namespace PERQemu.IO.Z80
         /// <summary>
         /// Tell the device that the timer (baud rate clock) has changed.
         /// For PERQ-1 IOB/CIO, the Z80 CTC provides the baud clock (x16).
-        /// For PERQ-2 EIO, the i8254 chip does it [not yet implemented].
+        /// For PERQ-2 EIO, the i8254 chip does it.  We return the channel
+        /// number as the PERQ-2/EIO allows for separate Tx and Rx clocks,
+        /// even though the host probably does not.
         /// </summary>
-        void NotifyRateChange(int newRate);
-
+        void NotifyRateChange(int chan, int newRate);
     }
 }

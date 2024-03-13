@@ -206,16 +206,42 @@ namespace PERQemu.IO.Z80
             return null;
         }
 
+
         public byte Read(byte portAddress)
         {
-            // if we read from the control register address, we get back the status reg?
-            // if we read from the data register, we get back the preselected (mode bits 5-6)
-            // internal register; vector response bytes are only sent in response to an iack
-            // (or when the Z80 requests our ValueOnDataBus
+            // Read from the control register address returns the status register
+            if (portAddress == _baseAddress + 1)
+            {
+                UpdateStatus();
+                Log.Debug(Category.Z80IRQ, "Read 0x{0:x2} from status register ({1})",
+                                           (byte)_status, _status);
+                return (byte)_status;
+            }
 
+            // Read the preselected register (ISR, IMR, IRR or ACR) which should
+            // be reflected by the mode bits 5..6
+            if (portAddress == _baseAddress)
+            {
+                if (_preselect >= ISR && _preselect <= ACR)
+                {
+                    Log.Debug(Category.Z80IRQ, "Read 0x{0:x2} from {1} register",
+                                              _registers[_preselect],
+                                              (_preselect > 2) ? "ACR" :
+                                              (_preselect > 1) ? "IRR" :
+                                              (_preselect > 0) ? "IMR" : "ISR");
+
+                    return _registers[_preselect];
+                }
+
+                Log.Warn(Category.Z80IRQ, "Bad preselect value {0}, returning 0!", _preselect);
+                return 0;
+            }
+
+            // Shouldn't get here...
             Log.Debug(Category.Z80IRQ, "Read from 0x{0:x2}, returning 0 (unimplemented)", portAddress);
             return 0;
         }
+
 
         public void Write(byte portAddress, byte value)
         {

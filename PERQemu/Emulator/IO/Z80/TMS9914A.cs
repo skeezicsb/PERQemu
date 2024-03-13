@@ -38,13 +38,40 @@ namespace PERQemu.IO.Z80
     /// </remarks>
     public class TMS9914A : IGPIBDevice, IZ80Device, IDMADevice
     {
-        public TMS9914A(byte baseAddr)
+        public TMS9914A(byte baseAddr, byte SCaddr, byte PEaddr) : this(10)
         {
             _baseAddress = baseAddr;
-            _ports = new byte[8];
 
             for (int i = 0; i < 8; i++)
                 _ports[i] = (byte)(baseAddr + i);
+
+            // For EIO, these are signals wired directly to the bus transceivers
+            // but we handle them here (or ignore them, for now :-)
+            _ports[8] = SCaddr;
+            _ports[9] = PEaddr;
+
+            // Put ourselves on the bus!
+            _bus.AddDevice(this);
+
+            Log.Info(Category.GPIB, "EIO GPIB initialized");
+        }
+
+        public TMS9914A(byte baseAddr) : this(8)
+        {
+            _baseAddress = baseAddr;
+
+            for (int i = 0; i < 8; i++)
+                _ports[i] = (byte)(baseAddr + i);
+
+            // Put ourselves on the bus!
+            _bus.AddDevice(this);
+
+            Log.Info(Category.GPIB, "IOB/CIO GPIB initialized");
+        }
+
+        protected TMS9914A(int portCount)
+        {
+            _ports = new byte[portCount];
 
             _rdRegisters = new byte[8];
             _wrRegisters = new byte[8];
@@ -54,9 +81,6 @@ namespace PERQemu.IO.Z80
 
             _bus = new GPIBBus();
             _busFifo = new Queue<ushort>();
-
-            // Put ourselves on the bus!
-            _bus.AddDevice(this);
         }
 
         public byte DeviceID => 0;      // System Controller
@@ -232,8 +256,29 @@ namespace PERQemu.IO.Z80
             }
         }
 
+
         public void Write(byte portAddress, byte value)
         {
+            // EIO has separate control registers for the 75160 and 75162 chips;
+            // it makes sense to just include them here, rather than plumb in a
+            // separate device.  For now, they're basically no-ops?
+            if (_ports.Length > 8)
+            {
+                if (portAddress == _ports[8])
+                {
+                    Log.Info(Category.GPIB, "SC pin set to {0}", value);
+                    return;
+                }
+
+                if (portAddress == _ports[9])
+                {
+                    Log.Info(Category.GPIB, "PE pin set to {0}", value);
+                    return;
+                }
+
+                // Otherwise it must be a regular write register
+            }
+
             var reg = (WriteRegister)(portAddress - _baseAddress);
             _wrRegisters[(byte)reg] = value;
 

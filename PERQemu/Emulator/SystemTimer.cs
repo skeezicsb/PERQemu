@@ -32,7 +32,7 @@ namespace PERQemu
             _interval = ival;
             _period = (uint)(ival / (cycleTime * Conversion.NsecToMsec));
             _callback = new HRTimerElapsedCallback(OnElapsed);
-            _handle = HighResolutionTimer.Register(_interval, _callback);
+            _handle = HighResolutionTimer.Register(_interval, _callback, "System");
             _sync = new ManualResetEventSlim(false);
             _isEnabled = false;
 

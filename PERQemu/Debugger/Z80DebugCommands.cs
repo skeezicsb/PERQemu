@@ -49,11 +49,7 @@ namespace PERQemu
         [Command("debug z80 inst", "Run one Z80 opcode")]
         public void DebugZ80Inst()
         {
-            if (PERQemu.Controller.State <= RunState.Off)
-            {
-                Console.WriteLine("The PERQ is currently turned off.");
-            }
-            else
+            if (CheckSys())
             {
                 PERQemu.Controller.TransitionTo(RunState.RunZ80Inst);
                 PERQemu.Sys.PrintStatus();
@@ -63,7 +59,7 @@ namespace PERQemu
         [Command("debug z80 show registers", "Display contents of the Z80 registers")]
         void ShowZ80State()
         {
-            PERQemu.Sys.IOB.Z80System.ShowZ80State();
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.ShowZ80State();
         }
 
         // todo: bare bones right now - just display one byte.  expand this to
@@ -71,14 +67,17 @@ namespace PERQemu
         [Command("debug z80 show memory", "Display contents of a given memory location")]
         void ShowZ80Memory(ushort addr)
         {
-            try
+            if (CheckSys())
             {
-                byte value = PERQemu.Sys.IOB.Z80System.Memory[addr];
-                Console.WriteLine($"Address: 0x{addr:x4}  Value: 0x{value:x2}");
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Couldn't read {addr}: {e.Message}");
+                try
+                {
+                    byte value = PERQemu.Sys.IOB.Z80System.Memory[addr];
+                    Console.WriteLine($"Address: 0x{addr:x4}  Value: 0x{value:x2}");
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"Couldn't read {addr}: {e.Message}");
+                }
             }
         }
 
@@ -86,14 +85,14 @@ namespace PERQemu
         [Command("debug z80 dump interrupts")]
         void DumpIRQs()
         {
-            PERQemu.Sys.IOB.Z80System.DumpIRQStatus();
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.DumpIRQStatus();
         }
 
         //[Conditional("DEBUG")]
         [Command("debug z80 dump scheduler queue")]
         void DumpZ80Scheduler()
         {
-            PERQemu.Sys.IOB.Z80System.Scheduler.DumpEvents("Z80");
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.Scheduler.DumpEvents("Z80");
         }
 
         [Command("debug z80 dump rtc")]

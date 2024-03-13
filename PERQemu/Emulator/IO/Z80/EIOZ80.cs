@@ -42,12 +42,12 @@ namespace PERQemu.IO.Z80
             _dmac = new i8237DMA(0x38, 0x30);
 
             // Set up the EIO peripherals
-            _tms9914a = new TMS9914A(0);
+            _tms9914a = new TMS9914A(0, 0x7b, 0x7c);
             _fdc = new NECuPD765A(0x20, _scheduler);
-            _z80sioA = new Z80SIO(0x10, _scheduler);
-            _z80sioB = new Z80SIO(0x40, _scheduler);
-            _timerA = new i8254PIT(0x50);
-            _timerB = new i8254PIT(0x54);
+            _z80sioA = new Z80SIO(0x10, this, "A");
+            _z80sioB = new Z80SIO(0x40, this, "B");
+            _timerA = new i8254PIT(0x50, "A");
+            _timerB = new i8254PIT(0x54, "B");
             _rtc = new Oki5832RTC(0x76);
 
             // Create our serial devices
@@ -60,6 +60,9 @@ namespace PERQemu.IO.Z80
 
             DeviceInit();
         }
+
+        // Dorky but faster than "_sys is EIOZ80" everywhere?
+        public override bool IsEIO => true;
 
         // Port "A" is public, since it's a DMA-capable device
         public override Z80SIO SIOA => _z80sioA;
@@ -100,13 +103,13 @@ namespace PERQemu.IO.Z80
                 {
                     var rsx = new RSXFilePort(this);
                     _z80sioA.AttachPortDevice(0, rsx);
-                    // _timerA.AttachDevice(0, rsx);
+                    _timerA.AttachDevice(0, rsx);
                 }
                 else
                 {
                     var rsa = new PhysicalPort(this, Settings.RSADevice, Settings.RSASettings, "A");
                     _z80sioA.AttachPortDevice(0, rsa);
-                    //_timerA.AttachDevice(0, rsa);  figure out how the PIT does it
+                    _timerA.AttachDevice(0, rsa);
                 }
             }
             else
@@ -122,13 +125,13 @@ namespace PERQemu.IO.Z80
                 {
                     var rsx = new RSXFilePort(this);
                     _z80sioB.AttachPortDevice(0, rsx);
-                    // _timerB.AttachDevice(0, rsx);
+                    _timerB.AttachDevice(0, rsx);
                 }
                 else
                 {
                     var rsb = new PhysicalPort(this, Settings.RSADevice, Settings.RSASettings, "B");
                     _z80sioB.AttachPortDevice(0, rsb);
-                    //_timerB.AttachDevice(0, rsb);  figure out how the PIT does it
+                    _timerB.AttachDevice(0, rsb);
                 }
             }
             else

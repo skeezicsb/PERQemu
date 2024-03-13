@@ -67,6 +67,7 @@ namespace PERQemu.IO.Z80
         public NECuPD765A FDC => _fdc;
         public TMS9914A GPIB => _tms9914a;
 
+        public abstract bool IsEIO { get; }
         public abstract Z80SIO SIOA { get; }
         public abstract Z80CTC CTC { get; }
 
@@ -236,8 +237,8 @@ namespace PERQemu.IO.Z80
             if (_asyncThread != null)
             {
                 Console.WriteLine("Z80 thread is ID {0}, status {1}",
-                                  Thread.CurrentThread.ManagedThreadId,
-                                  Thread.CurrentThread.ThreadState);
+                                  _asyncThread.ManagedThreadId,
+                                  _asyncThread.ThreadState);
             }
         }
 

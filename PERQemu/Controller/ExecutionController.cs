@@ -149,9 +149,6 @@ namespace PERQemu
 
             Console.WriteLine("Power on requested.");
 
-            // Restart the SDL machinery
-            PERQemu.GUI.InitializeSDL();
-
             // In with the new?
             if (!Initialize(PERQemu.Config.Current))
             {
@@ -173,6 +170,9 @@ namespace PERQemu
                 SetState(RunState.Halted);
                 return;
             }
+
+            // Restart the SDL machinery
+            PERQemu.GUI.InitializeSDL();
 
             // Set the initial state
             SetState(RunState.WarmingUp);

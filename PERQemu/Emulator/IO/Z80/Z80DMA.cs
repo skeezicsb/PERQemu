@@ -23,13 +23,12 @@ using System.Collections.Generic;
 namespace PERQemu.IO.Z80
 {
     /// <summary>
-    /// Implements most of the Z80 DMA controller.
+    /// Implements most of the PERQ-1 Z80 DMA controller.
     /// </summary>
     /// <remarks>
     /// The PERQ-1 IOB uses a Mostek MK3883N DMA chip (second source for the
     /// Zilog Z8410) which has one channel.  The PERQ-2 EIO uses the AMD Am9517
-    /// (aka Intel i8237) 4-channel DMA chip.  We'll have to refactor things so
-    /// each I/O Board loads its own DMA controller.
+    /// (aka Intel i8237) 4-channel DMA chip.
     /// 
     /// Under the "old Z80" (IOB) protocol, the read registers are not accessed,
     /// but apparently with the "new Z80" (CIO) they are!

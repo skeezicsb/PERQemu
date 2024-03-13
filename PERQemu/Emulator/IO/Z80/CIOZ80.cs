@@ -38,16 +38,18 @@ namespace PERQemu.IO.Z80
         public CIOZ80(PERQSystem system) : base(system)
         {
             // Set up the IOB/CIO peripherals
-            _fdc = new NECuPD765A(0xa8, _scheduler);
-            _tms9914a = new TMS9914A(0xb8);
             _seekControl = new HardDiskSeekControl(_system);
             _perqToZ80Fifo = new PERQToZ80Latch(_system);
             _z80ToPerqFifo = new Z80ToPERQLatch(_system);
-            _z80ctc = new Z80CTC(0x90, _scheduler);
-            _z80sio = new Z80SIO(0xb0, _scheduler);
+
+            _fdc = new NECuPD765A(0xa8, _scheduler);
+            _tms9914a = new TMS9914A(0xb8);
             _z80dma = new Z80DMA(0x98, _memory, _bus);
+            _z80ctc = new Z80CTC(0x90, _scheduler);
+            _z80sio = new Z80SIO(0xb0, this);
             _dmaRouter = new DMARouter(this);
             _keyboard = new Keyboard();
+
             _ioReg3 = new IOReg3(_perqToZ80Fifo, _keyboard, _fdc, _dmaRouter);
 
             // Initialize DMAC
@@ -66,6 +68,8 @@ namespace PERQemu.IO.Z80
 
             DeviceInit();
         }
+
+        public override bool IsEIO => false;
 
         // Expose to the DMA router
         public override Z80SIO SIOA => _z80sio;

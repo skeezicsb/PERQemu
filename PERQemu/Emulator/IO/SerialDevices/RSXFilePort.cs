@@ -111,6 +111,9 @@ namespace PERQemu.IO.SerialDevices
             _fileName = string.Empty;
             _rsxCommand = string.Empty;
 
+            // Run at the fastest rate supported by the model :-)
+            _charRateInNsec = Conversion.BaudRateToNsec(BaudRate);
+
             _inputQueue.Clear();
 
             Log.Debug(Category.RS232, "RSX: port reset");
@@ -121,6 +124,8 @@ namespace PERQemu.IO.SerialDevices
         //
 
         public override string Name => "RSX port";
+
+        public override int BaudRate => _system.IsEIO ? 19200 : 9600;
 
         public override string Port
         {
@@ -365,42 +370,52 @@ namespace PERQemu.IO.SerialDevices
         /// </summary>
         bool ParseRSXCommand()
         {
-            bool success = true;
-
             var tokens = _rsxCommand.Split(_separators);
 
             // Should be three tokens, and first token must be "Pip"
             if (tokens.Length != 3 || tokens[0] != _pipToken)
             {
-                // Nope, it's not...
-                success = false;
+                Log.Write("Bad command received from the PERQ: '{0}'", _rsxCommand);
+                return false;
+            }
+
+            // Second token is either "TI:" or the filename
+            if (tokens[1] == _TIToken)
+            {
+                // Mode is Input from emulation host to PERQ
+                _fileMode = FileMode.Open;
+                _fileAccess = FileAccess.Read;
+                _fileName = tokens[2];
+
+                // If the filename is empty here, just let it fail so the PERQ
+                // gets notified and our state resets properly
+            }
+            // If token #2 is the filename, then #3 must be "TI:"
+            else if (tokens[2] == _TIToken)
+            {
+                // Mode is output from PERQ to emulation host
+                _fileMode = FileMode.Create;
+                _fileAccess = FileAccess.Write;
+                _fileName = tokens[1];
+
+                // If the filename is empty, make one up to capture the output
+                if (string.IsNullOrWhiteSpace(_fileName))
+                {
+                    Log.Write("No host filename specified for copy; creating one...");
+                    _fileName = Paths.BuildOutputPath(
+                                    string.Format("RSX_Output_{0}.txt",
+                                                   DateTime.Now.ToString("yyyyMMdd-HHmmss")));
+                }
             }
             else
             {
-                // Second token is either "TI:" or the filename
-                if (tokens[1] == _TIToken)
-                {
-                    // Mode is Input from emulation host to PERQ
-                    _fileMode = FileMode.Open;
-                    _fileAccess = FileAccess.Read;
-                    _fileName = tokens[2];
-                }
-                // If token #2 is the filename, then #3 must be "TI:"
-                else if (tokens[2] == _TIToken)
-                {
-                    // Mode is output from PERQ to emulation host
-                    _fileMode = FileMode.Create;
-                    _fileAccess = FileAccess.Write;
-                    _fileName = tokens[1];
-                }
-                else
-                {
-                    // Something's wrong, restart the state machine
-                    success = false;
-                }
+                // Bad token?
+                Log.Write("Bad command received from the PERQ: '{0}'", _rsxCommand);
+                return false;
             }
 
-            return success;
+            // The form is valid, so it must be okay! :-)
+            return true;
         }
 
         /// <summary>
@@ -534,7 +549,7 @@ namespace PERQemu.IO.SerialDevices
         string _errorString;
         bool _isPaused;
 
-        ulong _charRateInNsec = Conversion.BaudRateToNsec(9600);
+        ulong _charRateInNsec;
 
         const byte CtrlQ = 0x11;        // ^Q
         const byte CtrlS = 0x13;        // ^S

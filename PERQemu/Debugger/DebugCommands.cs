@@ -118,7 +118,7 @@ namespace PERQemu
 
         bool CheckSys()
         {
-            if (PERQemu.Sys == null)
+            if (PERQemu.Controller.State == RunState.Off)
             {
                 Console.WriteLine("Cannot execute; the PERQ is not powered on.");
                 return false;
@@ -130,14 +130,10 @@ namespace PERQemu
         [Command("debug step", "Run one microinstruction", Repeatable = true)]
         public void DebugStep()
         {
-            if (PERQemu.Controller.State > RunState.Off)
+            if (CheckSys())
             {
                 PERQemu.Controller.TransitionTo(RunState.SingleStep);
                 PERQemu.Sys.PrintStatus();
-            }
-            else
-            {
-                Console.WriteLine("The PERQ is currently turned off.");
             }
         }
 
@@ -145,14 +141,10 @@ namespace PERQemu
         [Command("debug inst", "Run one Q-code", Repeatable = true)]
         public void DebugInst()
         {
-            if (PERQemu.Controller.State > RunState.Off)
+            if (CheckSys())
             {
                 PERQemu.Controller.TransitionTo(RunState.RunInst);
                 PERQemu.Sys.PrintStatus();
-            }
-            else
-            {
-                Console.WriteLine("The PERQ is currently turned off.");
             }
         }
 
@@ -282,13 +274,7 @@ namespace PERQemu
         [Command("debug show variables", "Show debugger variables and their descriptions")]
         void ShowVars()
         {
-            if (PERQemu.Sys == null)
-            {
-                Console.WriteLine("No PERQ defined.");
-                return;
-            }
-
-            PERQemu.Sys.Debugger.ShowVariables();
+            if (CheckSys()) PERQemu.Sys.Debugger.ShowVariables();
         }
 
         //
@@ -545,12 +531,26 @@ namespace PERQemu
             if (nextPC > CPU.WCSSize - 1)
             {
                 Console.WriteLine("Address out of range 0..{0}; PC not modified.", CPU.WCSSize - 1);
+                return;
             }
-            else
+
+            // Trying to jump off the platform onto a moving train?
+            if (PERQemu.Controller.State != RunState.Paused)
             {
-                PERQemu.Sys.CPU.PC = nextPC;
-                // resume execution
+                PERQemu.Controller.TransitionTo(RunState.Paused);
             }
+
+            if (PERQemu.Controller.State != RunState.Paused)
+            {
+                Console.WriteLine("Jane, stop this crazy thing!");
+                return;
+            }
+
+            // Safe as it'll ever be; set the PC and let 'er rip
+            PERQemu.Sys.CPU.PC = nextPC;
+            Console.WriteLine($"Resuming execution @ {nextPC}");
+
+            PERQemu.Controller.TransitionTo(RunState.Running);
         }
 
         [Command("debug load qcodes", "Load Q-code definitions for opcode disassembly")]

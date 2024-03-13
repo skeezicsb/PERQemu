@@ -28,7 +28,7 @@ namespace PERQemu.IO.Z80
     /// This chip provides baud rate clocks for the RS-232 ports and speech device
     /// on the EIO board.  It replaces the Z80 CTC used on the older IOB/CIO board.
     /// 
-    /// The EIO uses two chips to provide six timers (baud rate clocks):
+    /// Two chips are used to provide six timers (baud rate clocks):
     ///     Timer   Chn
     ///       A      0      RS232 A Receive
     ///       A      1      Speech Transmit / Tablet Receive
@@ -36,11 +36,17 @@ namespace PERQemu.IO.Z80
     ///       B      0      RS232 B Receive
     ///       B      1      Keyboard Transmit/Receive
     ///       B      2      RS232 B Transmit
+    /// 
+    /// Operating modes 2, 4 and 5 are not used by the PERQ's Z80 firmware, and
+    /// there's no way to program the PIT from Pascal, so those aren't simulated
+    /// here.  These are used almost exclusively as baud rate generators in mode
+    /// 3 (square wave) but are initially programmed in Mode 0.
     /// </remarks>
     public class i8254PIT : IZ80Device
     {
-        public i8254PIT(byte baseAddress)
+        public i8254PIT(byte baseAddress, string unit)
         {
+            _unit = unit;
             _baseAddress = baseAddress;
             _ports = new byte[] {
                                     _baseAddress,
@@ -49,36 +55,80 @@ namespace PERQemu.IO.Z80
                                     (byte)(_baseAddress + 3)
                                 };
 
-            // _channels[]
+            // Set up the channels, 3 per device
+            _channels = new Channel[] {
+                new Channel(0, this),
+                new Channel(1, this),
+                new Channel(2, this)
+            };
         }
 
-        public string Name => "i8254 PIT";
+        public string Name => $"i8254 PIT {_unit}";
+        public string Unit => _unit;
         public byte[] Ports => _ports;
 
-        // Fixme: placeholders until implemented so we can start debugging
-        public bool IntLineIsActive => false;
+        public bool IntLineIsActive => false;       // Doesn't interrupt on EIO
         public byte? ValueOnDataBus => null;
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
 
         public void Reset()
         {
-            Log.Debug(Category.CTC, "i8254 reset");
+            Log.Debug(Category.CTC, "{0} reset", Name);
+        }
+
+        public void AttachDevice(int channel, ICTCDevice dev)
+        {
+            _channels[channel].Client = dev;
         }
 
         public byte Read(byte portAddress)
         {
+            // 
             Log.Debug(Category.CTC, "Read from 0x{0:x2}, returning 0 (unimplemented)", portAddress);
             return 0;
         }
 
         public void Write(byte portAddress, byte value)
         {
+            // base addr + 0..2 are the counter regs; baseaddr + 3 is control
+
             Log.Debug(Category.CTC, "Write 0x{0:x2} to port 0x{1:x2} (unimplemented)", value, portAddress);
         }
 
+
+        byte _status;
+        byte _control;
+        ushort _counterLatch;
+
+        Channel[] _channels;
+
+        string _unit;
         byte _baseAddress;
         byte[] _ports;
+
+        internal class Channel
+        {
+            public Channel(int num, i8254PIT parent)
+            {
+                Number = num;
+                Counter = 0;
+                Running = false;
+
+                _parent = parent;
+                _trigger = null;
+                Log.Debug(Category.CTC, "Timer {0} Channel {1} initialized", _parent.Unit, Number);
+            }
+
+            public int Number;
+            public ushort Counter;
+            public bool Running;
+
+            public ICTCDevice Client;
+            public i8254PIT _parent;
+
+            SchedulerEvent _trigger;
+        }
     }
 }
 
@@ -103,12 +153,21 @@ namespace PERQemu.IO.Z80
     CTC.BTxSel equ 10000000B       ; Select Port B Transmit counter
     CTC.KBSel  equ 01000000B       ; Select Keyboard counter
     CTC.BRxSel equ 00000000B       ; Select Port B Receive counter
-    CTC.M0     equ 00H             ; Select Mode 0
-    CTC.M1     equ 02H             ; Select Mode 1
+    CTC.M0     equ 00H             ; Select Mode 0  (Int on TC)
+    CTC.M1     equ 02H             ; Select Mode 1  (One shot)
+                                            Mode 2  (Rate generator)
     CTC.M3     equ 06H             ; Select Mode 3  (Square wave)
+                                            Mode 4  (Software strobe)
+                                            Mode 5  (Hardware strobe)
     CTC.Latch  equ 00H             ; Latch counter
     CTC.LSB    equ 10H             ; Load LSB only
     CTC.MSB    equ 20H             ; Load MSB only
     CTC.Both   equ 30H             ; Load both LSB and MSB
+
+    If 3RCC didn't define bits for Modes 2,4,5 then they probably didn't use
+    them?  Each chip devotes two separate channels to the RS232 ports (separate
+    Tx/Rx clocks!) and one to the second channel (keyboard, tablet/speech).  No
+    interrupts are generated since those CLK pins are all hardwired directly to
+    their SIO channels.  All of the 8254's GATE inputs are tied high.
 
 */

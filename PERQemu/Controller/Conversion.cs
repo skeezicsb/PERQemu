@@ -57,14 +57,14 @@ namespace PERQemu
 
         /// <summary>
         /// Convert a timer count to a standard baud rate.  Returns 0 if TC does
-        /// not map to a standard rate (from 110 to 9600).
+        /// not map to a standard rate (from 110 to 19200).
         /// </summary>
         /// <remarks>
-        /// For now, this is based on the PERQ-1/IOB Z80's calculations based on
-        /// counts from a Zilog CTC chip.  For PERQ-2/EIO, compute for the i8254
-        /// based on the 4Mhz timing, up to 19200.
+        /// The PERQ-1/IOB Z80's calculations are based on counts from a Zilog
+        /// CTC chip and clock rate.  For PERQ-2/EIO, the i8254 PIT chip is used
+        /// based on the faster 4Mhz timing, and supports up to 19200.
         /// </remarks>
-        public static int TimerCountToBaudRate(int rate)
+        public static int TimerCountToBaudRate(int rate, int prescale = 16)
         {
             //
             // The CTC is programmed to fire the RS232A Tx/Rx clock at 16x the
@@ -74,12 +74,16 @@ namespace PERQemu
             // Z80's clock tick length (2.4576Mhz or 407ns) to get the interval
             // in nanoseconds between byte transmissions!  (10 bit times/byte)
             //
-            var baseRate = rate / 16;
+            // For the PIT, set prescale to 1 and look up the rate directly.
+            // This lazy hack that works because the PIT doesn't do prescaling
+            // and the rate values are distinct.  Cheeeeeeeese!!
+            //
+            var baseRate = rate / prescale;
             int baud = 0;
 
             switch (baseRate)
             {
-                // Standard rates from 9600 down to 150 baud
+                // Standard CTC rates from 9600 down to 150 baud
                 case 1:
                 case 2:
                 case 4:
@@ -90,13 +94,26 @@ namespace PERQemu
                     baud = 9600 / baseRate;
                     break;
 
-                // Check for the only outlier, in case there's an ASR-33 attached
-                case 87:
+                // EIO and the i8254 use this table based on the 4MHz clock
+                case 13:
+                case 26:
+                case 52:
+                case 104:
+                case 208:
+                case 417:
+                case 833:
+                case 1667:
+                    baud = 19200 / (baseRate / 13);
+                    break;
+
+                // Check the outlier in case there's an ASR-33 attached!
+                case 87:        // CTC
+                case 2273:      // PIT
                     baud = 110;
                     break;
 
                 default:
-                    Log.Error(Category.RS232, "Could not decode baud rate from CTC value {0}", rate);
+                    Log.Error(Category.RS232, "Could not decode baud rate from timer value {0}", rate);
                     break;
             }
 

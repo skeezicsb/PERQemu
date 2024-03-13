@@ -231,8 +231,8 @@ namespace PERQemu.Processor
             if (_asyncThread != null)
             {
                 Console.WriteLine("CPU thread is ID {0}, status {1}",
-                                  Thread.CurrentThread.ManagedThreadId,
-                                  Thread.CurrentThread.ThreadState);
+                                  _asyncThread.ManagedThreadId,
+                                  _asyncThread.ThreadState);
             }
         }
 

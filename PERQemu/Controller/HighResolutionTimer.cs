@@ -211,10 +211,13 @@ namespace PERQemu
             {
                 _requesters[tag].Enabled = doit;
 
-                // Enabling a timer starts the thread if it isn't already running
-                if (doit && !_runTimers)
+                if (doit)
                 {
-                    Start();
+                    // Jump forward to current time
+                    _requesters[tag].NextTrigger = Math.Round(ElapsedHiRes());
+
+                    // Start the timer thread if not already running
+                    if (!_runTimers) Start();
                 }
             }
             catch

@@ -135,7 +135,7 @@ namespace PERQemu.IO.SerialDevices
         // ICTCDevice implementation
         //
 
-        public virtual void NotifyRateChange(int newRate)
+        public virtual void NotifyRateChange(int chan, int newRate)
         {
             Log.Detail(Category.RS232, "Clock rate change to {0} ignored for {1}", newRate, Name);
         }
