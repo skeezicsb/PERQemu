@@ -77,9 +77,6 @@ namespace PERQemu.IO.Z80
         // Allow for external CTC triggers (disk seeks)
         public override Z80CTC CTC => _z80ctc;
 
-        // Do we need a wait state?
-        protected override bool FIFOInputReady => _perqToZ80Fifo.IsReady;
-        protected override bool FIFOOutputReady => _z80ToPerqFifo.IsReady;
 
         /// <summary>
         /// Initializes the IOB/CIO devices and attaches them to the bus.
@@ -307,7 +304,7 @@ namespace PERQemu.IO.Z80
 
             if (peek == 0xdba0 || peek == 0xedb2)
             {
-                if (!FIFOInputReady)
+                if (!_perqToZ80Fifo.IsReady)
                 {
                     Log.Debug(Category.FIFO, "Wait state for FIFO op ({0})",
                                               (peek == 0xdba0) ? "IN" : "INIR");
@@ -316,7 +313,7 @@ namespace PERQemu.IO.Z80
             }
             else if (peek == 0xd3d0 || (peek == 0xedb3 && regs.C == 0xd0))
             {
-                if (!FIFOOutputReady)
+                if (!_z80ToPerqFifo.IsReady)
                 {
                     Log.Debug(Category.FIFO, "Wait state for FIFO op ({0})",
                                               (peek == 0xd3d0) ? "OUT" : "OTIR");

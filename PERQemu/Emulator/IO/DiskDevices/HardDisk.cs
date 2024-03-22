@@ -51,6 +51,7 @@ namespace PERQemu.IO.DiskDevices
 
             _cyl = 0;
             _lastStep = 0;
+            _lastIndexPulse = 0;
             _discRotationTimeNsec = 0;
             _indexPulseDurationNsec = 0;
         }
@@ -61,6 +62,9 @@ namespace PERQemu.IO.DiskDevices
         public virtual bool Index => _index;
         public virtual bool Track0 => (_cyl == 0);
         public virtual bool SeekComplete => _seekComplete;
+
+        // Timing/rotational delay
+        public virtual ulong LastIndexPulse => _lastIndexPulse;
 
         // Debugging/sanity check
         public virtual ushort CurCylinder => _cyl;
@@ -241,7 +245,7 @@ namespace PERQemu.IO.DiskDevices
             // be revisited when EIO is implemented (or if CIO Micropolis is ever
             // figured out).  A 1usec delay for head switching isn't unreasonable
             // if no head movement takes place?
-            
+
             var steps = Math.Abs(_cyl - cyl);
             var delay = (Specs.MinimumSeek);
 
@@ -389,6 +393,7 @@ namespace PERQemu.IO.DiskDevices
         void IndexPulseEnd(ulong skew, object context)
         {
             var next = _discRotationTimeNsec - _indexPulseDurationNsec;
+            _lastIndexPulse = _scheduler.CurrentTimeNsec;
 
             _index = false;
             _indexEvent = _scheduler.Schedule(next, IndexPulseStart);
@@ -402,6 +407,7 @@ namespace PERQemu.IO.DiskDevices
             // Compute the index pulse duration and gap
             _discRotationTimeNsec = Conversion.RPMtoNsec(Specs.RPM);
             _indexPulseDurationNsec = (ulong)Specs.IndexPulse;
+            _lastIndexPulse = _scheduler.CurrentTimeNsec;
 
             Log.Info(Category.HardDisk, "{0} drive loaded!  Index is {1:n}us every {2:n}ms",
                      Info.Name, _indexPulseDurationNsec / 1000.0,
@@ -426,6 +432,7 @@ namespace PERQemu.IO.DiskDevices
         // Index timing
         ulong _discRotationTimeNsec;
         ulong _indexPulseDurationNsec;
+        ulong _lastIndexPulse;
         SchedulerEvent _indexEvent;
 
         // Seek timing

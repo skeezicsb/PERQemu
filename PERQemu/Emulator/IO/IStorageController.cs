@@ -47,10 +47,15 @@ namespace PERQemu.IO
         /// Initiate a seek operation.
         /// </summary>
         /// <remarks>
-        /// Useful for the Z80-controlled IOB/CIO seek hardware; not sure yet
-        /// how the EIO manages that, but assume it's built-in to the 2910-
-        /// based disk state machine firmware?
+        /// Useful for the Z80-controlled IOB/CIO seek hardware; for EIO drives,
+        /// the DIB hardware incorporates the step pulse generation.
         /// </remarks>
         void DoSingleSeek();
+
+        /// <summary>
+        /// Debugging access.  For now a CLI hook to provide some visibility into the
+        /// driver's internal state (dump to the console).  Not terribly sophisticated.
+        /// </summary>
+        void DumpStatus();
     }
 }

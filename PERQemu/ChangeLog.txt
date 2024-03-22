@@ -8,6 +8,14 @@ avoid wasting precious time scrolling to the end. :-)
 
 March, 2024:
 
+    5. Micropolis 8" DIB showing signs of life: first little green shoots of
+    PERQ-2 support pushing up through the ground.  Am9519 is fielding Z80 IRQs,
+    the updated PERQ/Z80 FIFOs seem to be exchanging data, and the VT-100 style
+    keyboard is passing keystrokes through the SIO (even without the i8254 PIT
+    implemented :-).  Have to get the i8237 DMA chip working and hook up the
+    weird PERQ-Z80 DMA so I can attempt a floppy boot and try to format a new
+    8" Micropolis for the first time.  Bump version to v0.5.6 and snapshot.
+
     4. Some random improvements along the way: in POS if you copy a file to RSX:
     and forget to specify the destination filename, PERQemu creates a temp name
     in the default Output directory.  Other minor tweaks and fixes have somehow
@@ -238,4 +246,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Wed Mar 13 02:44:20 PDT 2024
+Last update: skeezics    Thu Mar 21 20:41:51 PDT 2024

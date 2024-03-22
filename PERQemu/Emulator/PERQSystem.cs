@@ -286,7 +286,8 @@ namespace PERQemu
                                 _cpu.Run();
                                 _iob.Run();
 
-                                if (_iob.Z80System.Clocks != startTime)
+                                if (!_iob.Z80System.IsRunning ||
+                                     _iob.Z80System.Clocks != startTime)
                                     _state = RunState.Paused;
                             }
                             while (_state == RunState.RunZ80Inst);

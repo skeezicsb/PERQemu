@@ -120,6 +120,8 @@ namespace PERQemu.IO.Z80
                 Log.Debug(Category.CTC, "Timer {0} Channel {1} initialized", _parent.Unit, Number);
             }
 
+            // in mode 3, loading the high byte of the counter starts the clock;
+            // not loading it leaves it off/suspended
             public int Number;
             public ushort Counter;
             public bool Running;
@@ -164,6 +166,11 @@ namespace PERQemu.IO.Z80
     CTC.MSB    equ 20H             ; Load MSB only
     CTC.Both   equ 30H             ; Load both LSB and MSB
 
+    EIO.doc has PIT B ports 125/126 reversed; the schematic and code above are
+    correct (Tx speed is on chan 2 for both RS232 ports).  Not sure why they
+    didn't just do one Tx/Rx speed on RS232B and devote separate channels to the
+    tablet and speech... sigh.
+    
     If 3RCC didn't define bits for Modes 2,4,5 then they probably didn't use
     them?  Each chip devotes two separate channels to the RS232 ports (separate
     Tx/Rx clocks!) and one to the second channel (keyboard, tablet/speech).  No

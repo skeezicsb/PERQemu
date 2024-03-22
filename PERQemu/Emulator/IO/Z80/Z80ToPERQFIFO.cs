@@ -49,23 +49,27 @@ namespace PERQemu.IO.Z80
 
             // Clear the queue
             while (!_fifo.IsEmpty) _fifo.TryDequeue(out punt);
-
-            // Dismiss the interrupt?
-            _system.CPU.ClearInterrupt(InterruptSource.Z80DataOut);
-            _interruptEnabled = false;
             _outputReady = false;
+
+            // Dismiss the interrupts
+            _interruptEnabled = false;
+            _perqIntRaised = false;
+            _z80IntRaised = false;
 
             Log.Debug(Category.FIFO, "Z80->PERQ FIFO reset");
         }
 
         public string Name => "Z80->PERQ FIFO";
         public byte[] Ports => _ports;
+
         public byte? ValueOnDataBus => null;        // Supplied by the Am9519
-        public bool IntLineIsActive => false;       // fixme for eio!
+        public bool IntLineIsActive => _z80IntRaised;
 
         public bool IsReady => _outputReady;
-        public bool IsEmpty => _fifo.IsEmpty;
 
+        /// <summary>
+        /// PERQ access to the enabled flag from the IO bus control register.
+        /// </summary>
         public bool InterruptEnabled
         {
             get { return _interruptEnabled; }
@@ -76,9 +80,10 @@ namespace PERQemu.IO.Z80
 
                 // The PERQ can dismiss the interrupt even if there are still
                 // bytes in the output queue!
-                if (_outputReady && !_interruptEnabled)
+                if (!_interruptEnabled && _perqIntRaised)
                 {
                     _system.CPU.ClearInterrupt(InterruptSource.Z80DataOut);
+                    _perqIntRaised = false;
                 }
             }
         }
@@ -90,7 +95,8 @@ namespace PERQemu.IO.Z80
         //
 
         /// <summary>
-        /// Read a byte from the Z80 output FIFO to the PERQ.
+        /// Read a byte from the Z80 output FIFO to the PERQ.  Also asserts the
+        /// Z80 "RD UPROC DATA L" interrupt (which may be masked by the 9519).
         /// </summary>
         public byte Dequeue()
         {
@@ -102,15 +108,21 @@ namespace PERQemu.IO.Z80
             }
             else
             {
+                _z80IntRaised = true;
                 Log.Detail(Category.FIFO, "PERQ read byte 0x{0:x2} from FIFO ({1} bytes left)", value, _fifo.Count);
             }
 
-            // If the FIFO is empty, drop the CPU interrupt?
+            // If the FIFO is empty, drop the interrupts
             if (_fifo.IsEmpty)
             {
-                _system.CPU.ClearInterrupt(InterruptSource.Z80DataOut);
-            }
+                if (_perqIntRaised)
+                {
+                    _system.CPU.ClearInterrupt(InterruptSource.Z80DataOut);
+                    _perqIntRaised = false;
+                }
 
+                _z80IntRaised = false;
+            }
             return value;
         }
 
@@ -118,8 +130,44 @@ namespace PERQemu.IO.Z80
         // Z80 Bus
         //
 
+        /// <summary>
+        /// Handle reads from the Z80:
+        ///     port 162Q (0x72) - FIFO status register
+        /// </summary>
+        /// <remarks>
+        /// Read the Z80's copy of the two bit FIFO status register.  The format
+        /// is slightly different and the bits aren't quite the same as the PERQ's
+        /// status (returned by the EIO board):
+        ///     bit 7 - set if the Z80->PERQ FIFO is not full
+        ///     bit 6 - set if PERQ->Z80 FIFO is not empty
+        /// To access the other FIFO, we just read the status word from the public
+        /// interface and copy the appropriate bit.  And they say cheaters never win.
+        /// </remarks>
         public byte Read(byte portAddress)
         {
+            // Status register?
+            if (portAddress == 0x72)
+            {
+                // Set our local status
+                var result = (byte)(_fifo.Count < 16 ? 0x80 : 0);
+
+                // Check the other FIFO
+                var status = _system.IOB.Z80System.ReadStatus();
+                result |= (byte)((status & 0x0080) != 0 ? 0x40 : 0);
+
+                // Turn off our interrupt, which is (weirdly) driven directly by
+                // the IOA decoder into the Z80's interrupt controller... :-(
+                // Either the schematics are wrong, or the ONLY way the Z80 can
+                // dismiss this is by masking off the IRQ in the Am9519, OR the
+                // signal is toggled off again when a different IOA address on
+                // the EIO is accessed.  This is a little bizarre and requires
+                // more study.
+                _z80IntRaised = false;
+
+                Log.Debug(Category.FIFO, "Z80 read FIFO status 0x{0:x}", result);
+                return result;
+            }
+
             // This FIFO is write-only from the Z80 side; this shouldn't happen
             throw new InvalidOperationException("Z80 read from write-only FIFO");
         }
@@ -127,7 +175,7 @@ namespace PERQemu.IO.Z80
         /// <summary>
         /// Handle writes from the Z80:
         ///     port 170Q (0x78) - control register to set the output ready bit
-        ///     port 160Q (0x70) - data bytes into the output FIFO
+        ///     port 161Q (0x71) - data bytes into the output FIFO
         /// 
         /// (This avoids setting up another IZ80Device for a 1-bit flip flop...)
         /// </summary>
@@ -144,7 +192,7 @@ namespace PERQemu.IO.Z80
             else
             {
                 // Data port: queue the byte if there's room
-                if (_fifo.Count > 16)
+                if (_fifo.Count >= 16)
                 {
                     Log.Warn(Category.FIFO, "Z80 overran FIFO, byte 0x{0:x2} will be lost", value);
                 }
@@ -156,38 +204,69 @@ namespace PERQemu.IO.Z80
             }
 
             // Let the PERQ know there's data available
-            if (_outputReady && _interruptEnabled && !_fifo.IsEmpty)
+            if (_interruptEnabled && _outputReady && !_fifo.IsEmpty)
             {
                 _system.CPU.RaiseInterrupt(InterruptSource.Z80DataOut);
+                _perqIntRaised = true;
             }
         }
 
         // debug
         public void DumpFifo()
         {
-            Console.WriteLine($"Z80->PERQ FIFO: IRQ enabled={_interruptEnabled} ready={_outputReady}");
+            Console.WriteLine($"Z80->PERQ FIFO: Ready={_outputReady} Enabled={_interruptEnabled}");
 
             Console.Write("Z80->PERQ FIFO: ");
 
             if (_fifo.IsEmpty)
             {
                 Console.WriteLine("is empty.");
+                return;
             }
-            else
-            {
-                var contents = _fifo.ToArray();
 
-                foreach (var b in contents) Console.Write($" 0x{b:x2}");
-                Console.WriteLine();
-            }
+            var contents = _fifo.ToArray();
+
+            foreach (var b in contents) Console.Write($" 0x{b:x2}");
+            Console.WriteLine();
         }
 
         PERQSystem _system;
         ConcurrentQueue<byte> _fifo;
 
-        bool _interruptEnabled;
         bool _outputReady;
+        bool _interruptEnabled;
+        bool _perqIntRaised;
+        bool _z80IntRaised;
 
-        byte[] _ports = { 0x70, 0x78 };     // PERQ.OUT, output ready flip flop
+        // PERQ.OUT, status register, output ready flip flop
+        byte[] _ports = { 0x71, 0x72, 0x78 };
     }
 }
+
+/*
+    Notes:
+
+    (Z80)D -> (PERQ)IOB uses BOTH IR and OR:
+        IR is IOD OUT FIFO, which is bit 7 of the Z80 status register
+            bit 7 is L when the FIFO is full
+        OR is combined with IOD OUT RDY and UPROC ENB to produce the UPROC INT L
+            interrupt to the CPU if there are bytes available to read
+
+    IOD OUT RDY is the _outputReady flag bit directly programmed by the Z80,
+    and is bit 15 of the PERQ's status register
+
+    So the FIFOOutputReady should be _outputReady?  or _outputReady | !_fifo.IsEmpty?
+
+    FIFOInputReady should be _fifo.Count < 16?
+
+    Z80 sending a byte:
+        if space, enqueue it, otherwise error/warning
+        if _outputReady is set and _interruptEnabled, then raise it
+
+    PERQ reading a byte:
+        if empty, error (should have checked the status reg)?
+        dequeue byte
+        assert the Z80 interrupt!?  (the Z80 may have masked it)
+        if no more left, deassert the interrupt
+        return the byte;
+ */

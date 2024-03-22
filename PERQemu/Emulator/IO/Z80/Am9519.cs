@@ -58,7 +58,7 @@ namespace PERQemu.IO.Z80
         public string Name => "Am9519";
         public byte[] Ports => _ports;
 
-        public bool IntLineIsActive => _interruptEnabled;
+        public bool IntLineIsActive => GetActiveInterrupt();
         public byte? ValueOnDataBus => GetActiveVector();
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
@@ -73,8 +73,11 @@ namespace PERQemu.IO.Z80
             _registers[ACR] = 0;
             _registers[IMR] = 0xff;
 
-            _preselect = 0;
+            _regSelect = 0;
+            _active = 0;
+            _busy = false;
             _loadVector = false;
+            _interruptEnabled = false;
 
             // The Byte Count and Vector memory registers are explicitly NOT
             // affected by reset and are unpredictable, must be initialized
@@ -102,15 +105,28 @@ namespace PERQemu.IO.Z80
         /// thread so it shouldn't bog down the main CPU?
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Clock()
+        public bool GetActiveInterrupt()
         {
+            // If "master arm" is not set or we're in polled mode, bug out
+            if (!_mode.HasFlag(ModeRegister.ChipArmed) || _mode.HasFlag(ModeRegister.PolledMode))
+            {
+                _interruptEnabled = false;
+                return false;
+            }
+
+            // Do we want to allow nesting?  Keep it simple, for debugging:
+            if (_busy)
+            {
+                return true;
+            }
+
             // Scan the devices to see if anything requires attention.  This is
             // magnificently ugly.  Profoundly grotesque.  Sublimely absurd.
             IRQMask scan = 0;
 
             if (_response[(int)IRQNumber.PERQDMA].Device?.IntLineIsActive ?? false) scan |= IRQMask.EndDMAInt;
-            if (_response[(int)IRQNumber.PERQInput].Device?.IntLineIsActive ?? false) scan |= IRQMask.PERQInt;
-            if (_response[(int)IRQNumber.PERQOutput].Device?.IntLineIsActive ?? false) scan |= IRQMask.RduProcData;
+            if (_response[(int)IRQNumber.PERQtoZ80].Device?.IntLineIsActive ?? false) scan |= IRQMask.PERQInt;
+            if (_response[(int)IRQNumber.Z80toPERQ].Device?.IntLineIsActive ?? false) scan |= IRQMask.RduProcData;
             if (_response[(int)IRQNumber.Floppy].Device?.IntLineIsActive ?? false) scan |= IRQMask.FlopInt;
             if (_response[(int)IRQNumber.GPIB].Device?.IntLineIsActive ?? false) scan |= IRQMask.GPIBInt;
             if (_response[(int)IRQNumber.Z80DMA].Device?.IntLineIsActive ?? false) scan |= IRQMask.EOP;
@@ -126,22 +142,17 @@ namespace PERQemu.IO.Z80
                 UpdateStatus();
             }
 
-            // If "master arm" is not set or we're in polled mode, bug out
-            if (!_mode.HasFlag(ModeRegister.ChipArmed) || !_mode.HasFlag(ModeRegister.PolledMode))
-            {
-                _interruptEnabled = false;
-                return;
-            }
-
             // Status register will contain the highest priority unmasked IRQ;
             // check bit S7 to see if it's valid before checking priorities
             if (_status.HasFlag(StatusRegister.NoGroupInt))
             {
-                if (_interruptEnabled)
-                    Log.Info(Category.Z80IRQ, "No (further?) interrupts requested, disabling");
+                if (_interruptEnabled && !_busy)
+                {
+                    _interruptEnabled = false;
+                    Log.Info(Category.Z80IRQ, "No further interrupts requested, disabling");
+                }
 
-                _interruptEnabled = false;
-                return;
+                return _interruptEnabled | _busy;
             }
 
             if (_mode.HasFlag(ModeRegister.RotatingPriority))
@@ -151,9 +162,11 @@ namespace PERQemu.IO.Z80
 
             // Set the active IRQ and raise the interrupt line
             _active = (int)(_status & StatusRegister.PriorityMask);
+            _busy = true;
             _interruptEnabled = true;
-
             Log.Info(Category.Z80IRQ, "Highest active interrupt now {0}", _active);
+
+            return _interruptEnabled;
         }
 
         /// <summary>
@@ -170,11 +183,17 @@ namespace PERQemu.IO.Z80
                 return null;
             }
 
+            // Eh, why not.  Assume if the Z80 is asking for our vector our
+            // (virtual) EI pin is active.  I don't think anything cares.
+            _status |= StatusRegister.ChipEnabled;
+
             // Clear the IRR bit for the active device, and set its ISR bit,
             // unless the corresponding auto clear bit is on.  Got it?
+            SetBit(ISR, (byte)_active);
             ClearBit(IRR, (byte)_active);
 
-            if ((_registers[ACR] & (1 << _active)) != 0) SetBit(ISR, (byte)_active);
+            Log.Info(Category.Z80IRQ, "IACK for device {0}, IRR={1:x2} ISR={2:x2}", _active,
+                                     _registers[IRR], _registers[ISR]);
 
             // The PERQ uses individual vectors, but check the mode bit just in case
             if (_mode.HasFlag(ModeRegister.CommonVector))
@@ -183,27 +202,55 @@ namespace PERQemu.IO.Z80
                 return _response[0].Vector[0];
             }
 
-            // Touch the active device with our noodly appendage
-            if (_response[_active].Device != null)
+            // Uh, I don't think this can happen
+            if (_response[_active].Device == null)
             {
-                Log.Info(Category.Z80IRQ, "IACK for device {0}, vector 0x{1:x2}",
-                                          _response[_active].Device.Name,
-                                          _response[_active].Vector[0]);
-
-                var ignore = _response[_active].Device.ValueOnDataBus;
-
-                // IN THEORY we can return up to four bytes of data, and we'd use
-                // our ByteCount and Counter fields to do that.  In practice, I'm
-                // just gonna cheat and rely on the knowledge that the PERQ/Z80
-                // only ever uses one byte responses.  Yes, this is bad and lazy.
-
-                // Return the programmed vector
-                return _response[_active].Vector[0];
+                Log.Warn(Category.Z80IRQ, "Unknown vector response for device {0}", _active);
+                return null;
             }
 
-            // Whoops.  If we fell through, something went terribly wrong
-            Log.Warn(Category.Z80IRQ, "Unknown vector response for device {0}", _active);
-            return null;
+            Log.Info(Category.Z80IRQ, "Sending device {0} vector 0x{1:x2}",
+                                      _response[_active].Device.Name,
+                                      _response[_active].Vector[0]);
+
+            // Touch the active device with our noodly appendage
+            var ignore = _response[_active].Device.ValueOnDataBus;
+
+            // IN THEORY we can return up to four bytes of data, and we'd use
+            // our ByteCount and Counter fields to do that.  In practice, I'm
+            // just gonna cheat and rely on the knowledge that the PERQ/Z80
+            // only ever uses one byte responses.  Yes, this is bad and lazy.
+
+            // Return the programmed vector
+            return _response[_active].Vector[0];
+        }
+
+        /// <summary>
+        /// Called by the processor when a RETI is processed to clear our busy
+        /// flag.  In Z80dotNet 1.0.7 there are new events we can catch that do
+        /// exactly this (eliminating the guesswork).
+        /// </summary>
+        public void Acknowledge()
+        {
+            // One of the SIOs might be active, but we aren't :-)
+            if (!_busy) return;
+
+            // See if any ISR bits need to be autocleared
+            if (!_status.HasFlag(StatusRegister.NoGroupInt))
+            {
+                // See the the active ISR and ACR bits are set, and if so apply them
+                var bit = 1 << _active;
+                if ((_registers[ISR] & bit) > 0 && (_registers[ACR] & bit) > 0)
+                {
+
+                    ClearBit(ISR, _active);
+                    Log.Info(Category.Z80IRQ, "Autoclear active IRQ {0}", _active);
+                }
+            }
+
+            _busy = false;
+            _interruptEnabled = false;
+            Log.Debug(Category.Z80IRQ, "RETI Acknowledge");
         }
 
 
@@ -218,35 +265,24 @@ namespace PERQemu.IO.Z80
                 return (byte)_status;
             }
 
-            // Read the preselected register (ISR, IMR, IRR or ACR) which should
-            // be reflected by the mode bits 5..6
+            // Read the register (ISR, IMR, IRR or ACR) selected by mode[6:5]
             if (portAddress == _baseAddress)
             {
-                if (_preselect >= ISR && _preselect <= ACR)
-                {
-                    Log.Debug(Category.Z80IRQ, "Read 0x{0:x2} from {1} register",
-                                              _registers[_preselect],
-                                              (_preselect > 2) ? "ACR" :
-                                              (_preselect > 1) ? "IRR" :
-                                              (_preselect > 0) ? "IMR" : "ISR");
+                var reg = (((byte)_mode & 0x60) >> 5);
 
-                    return _registers[_preselect];
-                }
+                Log.Debug(Category.Z80IRQ, "Read 0x{0:x2} from {1} register", _registers[reg], R[reg]);
 
-                Log.Warn(Category.Z80IRQ, "Bad preselect value {0}, returning 0!", _preselect);
-                return 0;
+                return _registers[reg];
             }
 
             // Shouldn't get here...
-            Log.Debug(Category.Z80IRQ, "Read from 0x{0:x2}, returning 0 (unimplemented)", portAddress);
+            Log.Warn(Category.Z80IRQ, "Unhandled read from 0x{0:x2}, returning 0", portAddress);
             return 0;
         }
 
 
         public void Write(byte portAddress, byte value)
         {
-            Log.Detail(Category.Z80IRQ, "Write 0x{0:x2} to port 0x{1:x2}", value, portAddress);
-
             if (portAddress == _baseAddress)
             {
                 do
@@ -254,29 +290,26 @@ namespace PERQemu.IO.Z80
                     if (_loadVector)
                     {
                         // Vector out of range, or byte count exceeded: fall through and blow up
-                        if (_preselect < 0 || _preselect > 7) break;
-                        if (_response[_preselect].Counter >= _response[_preselect].ByteCount) break;
+                        if (_regSelect < 0 || _regSelect > 7) break;
+                        if (_response[_regSelect].Counter >= _response[_regSelect].ByteCount) break;
 
                         Log.Debug(Category.Z80IRQ, "Load vector {0} byte {1} = 0x{2:x2}",
-                                                    _preselect, _response[_preselect].Counter, value);
+                                                    _regSelect, _response[_regSelect].Counter, value);
 
                         // Save the byte and bump
-                        _response[_preselect].Vector[_response[_preselect].Counter++] = value;
+                        _response[_regSelect].Vector[_response[_regSelect].Counter++] = value;
 
-                        // Last one?
-                        if (_response[_preselect].Counter == _response[_preselect].ByteCount) _loadVector = false;
+                        // More to load?
+                        _loadVector = (_response[_regSelect].Counter < _response[_regSelect].ByteCount);
                         return;
                     }
 
                     // Shouldn't/can't happen, but check anyway
-                    if (_preselect < ISR || _preselect > ACR) break;
+                    if (_regSelect < ISR || _regSelect > ACR) break;
 
-                    Log.Debug(Category.Z80IRQ, "Write 0x{0:x2} to {1} register", value,
-                                              (_preselect > 2) ? "ACR" :
-                                              (_preselect > 1) ? "IRR" :
-                                              (_preselect > 0) ? "IMR" : "ISR");
+                    Log.Debug(Category.Z80IRQ, "Write 0x{0:x2} to {1} register", value, R[_regSelect]);
 
-                    _registers[_preselect] = value;
+                    _registers[_regSelect] = value;
                     return;
 
                 } while (true);     // I am not proud of this
@@ -287,6 +320,10 @@ namespace PERQemu.IO.Z80
                 // Command bytes have multiple formats, but the high nibble is
                 // unique for decoding purposes.  This is kinda goofy, AMD.
                 var cmd = (CommandPrefix)(value & 0xf0);
+                var all = (value & 0x08) == 0;
+                var bit = (value & 0x07);
+
+                Log.Detail(Category.Z80IRQ, "Write 0x{0:x2} to command port: {1}", value, cmd);
 
                 // Command byte
                 switch (cmd)
@@ -302,20 +339,20 @@ namespace PERQemu.IO.Z80
                         break;
 
                     case CommandPrefix.ClearIRR_IMR:
-                        ClearBit(IRR, value);
-                        ClearBit(IMR, value);
+                        ClearBit(IRR, bit, all);
+                        ClearBit(IMR, bit, all);
                         break;
 
                     case CommandPrefix.ClearIRR:
-                        ClearBit(IRR, value);
+                        ClearBit(IRR, bit, all);
                         break;
 
                     case CommandPrefix.ClearIMR:
-                        ClearBit(IMR, value);
+                        ClearBit(IMR, bit, all);
                         break;
 
                     case CommandPrefix.ClearISR:
-                        ClearBit(ISR, value);
+                        ClearBit(ISR, bit, all);
                         break;
 
                     case CommandPrefix.ClearHighISR:
@@ -333,39 +370,41 @@ namespace PERQemu.IO.Z80
                         break;
 
                     case CommandPrefix.SetIRR:
-                        SetBit(IRR, value);
+                        SetBit(IRR, bit, all);
                         break;
 
                     case CommandPrefix.SetIMR:
-                        SetBit(IMR, value);
+                        SetBit(IMR, bit, all);
                         break;
 
                     case CommandPrefix.LoadMode40:
                     case CommandPrefix.LoadMode41:
-                        SetBits(IMR, 0xe0, (byte)(value & 0x1f));
+                        SetModeBits(0xe0, (byte)(value & 0x1f));
+                        Log.Debug(Category.Z80IRQ, "Loaded mode register (lo): {0}", _mode);
                         break;
 
                     case CommandPrefix.LoadMode65:
                         var setClear = (byte)(value & 0x03);
 
-                        SetBits(IMR, 0x9f, (byte)((value & 0x0c) << 2));
-                        if (setClear == 1) SetBit(IMR, 7);
-                        if (setClear == 2) ClearBit(IMR, 7);
+                        SetModeBits(0x9f, (byte)((value & 0xc0) << 3));
+                        if (setClear == 1) _mode |= ModeRegister.ChipArmed;
+                        if (setClear == 2) _mode &= ~(ModeRegister.ChipArmed);
 #if DEBUG
                         if (setClear == 3) Log.Warn(Category.Z80IRQ, "Illegal value in Load Mode command");
 #endif
+                        Log.Debug(Category.Z80IRQ, "Loaded mode register (hi): {0}", _mode);
                         break;
 
                     case CommandPrefix.SelectIMR:
-                        SetBits(IMR, 0x9f, (byte)ModeRegister.IMRSelect);   // DOES this set bits 6:5?
-                        _preselect = IMR;
+                        //SetModeBits(0x9f, (byte)ModeRegister.IMRSelect);   // DOES this set bits 6:5?
+                        _regSelect = IMR;
                         _loadVector = false;
                         Log.Debug(Category.Z80IRQ, "Preselected IMR");
                         break;
 
                     case CommandPrefix.SelectAutoClr:
-                        SetBits(IMR, 0x9f, (byte)ModeRegister.AutoClear);   // check the docs carefully
-                        _preselect = ACR;
+                        //SetModeBits(0x9f, (byte)ModeRegister.AutoClear);   // check the docs carefully
+                        _regSelect = ACR;
                         _loadVector = false;
                         Log.Debug(Category.Z80IRQ, "Preselected ACR");
                         break;
@@ -376,7 +415,7 @@ namespace PERQemu.IO.Z80
                         var regno = (byte)(value & 0x07);               // reg #
                         _response[regno].ByteCount = count;             // save count
                         _response[regno].Counter = 0;                   // reset
-                        _preselect = regno;                             // set flag
+                        _regSelect = regno;                             // set flag
                         _loadVector = true;
                         Log.Debug(Category.Z80IRQ, "Preselected vector {0} ({1} bytes)", regno, count);
                         break;
@@ -395,29 +434,32 @@ namespace PERQemu.IO.Z80
         //
         // Set or clear a bit or all bits based on the low nibble of a command byte.
         //
-        void ClearBit(int reg, byte cmd)
+        void ClearBit(int reg, int bit, bool all = false)
         {
-            var bit = (cmd & 0x7);
-
-            if ((cmd & 0x08) == 0)
+            if (all)
                 _registers[reg] = 0;
             else
                 _registers[reg] &= (byte)~(1 << bit);
+
+            Log.Detail(Category.Z80IRQ, "Clear {0} reg {1} now 0x{2:x2}",
+                       (all ? "all" : $"bit {bit}"), R[reg], _registers[reg]);
         }
 
-        void SetBit(int reg, byte cmd)
+        void SetBit(int reg, int bit, bool all = false)
         {
-            var bit = (cmd & 0x07);
-
-            if ((cmd & 0x08) == 0)
+            if (all)
                 _registers[reg] = 0xff;
             else
                 _registers[reg] |= (byte)(1 << bit);
+
+            Log.Detail(Category.Z80IRQ, "Set {0} reg {1} now 0x{2:x2}",
+                       (all ? "all" : $"bit {bit}"), R[reg], _registers[reg]);
         }
 
-        void SetBits(int reg, byte mask, byte val)
+        void SetModeBits(byte mask, byte val)
         {
-            _registers[reg] = (byte)((_registers[reg] & mask) | val);
+            var tmp = (byte)_mode & mask;
+            _mode = (ModeRegister)(tmp | val);
         }
 
         /// <summary>
@@ -429,9 +471,8 @@ namespace PERQemu.IO.Z80
             // Save current for logging
             var ostatus = _status;
 
-            // Initialize with the highest unmasked bit that's set (regardless
-            // of our polling mode or current status?).
-            var highest = (byte)(_registers[IRR] & _registers[IMR]);
+            // Get the unmasked active interrupts
+            var highest = _registers[IRR] & ~_registers[IMR];
 
             // Find the first set bit, starting from 0 (highest priority)
             if (highest > 0)
@@ -461,7 +502,7 @@ namespace PERQemu.IO.Z80
             // the Z80dotNet CPU's interrupt code isn't that precise).  For now,
             // let's just assume that if we have any interrupts pending that we
             // are enabled.  This is not ideal.
-            _status |= StatusRegister.ChipEnabled;      // "if (active)" or something
+            _status |= _busy ? StatusRegister.ChipEnabled : 0;
 
             if (ostatus != _status)
             {
@@ -477,7 +518,7 @@ namespace PERQemu.IO.Z80
             Console.WriteLine("Am9519 status:");
             Console.WriteLine($"  Mode reg:   {_mode}");
             Console.WriteLine($"  Status reg: {_status}");
-            Console.WriteLine($"  Interrupt:  {_interruptEnabled}  Active: {_active}");
+            Console.WriteLine($"  Interrupt:  {_interruptEnabled}  Busy: {_busy}  Active IRQ: {_active}");
             Console.WriteLine("  IRR={0:x2} IMR={1:x2} ISR={2:x2} ACR={3:x2}",
                               _registers[IRR], _registers[IMR], _registers[ISR], _registers[ACR]);
             Console.WriteLine();
@@ -525,8 +566,8 @@ namespace PERQemu.IO.Z80
         public enum IRQNumber
         {
             PERQDMA = 0,
-            PERQInput = 1,
-            PERQOutput = 2,
+            PERQtoZ80 = 1,
+            Z80toPERQ = 2,
             Floppy = 3,
             GPIB = 4,
             Z80DMA = 5
@@ -584,16 +625,18 @@ namespace PERQemu.IO.Z80
         const int IMR = 1;
         const int IRR = 2;
         const int ACR = 3;
+        string[] R = { "ISR", "IMR", "IRR", "ACR" }; // debugging
 
         byte[] _registers;
         ModeRegister _mode;
         StatusRegister _status;
         ResponseRegister[] _response;
 
-        byte _preselect;    // Next register to load from data bus
-        bool _loadVector;   // Load to response memory?
+        byte _regSelect;        // Next register to load from data bus
+        bool _loadVector;       // Load to response memory?
 
         bool _interruptEnabled;
+        bool _busy;
         int _active;
 
         byte _baseAddress;
@@ -650,32 +693,4 @@ namespace PERQemu.IO.Z80
     I.BY4       equ 18H     ; readback 4 bytes
 
     INTDATA     equ 140Q    ; Interrupt controller data
-
-startup sequence:
-Z80IRQ: Write 0x00 to port 0x61 (unimplemented)     reset
-Z80IRQ: Write 0x90 to port 0x61 (unimplemented)     load mode 4-0 with 00000
-Z80IRQ: Write 0xc0 to port 0x61 (unimplemented)     select autoclear
-Z80IRQ: Write 0xff to port 0x60 (unimplemented)     write all 1s to autoclear reg
-Z80IRQ: Write 0xe1 to port 0x61 (unimplemented)     select byte count (1) reg 1
-Z80IRQ: Write 0x14 to port 0x60 (unimplemented)     write vector byte 0x14 (perq input vec!)
-Z80IRQ: Write 0x19 to port 0x61 (unimplemented)     clear irr, imr bit 1 (perq int)
-Z80IRQ: Write 0xe2 to port 0x61 (unimplemented)     select byte count (1) reg 2
-Z80IRQ: Write 0x12 to port 0x60 (unimplemented)     write vector byte 0x12 (perq output vec)
-Z80IRQ: Write 0x1a to port 0x61 (unimplemented)     clear irr, imr bit 2 (rd uproc data)
-
-Z80DMA: Write 0x00 to port 0x3d (unimplemented)     dmac initialization?
-Z80DMA: Read from 0x38, returning 0 (unimplemented)
-Z80DMA: Write 0x60 to port 0x38 (unimplemented)
-
-Z80IRQ: Write 0xe5 to port 0x61 (unimplemented)     select byte count (1) reg 5
-Z80IRQ: Write 0x1a to port 0x60 (unimplemented)     write vector byte 0x1a (z80 dma eop)
-Z80IRQ: Write 0xe0 to port 0x61 (unimplemented)     select byte count (1) reg 0
-Z80IRQ: Write 0x10 to port 0x60 (unimplemented)     write vector byte 0x10 (perq dma)
-Z80IRQ: Write 0x10 to port 0x61 (unimplemented)     clear irr, imr bit 0 (end dma int)
-Z80IRQ: Write 0xe3 to port 0x61 (unimplemented)     select byte count (1) reg 3
-Z80IRQ: Write 0x16 to port 0x60 (unimplemented)     write vector byte 0x16 (floppy)
-Z80IRQ: Write 0xa1 to port 0x61 (unimplemented)     load mode 6-5 with 00, set 7 (master arm)
-
-[repeats first block - chip gets reset]
-
 */

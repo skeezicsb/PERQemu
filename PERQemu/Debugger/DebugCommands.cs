@@ -962,6 +962,14 @@ namespace PERQemu
             if (CheckSys()) PERQemu.Sys.IOB.Z80System.DumpPortBStatus();
         }
 
+        [Command("debug dump harddisk")]
+        void ShowHardDiskStatus()
+        {
+            if (!CheckSys()) return;
+
+            PERQemu.Sys.IOB.DiskController.DumpStatus();
+        }
+
         [Command("debug dump streamer")]
         void ShowStreamerStatus()
         {

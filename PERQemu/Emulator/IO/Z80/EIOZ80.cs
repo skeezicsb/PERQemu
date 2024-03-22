@@ -70,10 +70,6 @@ namespace PERQemu.IO.Z80
         // No hard disk seek circuit on the EIO
         public override Z80CTC CTC => null;
 
-        // The EIO doesn't use the WAIT Z80 line like the IOB does; these are
-        // just returned via status registers instead...
-        protected override bool FIFOInputReady => _perqToZ80Fifo.IsReady;
-        protected override bool FIFOOutputReady => _z80ToPerqFifo.IsReady;
 
         /// <summary>
         /// Initializes the EIO devices and attaches them to the bus.
@@ -141,24 +137,24 @@ namespace PERQemu.IO.Z80
             }
 
             // All aboard the bus
+            _bus.RegisterDevice(_z80sioA);
+            _bus.RegisterDevice(_z80sioB);
             _bus.RegisterDevice(_irqControl);
-            _bus.RegisterDevice(_perqToZ80Fifo);
-            _bus.RegisterDevice(_z80ToPerqFifo);
             _bus.RegisterDevice(_fdc, false);
             _bus.RegisterDevice(_rtc, false);
             _bus.RegisterDevice(_dmac, false);
             _bus.RegisterDevice(_timerA, false);
             _bus.RegisterDevice(_timerB, false);
             _bus.RegisterDevice(_tms9914a, false);
-            _bus.RegisterDevice(_z80sioA);
-            _bus.RegisterDevice(_z80sioB);
+            _bus.RegisterDevice(_perqToZ80Fifo, false);
+            _bus.RegisterDevice(_z80ToPerqFifo, false);
 
             // Register clients of the interrupt controller
             _irqControl.RegisterDevice(Am9519.IRQNumber.GPIB, _tms9914a);
             _irqControl.RegisterDevice(Am9519.IRQNumber.Floppy, _fdc);
             _irqControl.RegisterDevice(Am9519.IRQNumber.Z80DMA, _dmac);
-            _irqControl.RegisterDevice(Am9519.IRQNumber.PERQInput, _perqToZ80Fifo);
-            _irqControl.RegisterDevice(Am9519.IRQNumber.PERQOutput, _z80ToPerqFifo);
+            _irqControl.RegisterDevice(Am9519.IRQNumber.Z80toPERQ, _z80ToPerqFifo);
+            _irqControl.RegisterDevice(Am9519.IRQNumber.PERQtoZ80, _perqToZ80Fifo);
             // not sure yet how to do the perq dma completion interrupt...
         }
 
@@ -216,18 +212,39 @@ namespace PERQemu.IO.Z80
                 return;
             }
 
-            // No WAIT line INIR/OTIR shenanigans on the EIO!  However, we clock
-            // the interrupt controller here to see if it requires attention
-            _irqControl.Clock();
+            // No WAIT line INIR/OTIR shenanigans on the EIO!  However, slightly
+            // more sophisticated interrupt handling is required: we look for the
+            // RETI instruction and let the Am9519 acknowledge completion of the
+            // current IRQ.  There are improvements to Z80dotNet in v1.0.7 that
+            // eliminate this hack, but it's time to consider a stripped down,
+            // purpose-built homegrown Z80 that better suits us (like, allowing
+            // for the DMA chip to request bus cycles).
 
-            // Debugging
-            _bus.ActiveInterrupts();
+            var peek = (ushort)(_memory[_cpu.Registers.PC] << 8 |
+                                _memory[_cpu.Registers.PC + 1]);
 
-            // Run an instruction
+            // Run an instruction.  The interrupt controller watches for checks
+            // to IntLineIsActive to run its state machine so no need for an
+            // explicit call to a Clock() function.
             var ticks = _cpu.ExecuteNextInstruction();
 
             // Advance our wakeup time now so the CPU can chill a bit
             _wakeup = (long)(_scheduler.CurrentTimeNsec + ((ulong)ticks * IOBoard.Z80CycleTime));
+
+            // Did we just do a RETI?
+            if (peek == 0xed4d)
+            {
+                // There's little harm in this if that's not an accurate decode
+                // of the last instruction... since we don't have any access to
+                // the simulated M1/IORQ lines it's all guesswork.  Could just
+                // do "wait at least n ticks to deassert INT" instead and that
+                // might be fine (as it seems to be for CIO...)
+
+                // NB: We do this AFTER executing RETI to avoid the problem where
+                // a higher priority interrupt sneaks in after the EI and before
+                // the RETI, essentially nesting the interrupt and causing havoc.
+                _irqControl.Acknowledge();
+            }
 
             // Clock the EIO DMA
             _dmac.Clock();
@@ -239,6 +256,7 @@ namespace PERQemu.IO.Z80
         /// <summary>
         /// Writes the control register.  This part deals with the bits relevant
         /// to the Z80:
+        ///     bit 3 - Disable Ext A address (DMA, not implemented)
         ///     bit 2 - Z80 reset when clear
         ///     bit 1 - Enable write channel; interrupt when set
         ///     bit 0 - Enable read channel; interrupt when set
@@ -269,6 +287,9 @@ namespace PERQemu.IO.Z80
             // Set the enable bits
             _perqToZ80Fifo.InterruptEnabled = ((status & 0x02) != 0);
             _z80ToPerqFifo.InterruptEnabled = ((status & 0x01) != 0);
+
+            // debug
+            Log.Debug(Category.FIFO, "PERQ wrote FIFO interrupt enables 0x{0:x4}", status);
         }
 
         /// <summary>
@@ -279,9 +300,10 @@ namespace PERQemu.IO.Z80
         /// </summary>
         public override int ReadStatus()
         {
-            int status = (_z80ToPerqFifo.IsReady ? 0x8000 : 0); // Bit 15: read ready
+            int status = (_z80ToPerqFifo.IsReady ? 0x8000 : 0);    // Bit 15: read ready
             status |= (_perqToZ80Fifo.IsReady ? 0x0080 : 0);    // Bit 7: write ready
 
+            Log.Debug(Category.FIFO, "PERQ read FIFO status 0x{0:x4}", status);
             return status;
         }
 

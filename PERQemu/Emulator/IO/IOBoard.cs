@@ -296,6 +296,9 @@ namespace PERQemu.IO
         {
             _channels[(int)chan].HeaderAddr.Hi = ~value;
             Log.Debug(Category.DMA, "{0} header buffer addr (high) set to {1:x}", chan, value);
+
+            // If EIO header count is bits <7:4> of this word (irrelevant for IOB)
+            _channels[(int)chan].HeaderCount = (byte)(~(value >> 4) & 0x0f);
         }
 
         public void LoadHeaderLow(ChannelName chan, int value)
@@ -314,9 +317,16 @@ namespace PERQemu.IO
             return Unfrob(_channels[(int)chan].HeaderAddr);
         }
 
+        public byte GetHeaderCount(ChannelName chan)
+        {
+            return _channels[(int)chan].HeaderCount;
+        }
+
         /// <summary>
         /// Unfrob a DMA address like the hardware do.  This is common to IOB
-        /// and CIO, and any OIO device that uses DMA.  Not sure about EIO yet.
+        /// and CIO, and any OIO device that uses DMA.  EIO is similar, but with
+        /// a slight difference in the high header address word to include the
+        /// word count (stored separately here, so it doesn't affect Unfrob).
         /// </summary>
         /// <remarks>
         ///                                 ! Explained:
@@ -334,7 +344,7 @@ namespace PERQemu.IO
         {
             // Hi returns the upper 4 or 8 bits shifted; Lo needs to be unfrobbed
             var unfrobbed = addr.Hi | (~(0x3ff ^ addr.Lo) & 0xffff);
-            Log.Debug(Category.DMA, "Unfrobbed {0:x} -> {1:x}", addr.Value, unfrobbed);
+            Log.Detail(Category.DMA, "Unfrobbed {0:x} -> {1:x}", addr.Value, unfrobbed);
 
             return unfrobbed;
         }
@@ -362,17 +372,23 @@ namespace PERQemu.IO
                 // Should be 20 bits for IOB/CIO, 20 or 24 bits for EIO!
                 HeaderAddr = new ExtendedRegister(CPU.CPUBits - 16, 16);
                 DataAddr = new ExtendedRegister(CPU.CPUBits - 16, 16);
+
+                // For EIO, bits <7:4> of the high header address are the complement
+                // of the (quad) word count.  Provided for convenience :-)
+                HeaderCount = 0;
             }
 
             public override string ToString()
             {
-                return string.Format("{0}  Header: {1:x6}  Data: {2:x6}",
-                                     $"{Name}".PadRight(10), HeaderAddr.Value, DataAddr.Value);
+                return string.Format("{0}  Header: {1:x6}  Data: {2:x6}  Count: {3}",
+                                     $"{Name}".PadRight(10), HeaderAddr.Value, DataAddr.Value, HeaderCount);
             }
 
             public ChannelName Name;
             public ExtendedRegister HeaderAddr;
             public ExtendedRegister DataAddr;
+
+            public byte HeaderCount;
         }
 
         DMAChannel[] _channels;

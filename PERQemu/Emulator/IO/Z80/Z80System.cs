@@ -80,9 +80,6 @@ namespace PERQemu.IO.Z80
         public abstract void Run();
         public abstract void QueueKeyboardInput(byte keyCode);
 
-        protected abstract bool FIFOInputReady { get; }
-        protected abstract bool FIFOOutputReady { get; }
-
         protected abstract void DeviceReset();
         protected abstract void DeviceShutdown();
 

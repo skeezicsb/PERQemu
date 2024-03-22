@@ -49,12 +49,10 @@ could use yet another rewrite...]
 1.2  Version History
 --------------------
 
-The next release will incorporate expanded functionality while still primarily
-focused on PERQ-1 configurations: Ethernet and the Canon laser printer are the
-two major peripherals to be added, along with bug fixes and further refinements
-to the user interface.  Additionally, first steps have been taken to refactor
-the I/O section and Z80 to support the EIO and PERQ-2 configurations.  It is
-currently in development on the "experiments" branch as PERQemu v0.5.5.
+The next major release will incorporate expanded functionality as support for
+PERQ-2 configurations starts to come together.  The first steps have been taken
+to bring up the EIO board and new Z80 subsystem with larger/faster hard drives.
+This is currently in development on the "experiments" branch as PERQemu v0.5.6.
 
 PERQemu v0.5.5 is a feature release, rolling up fixes and features added since
 v0.5.0 (Canon, Ethernet).  This is a pre-release to the main branch only.
@@ -372,17 +370,18 @@ There are a bunch of Z80 devices:
 
     - The "Z80SIO" class emulates the Zilog SIO/2 chip used for RS-232,
       "speech", and the Kriz tablet.  The PERQ-1 has one SIO chip; the PERQ-2
-      EIO will have two.  The "Z80SIOChannel" class does the heavy lifting.
+      EIO has two.  The "Z80SIOChannel" class does the heavy lifting.
 
 Support for the EIO requires several new controller chips:
 
     - The "Oki5832" class implements the real-time clock (RTC) chip.  This
       battery-backed clock lets the PERQ set the time automatically at bootup;
 
-    - The "Am9519" class will handle the new interrupt controller for EIO;
-
+    - The "Am9519" class is the new interrupt controller for EIO, in a hybrid
+      arrangement with the two SIO chips;                    [Testing/debugging]
+      
     - New Intel i8237 (DMAC) and i8254 (PIT) chips replace the Zilog DMA and
-      CTC chips used on the original IOB.  [TBD]
+      CTC chips used on the original IOB.                          [In progress]
 
 
 2.3.2  Serial Devices
@@ -404,7 +403,7 @@ these into the Emulator/IO/SerialDevices folder.
       which use the SIO chip to transmit mouse coordinates;
 
     - "SerialKeyboard" will contain the driver for the PERQ-2's "VT100-style"
-      keyboard, attached to the EIO board;                 [Not yet implemented]
+      keyboard, attached to the EIO board;                             [Testing]
 
     - The "Speech" class will emulate the PERQ's CVSD chip to provide "telephone
       quality" (8Khz, mono) audio output.  This class will provide the glue to
@@ -457,10 +456,16 @@ Emulator/IO/DiskDevices:
       (the "Disk14Inch" class of drives) common to all PERQ-1 configurations.
       It works with the Z80's HardDiskSeek device to manage stepping the heads;
 
-    - The "MicropolisDiskController" class is in development.  This will
-      support the Micropolis 1200-series 8" hard disks that were originally
-      introduced with the PERQ-2 and PERQ-2/T1.  This will allow configuration
-      of drives in the "Disk8Inch" storage class;
+    - The "MicropolisDiskController" class is in development.  This supports
+      Micropolis 1200-series hard disks (Disk8Inch class) that were originally
+      introduced with the PERQ-2 and PERQ-2/T1.  This version works with the
+      EIO board only;
+
+    - The "CIOMicropolisDiskController" class may be revisited after the EIO
+      version is complete; this rare device may/will allow a PERQ-1 CIO board
+      attach an 8" drive, and is sufficiently different that it warrants its
+      own class.  Limited software support means this is low on the priority
+      list, as source code and schematics are unavailable;
 
     - The "MFMDiskController" and "SMDController" classes will someday provide
       support for Disk5Inch and DiskSMD devices (on PERQ-2 models).
@@ -745,6 +750,7 @@ PERQ info and lore.  More to come!
 
 Update history:
 
+v2.3 - 3/21/2024 - skeezics
 v2.2 - 2/18/2024 - skeezics - updated for the v0.5.5 interim release
 v2.1 - 3/8/2023 - skeezics
 v2.0 - 1/24/2023 - skeezics - corresponds to the merge for v0.5.0

@@ -20,7 +20,6 @@
 using System;
 
 using PERQmedia;
-using PERQemu.Config;
 using PERQemu.Processor;
 
 namespace PERQemu.IO.DiskDevices
@@ -29,30 +28,22 @@ namespace PERQemu.IO.DiskDevices
     /// Represents a Micropolis 8" hard drive controller which manages disk
     /// drives in the Disk8Inch class.  This is implemented in the PERQ as an
     /// adapter from the SA4000 interface to the Micropolis 1200-series drives.
+    /// This version of the driver works with the EIO board.
     /// </summary>
     /// <remarks>
-    /// Although the 1220 controller can manage a string of up to four drives,
-    /// there doesn't appear to be any software support for setting the Drive
-    /// Select value.  This statement in a recently unearthed document also
-    /// corrects my misconception that the ICL cabinet could house two drives:
-    /// 
-    ///     "None of the PERQ cabinets has enough space for mounting more
-    ///      than one 8" drive internally."
-    ///         -- config.doc Rev 3, Steve Clark 18 Dec 84
-    /// 
-    /// As with the Shugart, emulation for now is limited to a single drive. :-(
+    /// This class manages the PERQ side of the interface, with the actual disk
+    /// device attached to the Disk Interface Board (on the other end of the
+    /// "nibble bus").  See Docs/HardDisk.txt for details about the issues and
+    /// limitations surrounding development of this driver.
     /// </remarks>
     public sealed class MicropolisDiskController : IStorageController
     {
         public MicropolisDiskController(PERQSystem system)
         {
             _system = system;
-            _disk = null;
-            _busyEvent = null;
 
-            // ExtendedRegisters to glom the register writes together!
-            _cylinder = new ExtendedRegister(4, 8);
-            _nibLatch = new ExtendedRegister(4, 4);
+            _registerFile = new byte[16];
+            _dib = new DiskInterfaceBoard(this);
         }
 
         /// <summary>
@@ -60,17 +51,14 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         public void Reset()
         {
-            if (_disk != null)
-            {
-                _disk.Reset();
-            }
+            _dib.Reset();
 
-            // Clears busy and the interrupt
-            ClearBusyState();
+            // Hardware cleared by INIT L
+            _flags = SMFlags.None;
+            _command = SMCommand.Idle;
 
-            // Force a soft reset (calls ResetFlags)
-            LoadCommandRegister((int)Command.Reset);
-
+            // Do a soft reset for the rest?
+            ResetFlags();
             Log.Info(Category.HardDisk, "Micropolis controller reset");
         }
 
@@ -79,43 +67,46 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         void ResetFlags()
         {
-            _controllerBusy = false;
-            _illegalAddr = false;
-            _seekComplete = true;
+            // Figure out what stuff gets reset, but assume everything?
+            if (_busyEvent != null)
+            {
+                _system.Scheduler.Cancel(_busyEvent);
+                _busyEvent = null;
+            }
 
-            _head = 0;
-            _sector = 0;
-            _cylinder.Value = 0;
+            _regSelect = 0;
 
-            _nibSaved = 0;
-            _nibLatch.Value = 0;
+            _flags = SMFlags.None;
+            _status = SMStatus.Idle;
+            _command = SMCommand.Idle;
+
+            // Turn off interrupts
+            SetInterrupt(false);
         }
 
-        /// <summary>
-        /// Attach a drive.  For now, only a single unit is supported.
-        /// </summary>
         public void AttachDrive(uint unit, StorageDevice dev)
         {
-            if (_disk != null)
-                throw new InvalidOperationException("MicropolisController only supports 1 disk");
-
-            _disk = dev as HardDisk;
-            _disk.SetSeekCompleteCallback(SeekCompletionCallback);
-
-            Log.Info(Category.HardDisk, "Attached disk '{0}'", _disk.Info.Name);
+            _dib.AttachDrive(unit, dev);
         }
 
         /// <summary>
-        /// Reads the status register.
+        /// Reads the hard disk state machine status register.
         /// </summary>
-        /// <remarks>
-        /// Reading status DOES NOT clear pending interrupts.  (See behavior in disktest.mic)
-        /// </remarks>
         public int ReadStatus()
         {
-            var stat = DiskStatus;
-            Log.Write(Category.HardDisk, "Micropolis status: 0x{0:x4} ({1})", stat, (Status)stat);
-            return stat;
+            // Reset the status word from the DIB and add state machine code
+            var status = _dib.Status.Current | (int)_status;
+
+            // This is probably wrong?  I think this bit is supposed to be true
+            // if any _condition_ that would interrupt is true, even if they're
+            // currently masked off?
+            if (_interrupting) status |= (int)HWFlags.SMInt;
+
+            // Reading clears interrupts
+            SetInterrupt(false);
+
+            Log.Write(Category.HardDisk, "Micropolis status: 0x{0:x3}", status);
+            return status;
         }
 
         /// <summary>
@@ -125,99 +116,43 @@ namespace PERQemu.IO.DiskDevices
         {
             switch (address)
             {
-                //case 0xc1:      // Command register
-                //    LoadCommandRegister(value);
-                //    break;
-
-                //case 0xc2:      // Micropolis Nibble Bus register
+                case 0xd0:      // LD DF CTRL L
                     //
-                    // We save the low 4 bits here.  The nibble command byte tracks
-                    // transitions of the BusEn pin to shift the low nibble into the
-                    // upper nibble latch (_nibLatch) so that a full 8-bit byte is
-                    // transferred to the drive.  In SOME versions of the microcode?
-                    // In others this is still treated like the Shugart head select!?
-                    // ARGH.
+                    // Selects the address of next data register to load.
                     //
-                //    _nibLatch.Lo = (ushort)value;
-                //    Log.Write(Category.HardDisk, "Micropolis Nibble latch (low) set to 0x{0:x}", _nibLatch.Lo);
-                //    break;
+                    _regSelect = (value & 0xf);
+                    Log.Detail(Category.HardDisk, "Micropolis register file pointer now {0}", _regSelect);
+                    break;
 
-                //case 0xc8:      // "MicZero"
+                case 0xd1:      // LD DF DATA L
                     //
-                    // Unused by the actual "ICL CIO" board?  Original version of
-                    // the Micropolis microcode (mdsk.micro, B. Rosen, 1982) uses
-                    // the Shugart regs with NO mention of the MicSec (314/0xcc)
-                    // register.  On that board cioboot and ciosysb assign a 0 and
-                    // don't touch this again.  Hmm.
+                    // Loads byte into the register file and increments the
+                    // address pointer.  Data is inverted.
                     //
-                    //_sector = (ushort)(value & 0x1f);
-                    //_head = (byte)((value & 0xe0) >> 5);
-                    //_cylinder.Lo = (ushort)((value & 0xff00) >> 8);
+                    if (_regSelect > _registerFile.Length - 1)
+                    {
+                        Log.Warn(Category.HardDisk, "Register pointer overflow!");
+                        _regSelect = 0;
+                    }
 
-                    //Log.Write(Category.HardDisk, "Shugart cyl/head/sector set to {0}/{1}/{2}", _cylinder.Lo, _head, _sector);
-                    //Log.Write(Category.HardDisk, "Micropolis Zero register set to 0x{0:x}", value);
-                //    break;
+                    Log.Debug(Category.HardDisk, "Micropolis register file[{0}]=0x{1:x2}",
+                                                 _regSelect, (byte)~value);
+                    _registerFile[_regSelect++] = (byte)~value;
+                    break;
 
-                //case 0xc9:      // "MicSync"
+                case 0xd2:      // LD D CTRL 1 (SMCTL)
                     //
-                    // Does this set up the sync character used by the hardware to
-                    // identify address marks (?) - low level format byte (?) is
-                    // set to 17 (oct) at startup by cioboot, ciosysb but in other
-                    // cases it's still used as the File SN (which we don't actually
-                    // use to compare with the header bytes...)
+                    // Latches T2, BUSENB, T, DISK_INT_ENB, P_RESET_L, F<2:0>
+                    // into the command register.
                     //
-                    //Log.Write(Category.HardDisk, "Micropolis Sync register set to 0x{0:x}", value);
+                    LoadCommandRegister(value);
+                    break;
 
-                    //_serialNumber.Lo = (ushort)value;
-                    //Log.Write(Category.HardDisk, "Shugart File Serial # Low set to 0x{0:x4}", value);
-                //    break;
-
-                //case 0xca:      // "MicCylin"
+                case 0xd3:      // LD D CTRL 2 (DSKCTL)
                     //
-                    // Low byte of the desired cylinder inverted!?  Or high word
-                    // of the File SN?  Yes.  No.  Who knows?
+                    // Latches DRIVE_SEL<1:0>, BA<1:0>, B<3:0> into the DIB.
                     //
-                    //_cylinder.Lo = (ushort)~value;
-                    //Log.Write(Category.HardDisk, "Micropolis Cyl # (low) set to 0x{0:x2}", _cylinder.Lo);
-
-                    //_serialNumber.Hi = value;
-                    //Log.Write(Category.HardDisk, "Shugart File Serial # High set to 0x{0:x}", value);
-                //    break;
-
-                //case 0xcb:      // "MicCylHd"
-                    //
-                    // Bits 7:4 are cylinder 11:8
-                    // Bits 3:0 are the head select (inverted!?)
-                    // Except when it's still being used for the Shugart "block #"
-                    // Wheeee!  No documentation or schematics!  Looks like manual
-                    // disassembly and step by step instruction traces ahead  arrrgh
-                    //
-                    //_cylinder.Hi = (~value & 0xf0) >> 4;
-                    //_head = (byte)(~value & 0x0f);
-                    //Log.Write(Category.HardDisk, "Micropolis Cyl # (high) set to 0x{0:x}, Head 0x{1:x}", _cylinder.Hi, _head);
-
-                    //_blockNumber = value & 0xffff;
-                    //Log.Write(Category.HardDisk, "Shugart Block # set to 0x{0:x}", value);
-                //    break;
-
-                //case 0xcc:      // "MicSecNo"
-                    //
-                    // Sector number (8 bits, though only 5 are significant?)
-                    // And yet, haven't seen a version of the code that actually
-                    // sets this even though it (sometimes) is loaded into the
-                    // controlstore.  Sigh.
-                    //
-                    //_sector = (ushort)(value & 0xff);
-
-                    //Log.Write(Category.HardDisk, "Micropolis Sector # set to 0x{0:x2}", _sector);
-                    //break;
-
-                case 0xd0:
-                case 0xd1:
-                case 0xd2:
-                case 0xd3:
-                    //LoadCommandRegister(value);
-                    Log.Warn(Category.HardDisk, "Micropolis: Write of 0x{0:x4} to register 0x{1:x2} (unimplemented)", value, address);
+                    _dib.WriteNibble((byte)value);
                     break;
 
                 default:
@@ -226,261 +161,63 @@ namespace PERQemu.IO.DiskDevices
         }
 
         /// <summary>
-        /// Loads the Micropolis command register and dispatches the appropriate
-        /// command to the state machine (bits 2:0 of the control reg 0xc1).
+        /// Loads the controller command register and dispatches the appropriate
+        /// command to the state machine (bits 2:0 of the control reg 0xc1).  The
+        /// upper five bits are flags or condition codes.  This register directly
+        /// affects the execution of the state machine microprogram.
         /// </summary>
-        /// <remarks>
-        /// Note:  Most of the info gleaned about the CIO Micropolis controller
-        /// behavior is from microcode sources.  EIO is better documented (and
-        /// may be encoded differently!).
-        ///     Command bits passed to the drive:
-        ///         7   Reset the drive's I/O board (*)
-        ///         6   Drive Select (always 0?)
-        ///         5   BA1 bit
-        ///         4   BusEnable bit
-        ///         3   BA0 bit
-        ///     Command bits for the controller:
-        ///       2:0   Command
-        /// 
-        /// * Am I losing my mind?  This bit is never set if we don't pass it through
-        /// since it's used to turn the Z80 off and on.  So on the CIO, for which we
-        /// have no *$)!#*& schematics, does that bit do double duty?
-        /// </remarks>
         void LoadCommandRegister(int data)
         {
-            var command = (Command)(data & 0x07);
-            var nibCommand = (NibbleSelect)(data & 0x78);
+            // Unpack
+            _flags = (SMFlags)(data & 0xf8);
+            _command = (SMCommand)(data & 0x07);
+            _dib.BusEnable = (_flags.HasFlag(SMFlags.BusEnable));
 
-            Log.Write(Category.HardDisk, "Micropolis command: 0x{0:x4} (SM {1}, Latch {2})",
-                                          data, command, nibCommand);
+            Log.Debug(Category.HardDisk,
+                      "Micropolis state control: 0x{0:x2} (command {1}, flags {2})",
+                      data, _command, _flags);
 
-            // Check the nibble command
-            NibbleOnThis(nibCommand);
-
-            // Look at the command bits
-            switch (command)
+            // Check the enable flag regardless of current command/state/status
+            // to see if we should reset (assuming that clears up any issues)
+            if (!_flags.HasFlag(SMFlags.Enable))
             {
-                case Command.Idle:
-                    // Clear the busy status and the interrupt
-                    ClearBusyState();
+                Log.Info(Category.HardDisk, "Controller disabled!"); // debug
+
+                // Assume we just bail out here?
+                ResetFlags();
+                return;
+            }
+
+            if (_status > SMStatus.Idle)
+            {
+                // If we're currently busy and not resetting... uh... then what?
+                Log.Info(Category.HardDisk, "Command {0} ignored while in state {1}", _command, _status);
+                // maybe not the right thing to do?  we'll see...
+                return;
+            }
+
+            switch (_command)
+            {
+                case SMCommand.Idle:
+                    // Nothin' to do?
                     break;
 
-                case Command.Reset:
-                    // Reset clears the state machine, interrupts when done
-                    ResetFlags();
-
-                    Log.Write(Category.HardDisk, "Micropolis state machine reset");
-                    SetBusyState();
-                    break;
-
-                case Command.ReadChk:
+                case SMCommand.Read:
+                case SMCommand.ReadChk:
                     ReadBlock();
                     break;
 
-                case Command.Read:
-                    ReadBlock();
-                    break;
-
-                case Command.Write:
-                    WriteBlock(true /* writeHeader */);
-                    break;
-
-                case Command.WriteChk:
-                    WriteBlock(false /* writeHeader */);
-                    break;
-
-                case Command.Format:
-                    FormatBlock();
+                case SMCommand.Write:
+                case SMCommand.WriteChk:
+                    _sector = _registerFile[3];
                     break;
 
                 default:
-                    Log.Error(Category.HardDisk, "Unhandled Micropolis command {0}", command);
+                    Log.Warn(Category.HardDisk, "Command {0} not yet implemented", _command);
                     break;
             }
         }
 
-        /// <summary>
-        /// Try to make sense of the "nibble bus" command bits.
-        /// </summary>
-        void NibbleOnThis(NibbleSelect nibCommand)
-        {
-            Log.Write("Nibble this: new={0} | last={1}", nibCommand, _nibCommand);
-            // Save and update
-            var lastCommand = _nibCommand;
-            _nibCommand = nibCommand;
-
-            // This bit conflicts with the Z80 control bit, does it not? We'll see.
-            if (nibCommand == NibbleSelect.Reset)
-            {
-                Log.Write("NIB RESET");
-                return;
-            }
-
-            // This should always be unit 0 for the 8" drives.  Right?
-            if (nibCommand.HasFlag(NibbleSelect.DriveSelect))
-            {
-                Log.Write("NIB DRIVE SELECT ASSERTED!?");
-                return;
-            }
-
-            // If there wasn't a BusEn transition, bug out?
-            if ((nibCommand & NibbleSelect.BusEn) == (lastCommand & NibbleSelect.BusEn))
-            {
-                Log.Write("NO BUSEN TRANSITION");
-                return;
-            }
-
-            // Decode the BA0/BA1 bits to decide which register is selected
-            var reg = (RegSelect)(nibCommand & (NibbleSelect.BA1 | NibbleSelect.BA0));
-
-            Log.Write("REG SELECT IS {0}", reg);
-
-            // Is this a rising or falling edge of the BusEn signal?
-            var busEnRising = (!lastCommand.HasFlag(NibbleSelect.BusEn) && nibCommand.HasFlag(NibbleSelect.BusEn));
-
-            // On the rising edge, bump the latch
-            if (busEnRising)
-            {
-                if (reg == RegSelect.None)
-                {
-                    // Bump the low nibble to the high
-                    _nibLatch.Hi = _nibLatch.Lo;
-                    Log.Write(Category.HardDisk, "Micropolis Nibble latch (high) set to 0x{0:x}", _nibLatch.Hi);
-                }
-                else
-                {
-                    // For now just log this but all the action happens on the falling edge
-                    Log.Write(Category.HardDisk, "BUSEN RISING (IGNORED) FOR REG {0}", reg);
-                }
-            }
-            else
-            {
-                switch (reg)
-                {
-                    case RegSelect.None:
-                        Log.Write("BUSEN FALLING WHILE NO REG SELECTED, SAVED LATCH {0}", _nibLatch.Value);
-                        // Do we save our latched value here!?!?
-                        _nibSaved = (byte)_nibLatch.Value;
-                        break;
-
-                    case RegSelect.HdReg:
-                        //
-                        // The Micropolis documentation EXPLICITLY STATES that the
-                        // seek operation starts WHEN THE LSB OF THE CYLINDER VALUE
-                        // is written, NOT this register.  But every example of the
-                        // PERQ microcode does it backwards - writes the LSB first,
-                        // THEN the combined cyl/head.  That makes more sense, I
-                        // suppose, if you don't need to seek and just switch heads?
-                        //
-                        Log.Write("HEAD SELECT {0} ON BUSEN FALLING", _head);
-                        _disk.HeadSelect(_head);
-
-                        // Shouldn't happen, but just in case an attempt to
-                        // seek off the end, use the "illegal address" response
-                        if (_cylinder.Value > _disk.Geometry.Cylinders)
-                        {
-                            Log.Write("BAD SEEK! OFF THE END TO CYL {0}", _cylinder.Value);
-                            _illegalAddr = true;
-                            _seekComplete = true;
-                            return;
-                        }
-
-                        // Doc says reset this after a new cylinder request is validated
-                        _illegalAddr = false;
-
-                        // Initiate an "implied" seek!
-                        if (_disk.CurCylinder != _cylinder.Value)
-                        {
-                            _seekComplete = false;
-                            _disk.SeekTo((ushort)_cylinder.Value);
-                            Log.Write("INITIATED SEEK TO CYL {0}", _cylinder.Value);
-                        }
-                        else
-                        {
-                            Log.Write("SEEK SKIPPED, ALREADY AT CYL {0}", _cylinder.Value);
-                        }
-                        break;
-
-                    case RegSelect.CylReg:
-                        Log.Write("WAAAAAAAAIIIT FOR IT!!!");
-                        break;
-
-                    case RegSelect.CtlReg:
-                        //
-                        // Use the SAVED command!  The microcode has to "pulse"
-                        // the command into the drive's controller and it executes
-                        // on the falling edge of BusEn.  But the individual command
-                        // bits have been toggled at this point.  Argh!
-                        //
-                        //      Set BA0/BA1 = 3, write to Command reg, BUSEN low
-                        //      Put upper nibble to Nibble/Head reg
-                        //      Transition BUSEN high
-                        //      Put lower nibble into Nibble/Head reg
-                        //      Transition BUSEN low
-                        //          (This combines, saves 8-bits of nibble register)
-                        //      Set BA0/BA1 to the desired reg, BUSEN remains low
-                        //          (This can be ignored since BUSEN doesn't transition)
-                        //      Set BUSEN high
-                        //      Set BUSEN low
-                        //          (On THIS falling edge execute the saved command:
-                        //           for control reg, Restore or FaultReset;
-                        //           for Head/Cyl reg, do the Head Select;
-                        //           for Cylinder reg, initiate the Seek)
-                        //
-                        // So, how the hell do reads and writes work?  The state machine
-                        // has to "know" if a seek is happening and wait until it's done?
-                        // It looks like maybe the microcode always _explicitly_ does the
-                        // seek and then starts the state machine to initiate the read?
-                        // (We might be able to ignore the WEN bit processing?)
-                        var control = (Control)_nibSaved;
-
-                        Log.Write("CONTROL REG WRITE: {0}", control);
-
-                        // If the FaultReset bit is set, send that to the drive now
-                        if (control.HasFlag(Control.FaultReset))
-                        {
-                            _disk.FaultClear();
-                            // I think this can fall thru?
-                        }
-
-                        // Restore == Seek to track 0 (recalibrate)
-                        if (control.HasFlag(Control.Restore))
-                        {
-                            _seekComplete = false;
-                            _disk.SeekTo(0);
-                            SetBusyState();
-                            break;
-                        }
-
-                        if ((control & ~(Control.FaultReset | Control.Restore)) != 0)
-                        {
-                            Log.Write("EXTRA BITS IGNORED (TOM/TOP/WEN)");
-                        }
-                        break;
-
-                    default:
-                        Console.WriteLine($"BAD COMBO reg=0x{reg:x}");
-                        break;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Construct the current status word.
-        /// </summary>
-        public int DiskStatus
-        {
-            get
-            {
-                return (int)(_disk == null ? Status.Busy :
-                            ((_controllerBusy ? Status.Busy : 0) |
-                             (_illegalAddr ? Status.IllegalAddress : 0) |
-                             (_disk.Index ? Status.Index : 0) |
-                             (_disk.Fault ? Status.WriteFault : 0) |
-                             (_seekComplete ? Status.SeekComplete : 0) |
-                             (_disk.Ready ? Status.UnitReady : 0)));
-            }
-        }
 
         /// <summary>
         /// Single step pulse (used by Shugart, not by Micropolis).
@@ -492,57 +229,136 @@ namespace PERQemu.IO.DiskDevices
         }
 
         /// <summary>
-        // Seek completion for the Micropolis.
+        /// Called by the DIB when a status change requires an interrupt.
         /// </summary>
-        public void SeekCompletionCallback(ulong skewNsec, object context)
+        public void StatusChange()
         {
-            // Set our local flag.  True on Ready as well as seeks.
-            _seekComplete = true;
-
-            // Clear busy status
-            ClearBusyState();
+            Log.Debug(Category.HardDisk, "DIB signaled status change!");
+            SetInterrupt(true);
         }
 
+
+        #region Block Operations
+
         /// <summary>
-        /// Reads a block from cyl/head/sec into memory at the addresses
-        /// specified by the controller registers.
+        /// Reads a block from the cyl/head/sec specified by the register file
+        /// into memory at the address specified by the DMA controller.  Sets
+        /// status and schedules the appropriate interrupt(s) to fire based on
+        /// the read result.
         /// </summary>
         void ReadBlock()
         {
+            _status = SMStatus.Busy;
+
+            var cyl = (ushort)((_registerFile[8] & 0xf0) << 4 | _registerFile[4]);
+            var head = (byte)(_registerFile[8] & 0x0f);
+            var sector = _registerFile[3];
+
+            // Compute the delay to the start of the sector (or fake it if we
+            // aren't modeling accurate disk timings.  We'll say that 100usec
+            // is a reasonable minimum to the mid-sector point in case we bug
+            // out on a header error (or fire the DB interrupt on a good read)
+            var delay = Settings.Performance.HasFlag(RateLimit.DiskSpeed) ?
+                                ComputeRotationalDelay(sector) :    // Accurate
+                                100 * Conversion.UsecToNsec;        // Fast
+
 #if DEBUG
-            if (_disk.CurCylinder != _cylinder.Value || _disk.CurHead != _head)
-                Log.Warn(Category.HardDisk,
-                         "Out of sync with disk: cyl {0}={1}, hd {2}={3}?",
-                         _disk.CurCylinder, _cylinder.Value, _disk.CurHead, _head);
+            if (_dib.SelectedDrive == null)
+                throw new InvalidOperationException($"ReadBlock but no disk selected");
+
+            // Do this here (until debugged)
+            if (_dib.SelectedDrive.CurHead != _dib.Head || _dib.Head != head)
+            {
+                Log.Warn(Category.HardDisk, "Wrong head selected: disk={0} DIB={1} regs={2}",
+                                            _dib.SelectedDrive.CurHead, _dib.Head, head);
+
+                MidSectorFinish(delay, SMStatus.SMError);
+                return;
+            }
+
+            if (_dib.SelectedDrive.CurCylinder != _dib.Cylinder || _dib.Cylinder != cyl)
+            {
+                Log.Warn(Category.HardDisk, "Cylinder out of sync: disk={0} DIB={1} regs={2}",
+                                            _dib.SelectedDrive.CurCylinder, _dib.Cylinder, cyl);
+
+                MidSectorFinish(delay, SMStatus.SMError);
+                return;
+            }
 #endif
-            // Todo: Do this as a DMA operation
 
             // Read the sector from the disk
-            var sec = _disk.GetSector((ushort)_cylinder.Value, _head, _sector);
+            var block = _dib.SelectedDrive.GetSector(cyl, head, sector);
 
             // Fetch the unfrobbed buffer addresses
             var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
 
+#if DEBUG
+            var quads = _system.IOB.DMARegisters.GetHeaderCount(ChannelName.HardDisk);
+
+            if (quads != 2)
+                Log.Warn(Category.HardDisk, "Bad DMA header count {0} on {1}", quads, _command);
+#endif
+
+            // Todo: Do this as a real DMA operation
+
             // Copy the data to the data buffer address
-            for (int i = 0; i < sec.Data.Length; i += 2)
+            for (int i = 0; i < block.Data.Length; i += 2)
             {
-                int word = sec.Data[i] | (sec.Data[i + 1] << 8);
+                int word = block.Data[i] | (block.Data[i + 1] << 8);
                 _system.Memory.StoreWord(data + (i >> 1), (ushort)word);
             }
 
             // And the header to the header address
-            for (int i = 0; i < sec.Header.Length; i += 2)
+            for (int i = 0; i < block.Header.Length; i += 2)
             {
-                int word = sec.Header[i] | (sec.Header[i + 1] << 8);
+                int word = block.Header[i] | (block.Header[i + 1] << 8);
                 _system.Memory.StoreWord(header + (i >> 1), (ushort)word);
             }
 
-            Log.Write(Category.HardDisk,
-                      "Micropolis sector read complete from {0}/{1}/{2}, to memory at 0x{3:x6}",
-                      _cylinder.Value, _head, _sector, data);
+            // Engage in some silliness
+            if (_command == SMCommand.ReadChk)
+            {
+                // Check the header bytes against the register file values!  If
+                // there are any discrepancies, report the error and abort due to
+                // a logical header mismatch.  Realism baybeeee!!!
+                if ((block.Header[0] != _registerFile[5]) ||
+                    (block.Header[1] != _registerFile[11]) ||
+                    (block.Header[2] != _registerFile[6]) ||
+                    (block.Header[3] != _registerFile[12]) ||
+                    (block.Header[4] != _registerFile[7]) ||
+                    (block.Header[5] != _registerFile[13]))
+                {
+                    Console.Write("LH mismatch: blk: ");
+                    for (int i = 0; i < 6; i++)
+                    {
+                        Console.Write($"  {i}={block.Header[i]:x2}");
+                    }
+                    Console.WriteLine();
+                    Console.WriteLine("  register file:  ");
+                    for (int i = 5; i < 8; i++)
+                    {
+                        Console.Write($"  {i}={_registerFile[i]:x2}  {i + 6}={_registerFile[i + 6]:x2}");
+                    }
+                    Console.WriteLine();
+                }
+                // continue for now since these are surely wrong
+            }
 
-            SetBusyState();
+            Log.Write(Category.HardDisk,
+                      "Micropolis sector read from {0}/{1}/{2}, to memory at 0x{3:x6}",
+                      cyl, head, sector, data);
+
+            // Are we firing the mid-sector interrupt?
+            if (!_flags.HasFlag(SMFlags.MidIntDisable))
+            {
+                // TODO: IS THAT REALLY A *DISABLE* FLAG ON EIO?  JESUS GUYS
+
+                MidSectorFinish(delay, SMStatus.Idle);
+            }
+
+            // No mid-cycle interrupt
+            FinishCommand(delay, SMStatus.Idle);
         }
 
         /// <summary>
@@ -552,14 +368,15 @@ namespace PERQemu.IO.DiskDevices
         void WriteBlock(bool writeHeader)
         {
 #if DEBUG
-            if (_disk.CurCylinder != _cylinder.Value || _disk.CurHead != _head)
-                Log.Warn(Category.HardDisk,
-                         "Out of sync with disk: cyl {0}={1}, hd {2}={3}?",
-                         _disk.CurCylinder, _cylinder.Value, _disk.CurHead, _head);
+            //if (_disk.CurCylinder != _dib.Cylinder || _disk.CurHead != _dib.Head)
+            //    Log.Warn(Category.HardDisk,
+            //             "Out of sync with disk: cyl {0}={1}, hd {2}={3}?",
+            //             _disk.CurCylinder, _dib.Cylinder, _disk.CurHead, _dib.Head);
+            // See above re: error handling
 #endif
             // Todo: Should be a DMA op.  See above.
 
-            var sec = _disk.GetSector((ushort)_cylinder.Value, _head, _sector);
+            var sec = _dib.SelectedDrive.GetSector(_dib.Cylinder, _dib.Head, _sector);
             var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
 
@@ -581,13 +398,13 @@ namespace PERQemu.IO.DiskDevices
             }
 
             // Write the sector to the disk...
-            _disk.SetSector(sec);
+            _dib.SelectedDrive.SetSector(sec);
 
             Log.Write(Category.HardDisk,
                       "Micropolis sector write complete to {0}/{1}/{2}, from memory at 0x{3:x6}",
-                      _cylinder.Value, _head, _sector, data);
+                      _dib.Cylinder, _dib.Head, _sector, data);
 
-            SetBusyState();
+            //SetBusyState(false, true);
         }
 
         /// <summary>
@@ -596,9 +413,23 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         void FormatBlock()
         {
-            var sec = new Sector((ushort)_cylinder.Value, _head, _sector,
-                                 _disk.Geometry.SectorSize,
-                                 _disk.Geometry.HeaderSize);
+
+            // TODO FIXME REDO
+            // The drive itself does this on micropolis!? but ONLY if the
+            // actual 1220 controller board is present, which isn't the case,
+            // goddamned inconsistent or WRONG documentation
+
+            // Todo: think about how to support spare sectoring and bad block
+            // maps - the PERQ allows rewriting the sector header to effect a
+            // block sparing, so... any changes to the underlying storage dev?
+            // split the phys/log header fields if they aren't already?
+
+            // some of this stuff comes from the register file, so figure out
+            // how that works
+
+            var sec = new Sector(_dib.Cylinder, _dib.Head, _sector,
+                                 _dib.SelectedDrive.Geometry.SectorSize,
+                                 _dib.SelectedDrive.Geometry.HeaderSize);
 
             var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
@@ -619,161 +450,203 @@ namespace PERQemu.IO.DiskDevices
             }
 
             // Write the sector to the disk...
-            _disk.SetSector(sec);
+            _dib.SelectedDrive.SetSector(sec);
 
             Log.Write(Category.HardDisk,
                       "Micropolis sector format of {0}/{1}/{2} complete, from memory at 0x{3:x6}",
-                      _cylinder.Value, _head, _sector, data);
+                      _dib.Cylinder, _dib.Head, _sector, data);
 
-            SetBusyState();
+            //SetBusyState(false, true);
+        }
+
+        #endregion
+
+        #region Completion and Interrupts
+
+        /// <summary>
+        /// Schedule the mid-sector interrupt, and if not in error, proceed to
+        /// complete the command normally.
+        /// </summary>
+        void MidSectorFinish(ulong delay, SMStatus code)
+        {
+#if DEBUG
+            if (_busyEvent != null)
+                Log.Error(Category.HardDisk, "MidSectorFinish called while already busy");
+            // but proceed anyway?
+#endif
+            Log.Write(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
+
+            _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
+            {
+                Log.Write(Category.HardDisk, "Mid-sector interrupt firing, code={0}", code);
+
+                // Fire mid-sector "DB" interrupt
+                SetInterrupt(true, true);
+
+                // Schedule a normal completion
+                if (code == SMStatus.Idle)
+                    FinishCommand(BlockDelayNsec, code);
+            });
         }
 
         /// <summary>
-        /// Set the controller Busy status, allow for processing delay, then
-        /// raise the HardDisk interrupt.
+        /// Schedule the completion interrupt to fire.
         /// </summary>
-        void SetBusyState()
+        void FinishCommand(ulong delay, SMStatus code)
         {
-            // Already busy?  Nothing to do here.
-            if (_controllerBusy) return;
-
-            // Set busy flag (code 7), and queue a workitem for resetting it and
-            // firing an interrupt.  Time would normally vary based on platter
-            // rotation, seek and head settling time, etc.  But we don't really
-            // know that in advance, so for seeks don't queue anything; for other
-            // commands (reads, writes, etc) just fake up a short/fixed delay.
-            _controllerBusy = true;
-
-            // do this based on command being executed
-            //if (_seekState != SeekState.WaitForSeekComplete)
-
-            // if seek complete then we're done moving the heads?
-            // if _illegal or reset or idle, just a short delay? else long?
-            // should we pass in an interrupt_on_done flag here and/or the delay
-            // so the caller can choose?
-
+            _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
             {
-                var delay = Settings.Performance.HasFlag(RateLimit.DiskSpeed) ?
-                                                    BlockDelayNsec :
-                                                    100 * Conversion.UsecToNsec;
+                Log.Write(Category.HardDisk, "FinishCommand completion: {0}", code);
+                _status = code;
+                SetInterrupt(true);
+            });
+        }
 
-                _busyEvent = _system.Scheduler.Schedule(delay, (skew, context) =>
+        /// <summary>
+        /// Raise or clear the disk interrupt, depending on the caller's request
+        /// and the state of the enable flags.  No-ops if no change is required.
+        /// </summary>
+        /// <remarks>
+        /// There are five possible interrupts from the state machine:
+        ///     * any transition of the Ready line;
+        ///     * OnCyl going low (i.e., seek complete);
+        ///     * the mid-sector interrupt;
+        ///     * end of the sector interrupt (completion).
+        /// If the header is in error, the command aborts and the completion
+        /// interrupt is skipped.  All interrupts are cleared by reading the
+        /// status register.
+        /// </remarks>
+        void SetInterrupt(bool raiseInterrupt, bool mid = false)
+        {
+            if (raiseInterrupt && !_interrupting)
+            {
+                if ((!mid && _flags.HasFlag(SMFlags.InterruptsOn)) ||
+                    (mid && !_flags.HasFlag(SMFlags.MidIntDisable)))
                 {
-                    ClearBusyState(true);
-                });
+                    _system.CPU.RaiseInterrupt(InterruptSource.HardDisk);
+                    _interrupting = true;
+                }
             }
-        }
-
-        /// <summary>
-        /// Unconditionally clear the Busy state.  Raise or clear the disk
-        /// interrupt, depending on the caller's situation.
-        /// </summary>
-        void ClearBusyState(bool raiseInterrupt = false)
-        {
-            _controllerBusy = false;
-
-            if (raiseInterrupt)
-            {
-                _system.CPU.RaiseInterrupt(InterruptSource.HardDisk);
-            }
-            else
+            else if (!raiseInterrupt && _interrupting)
             {
                 _system.CPU.ClearInterrupt(InterruptSource.HardDisk);
+                _interrupting = false;
             }
         }
 
+        #endregion
+
         /// <summary>
-        /// Disk command bits 2:0 go to the hard disk state machine.
+        /// Computes a rotational delay for the start of a sector from the last
+        /// index pulse.  Doesn't have to be terribly accurate, but adds realism. :-)
         /// </summary>
-        enum Command
+        ulong ComputeRotationalDelay(int sector)
         {
-            Idle = 0,           // No-op (clear command)
-            ReadChk = 1,        // Read Data - Check Header
-            Read = 2,           // Read Data - Read Header
-            WriteChk = 3,       // Write Data - Check Header
-            Write = 4,          // Write Data - Write Header
-            Format = 5,         // Format Write
-            Seek = 6,           // Seek (unused)
-            Reset = 7           // Reset controller
+            // t = one total disk rotation (in ns)
+            // d = space between pulses (in ns) = t / #sectors
+            var t = (long)Conversion.RPMtoNsec(_dib.SelectedDrive.Specs.RPM);
+            var d = (long)(t / _dib.SelectedDrive.Geometry.Sectors);
+
+            // cur = what sector the heads are over now (time now - last pulse) / d
+            // delay = (desired sector - cur) * d
+            var cur = (long)(_system.Scheduler.CurrentTimeNsec - _dib.SelectedDrive.LastIndexPulse) / d;
+            var delay = (cur - sector) * d;
+
+            Console.WriteLine($"Rot dly from cur={cur} to desired={sector} is {delay}");
+            return (ulong)(delay < 0 ? t - delay : delay);
+        }
+
+        // Debugging
+        public void DumpStatus()
+        {
+            // Pretty print the register names since they contain useful stuff
+            // In the Micropolis controller, only 12 of 16 are ever used
+            string[] RN = { "Zero", "Sync", "Unused", "Sector", "CylLo",
+                            "LH1lo", "LH2lo", "LH3lo", "Cyl/Hd",
+                            "LH1hi", "LH2hi", "LH3hi" };
+            string[] regs = new string[12];
+
+            for (int i = 0; i < regs.Length; i++)
+            {
+                regs[i] = $"{i:d2} {RN[i]}=0x{_registerFile[i]:x2}";
+            }
+
+            Console.WriteLine("Micropolis driver status:");
+            Console.WriteLine($"  SM command: {_command} (flags {_flags})");
+            Console.WriteLine($"  SM status:  {_status}  Interrupt: {_interrupting}");
+
+            Console.WriteLine($"Register file (pointer {_regSelect}):");
+            PERQemu.CLI.Columnify(regs, 2, 16);
+            Console.WriteLine();
+
+            _dib.DumpDIBStatus();
         }
 
         /// <summary>
-        /// Nibble bus select bits passed directly to the drive controller.
+        /// Status bits from the state machine as of NDsk7.Miasma/EIODisk.Micro.
+        /// This should work with the EIO based on POS G.6 and Accent S6 sources;
+        /// the names of the entries agree, even if the Accent microcode seems to
+        /// reverse codes 5 & 6 (and gives them all slightly different names).
+        /// See Docs/HardDisk.txt for more.
+        /// </summary>
+        enum SMStatus
+        {                           // Accent eiodisk.mic:
+            Idle = 0,               // DskDone
+            Busy = 1,               // DskLHFound
+            DataCRC = 2,            // DskDataErr
+            PHMismatch = 3,         // DskPHMismatch
+            LHMismatch = 4,         // DskLHMismatch
+            HeadCRC = 5,            // DskBadCmd
+            AbnormalError = 6,      // DskPHLHCRC
+            SMError = 7             // DskECCandCRC
+        }
+
+        /// <summary>
+        /// Disk command bits [2:0] go to the hard disk state machine.  Again,
+        /// there are way too many conflicting and contradictory sources and no
+        /// single, definitive command set, so this list is the best guess and
+        /// will have to be tested against each supported OS.
+        /// </summary>
+        enum SMCommand
+        {
+            Idle = 0,               // No-op (clear command)
+            Format = 1,             // Format Write
+            Write = 2,              // Write Data - Write Header
+            WriteChk = 3,           // Write Data - Check Header
+            FixPH = 4,              // Fix physical header (Feb83)
+            Read = 5,               // Read Data - Read Header
+            Unused = 6,             // Unused (Feb83)
+            ReadChk = 7             // Read Data - Check Header
+        }
+
+        /// <summary>
+        /// High bits of the command register are condition flags interpreted by
+        /// the state machine and/or directly by the hardware.
         /// </summary>
         [Flags]
-        enum NibbleSelect
+        enum SMFlags
         {
             None = 0x0,
-            BA0 = 0x08,
-            BusEn = 0x10,
-            BA1 = 0x20,
-            DriveSelect = 0x40,
-            Reset = 0x80
+            Enable = 0x08,          // Reset when L
+            InterruptsOn = 0x10,    // Disk Interrupt Enable when H
+            MidIntDisable = 0x20,   // T bit: Disable mid-cycle interrupts when H
+            BusEnable = 0x40,       // BusEnable to drive when H
+            SkipCRC = 0x80          // T2 bit: pass on CRC errors when H
         }
 
         /// <summary>
-        /// Micropolis drive/controller register select (combinations of BA1/BA0).
-        /// </summary>
-        enum RegSelect
-        {
-            CylReg = 0x0,
-            HdReg = 0x8,
-            CtlReg = 0x20,
-            None = 0x28
-        }
-
-        /// <summary>
-        /// Control register bits (when BA = 3).  Unused bits are assumed zero.
+        /// Bit positions of the hardware flags from the DIB (SMStatus word).
         /// </summary>
         [Flags]
-        enum Control
+        public enum HWFlags
         {
-            None = 0x0,
-            WriteEnable = 0x1,
-            TrackOffsetPlus = 0x4,
-            TrackOffsetMinus = 0x8,
-            FaultReset = 0x10,
-            Restore = 0x40,
-            PreampHighGain = 0x80
+            SMInt = 0x008,
+            SeekError = 0x010,
+            Fault = 0x020,
+            OnCyl = 0x040,
+            Ready = 0x080,
+            Index = 0x100
         }
-
-        /// <summary>
-        /// Status bits from the drive/controller.
-        /// </summary>
-        [Flags]
-        enum Status
-        {
-            Done = 0x0,
-            SectorNotFound = 0x1,
-            PhysicalCRCError = 0x2,
-            FileNumMismatch = 0x3,
-            LogBlockMismatch = 0x4,
-            LogHeaderCRCError = 0x5,
-            DataCRCError = 0x6,
-            Busy = 0x7,
-            Index = 0x08,
-            IllegalAddress = 0x10,
-            WriteFault = 0x20,
-            SeekComplete = 0x40,
-            UnitReady = 0x80
-        }
-
-        // The physical disk
-        HardDisk _disk;
-
-        // Registers
-        byte _head;
-        ushort _sector;
-        ExtendedRegister _cylinder;
-        ExtendedRegister _nibLatch;
-        NibbleSelect _nibCommand;
-        byte _nibSaved;
-
-        Command _command;
-
-        bool _seekComplete;
-        bool _controllerBusy;
-        bool _illegalAddr;
 
         // Work timing for reads/writes, assuming the interface's documented
         // 5.64Mbit/sec (705KB/sec) max transfer rate (MFM, not GCR encoding)
@@ -781,65 +654,347 @@ namespace PERQemu.IO.DiskDevices
         // info about how this is derived.
         readonly ulong BlockDelayNsec = 749 * Conversion.UsecToNsec;
 
-        SchedulerEvent _busyEvent;
+        // Registers
+        SMFlags _flags;
+        SMCommand _command;
+        SMStatus _status;
 
+        byte[] _registerFile;
+        int _regSelect;
+
+        // Cyl & Head are in the DIB (and reg file too)
+        byte _sector;
+        bool _interrupting;
+
+        // The physical disk and controller
+        DiskInterfaceBoard _dib;
+
+        SchedulerEvent _busyEvent;
         PERQSystem _system;
+
+
+        /// <summary>
+        /// Emulates the Micropolis DIB (ICL part #5155480?).  This is the 4-bit
+        /// nibble bus interposer board that converts Shugart 50-pin signaling from
+        /// the EIO to the "raw" Micropolis 1200-series 50-pin drive interface.  It
+        /// is NOT the M1220 intelligent controller.  See Docs/HardDisk.txt for more.
+        /// </summary>
+        internal class DiskInterfaceBoard
+        {
+            public DiskInterfaceBoard(MicropolisDiskController parent)
+            {
+                _control = parent;
+                _status = new HWStatus();
+                _status.DriveType = (int)DeviceType.Unused;      // until loaded
+                _disk = null;
+            }
+
+            public HardDisk SelectedDrive => _disk;
+            public HWStatus Status => _status;
+
+            public byte Unit => _driveSelect;
+            public ushort Cylinder => _cylinder;
+            public byte Head => _head;
+
+            public bool BusEnable
+            {
+                get { return _busEnable; }
+                set { _busEnable = value; CheckNibble(); }
+            }
+
+            public void Reset()
+            {
+                _disk?.Reset();
+
+                _busEnable = false;
+                _latchedBusEnable = false;
+                _latchedNibble = 0;
+                _latchedData = 0;
+                _driveSelect = 0;
+                _cylinder = 0;
+                _head = 0;
+
+                Log.Info(Category.HardDisk, "Micropolis DIB reset");
+            }
+
+            /// <summary>
+            /// Attach a drive.  For now, only a single unit is supported.
+            /// </summary>
+            public void AttachDrive(uint unit, StorageDevice dev)
+            {
+                if (_disk != null)
+                    throw new InvalidOperationException("MicropolisController only supports 1 disk");
+
+                if (dev.Info.Type != DeviceType.Disk8Inch && dev.Info.Type != DeviceType.DCIOMicrop)
+                    throw new InvalidOperationException($"Device type {dev.Info.Type} not supported by this controller");
+
+                _disk = dev as HardDisk;
+                _disk.SetSeekCompleteCallback(SeekCompletionCallback);
+
+                // A small detail
+                _status.DriveType = (int)DeviceType.Disk8Inch;
+
+                Log.Info(Category.HardDisk, "Attached disk '{0}'", _disk.Info.Name);
+            }
+
+            /// <summary>
+            /// Accept writes from the EIO over the "nibble bus".  Uses the current
+            /// state of the BusEnable pin to determine if a high or low half of the
+            /// selected register is to be updated, then latches that state.  If a
+            /// Restore operation is requested, informs the EIO?  Or does the state
+            /// machine programming handle that?  Who knows?
+            /// </summary>
+            public void WriteNibble(byte val)
+            {
+                // Split the byte into its parts:
+                _driveSelect = (byte)((val & 0xc0) >> 6);
+                _regSelect = (RegSelect)(val & 0x30);
+                var B = (byte)(val & 0x0f);
+
+                Log.Debug(Category.HardDisk,
+                          "Micropolis disk control: 0x{0:x2} (unit {1}, reg {2}, nib 0x{3:x})",
+                          val, _driveSelect, _regSelect, B);
+
+                if (_regSelect == RegSelect.Latch)
+                {
+                    _latchedNibble = B;
+                    Log.Debug(Category.HardDisk, "DIB: Latched nibble 0x{0:x}", B);
+                }
+
+                if (_driveSelect > 0) UpdateStatus();   // Signal Ready change
+            }
+
+            public void CheckNibble()
+            {
+                // Check for BusEnable transitions
+                var busEnRising = (!_latchedBusEnable && _busEnable);    // Rising edge this cycle
+                var busEnFalling = (_latchedBusEnable && !_busEnable);   // Falling edge
+
+                _latchedBusEnable = _busEnable;
+
+                switch (_regSelect)
+                {
+                    case RegSelect.CylReg:
+                        if (busEnFalling)
+                        {
+                            // Assign the low byte
+                            _cylinder |= _latchedData;
+                            Log.Detail(Category.HardDisk, "DIB: Cylinder = {0}", _cylinder);
+
+                            // So, uh, go do it?  That's what the Microp docs say...
+                            DoSeek();
+                        }
+                        break;
+
+                    case RegSelect.HdCylReg:
+                        if (busEnFalling)
+                        {
+                            // Add high nibble as Cylinder high bits
+                            _cylinder = (ushort)((_latchedData & 0xf0) << 4);
+
+                            // Set the head and initiate a seek (and/or head select)
+                            _head = (byte)(_latchedData & 0x0f);
+                            Log.Detail(Category.HardDisk, "DIB: Cylinder (hi) = {0}, Head = {1}", _cylinder, _head);
+
+                        }
+                        break;
+
+                    case RegSelect.CtrlReg:
+                        if (busEnFalling)
+                        {
+                            _command = (M1200Command)_latchedData;
+                            Log.Detail(Category.HardDisk, "DIB: Command is {0}", _command);
+
+                            // Only two command bits are significant; it's not clear if
+                            // both may be issued at once, but since we don't emulate
+                            // drive faults anyway it doesn't matter. :-)  Technically
+                            // these must be pulsed true for 250ns min to initiate.
+
+                            // Fault clear?  Then fall through?
+                            if (_command.HasFlag(M1200Command.FaultReset))
+                                _disk.FaultClear();
+
+                            // Restore the heads?
+                            if (_command.HasFlag(M1200Command.Restore))
+                                DoRestore();
+                        }
+                        break;
+
+                    case RegSelect.Latch:
+                        if (busEnRising)
+                        {
+                            _latchedData = (byte)(_latchedNibble << 4);
+                            Log.Detail(Category.HardDisk, "DIB: Latched hi data 0x{0:x}", _latchedNibble);
+                        }
+                        else if (busEnFalling)
+                        {
+                            _latchedData |= (byte)(_latchedNibble & 0xf);
+                            Log.Detail(Category.HardDisk, "DIB: Latched lo data 0x{0:x}", _latchedNibble);
+                        }
+                        break;
+                }
+            }
+
+            /// <summary>
+            /// Seek to track 0 (recalibrate).
+            /// </summary>
+            void DoRestore()
+            {
+                Log.Write(Category.HardDisk, "Starting Restore");
+                _status.OnCylinder = false;
+                _status.SeekError = false;
+                _disk.SeekTo(0);
+                _cylinder = 0;
+            }
+
+            /// <summary>
+            /// Initiate a head select and a seek, if necessary.
+            /// </summary>
+            void DoSeek()
+            {
+                if (_cylinder > _disk.Geometry.Cylinders - 1 || _head > _disk.Geometry.Heads - 1)
+                {
+                    Log.Write(Category.HardDisk, "Bad head or cylinder on seek!");
+                    _status.SeekError = true;
+                }
+                else
+                {
+                    // Do the head select
+                    if (_head != _disk.CurHead) _disk.HeadSelect(_head);
+
+                    // If a seek is required, start it
+                    if (_cylinder != _disk.CurCylinder)
+                    {
+                        Log.Write(Category.HardDisk, "Seek requested ({0} cyls)", _cylinder - _disk.CurCylinder);
+                        _status.OnCylinder = false;
+                        _status.SeekError = false;
+                        _disk.SeekTo(_cylinder);
+                    }
+                }
+            }
+
+            /// <summary>
+            // Seek completion for the Micropolis.
+            /// </summary>
+            public void SeekCompletionCallback(ulong skewNsec, object context)
+            {
+                // Update hardware status
+                _status.OnCylinder = (_disk.CurCylinder == _cylinder);
+                _status.SeekError = !_status.OnCylinder;
+
+                // Report OnCylinder change / seek completion
+                UpdateStatus();
+            }
+
+            /// <summary>
+            /// Update the status flags that come from the "hardware" and alert
+            /// the controller that something has changed.  This is not terribly
+            /// efficient.
+            /// </summary>
+            public void UpdateStatus()
+            {
+                _status.UnitReady = (_driveSelect == 0 && _disk != null && _disk.Ready);
+                _status.Index = _disk.Index;
+                _status.DriveFault = _disk.Fault;
+
+                Log.Info(Category.HardDisk, "DIB status change: 0x{0:x3}", _status.Current);
+                Log.Detail(Category.HardDisk, "DIB {0}", _status);  // hardware status string (debug)
+                _control.StatusChange();
+            }
+
+            /// <summary>
+            /// Hardware status bits passed through from the drive (or the DIB) and
+            /// merged by the controller into the status word returned to the PERQ.
+            /// For my sanity, the active low bits are returned as such for the
+            /// microcode's interpretation but are positive logic here for ease in
+            /// debugging.  "NotTrk0orNotSkEr"?  Seriously.  Result is pre-shifted
+            /// left by four bits so it can be merged directly.
+            /// </summary>
+            public struct HWStatus
+            {
+                public int DriveType;       // <300> 01=Undefined, 11=Micropolis
+                public bool Index;          // <100> from drive
+                public bool UnitReady;      // <080> aka DskFault or NotFault
+                public bool OnCylinder;     // <040> aka DskOnCyl or NotOnCyl
+                public bool DriveFault;     // <020> aka DskReady or NotUnitReady
+                public bool SeekError;      // <010> aka DskSeekErr or NotTrk0orNotSker
+
+                public int Current
+                {
+                    get
+                    {
+                        return (DriveType << 9) |
+                            (Index ? (int)HWFlags.Index : 0) |
+                            (UnitReady ? 0 : (int)HWFlags.Ready) |     // active L
+                            (OnCylinder ? 0 : (int)HWFlags.OnCyl) |    // active L
+                            (DriveFault ? 0 : (int)HWFlags.Fault) |    // active L
+                            (SeekError ? 0 : (int)HWFlags.SeekError);  // active L
+                    }
+                }
+
+                public override string ToString()
+                {
+                    return $"HWStatus: Idx={Index} Rdy={UnitReady} OnCyl={OnCylinder} Fault={DriveFault} SeekErr={SeekError}";
+                }
+            }
+
+            // Debugging
+            public void DumpDIBStatus()
+            {
+                Console.WriteLine("Micropolis DIB status:");
+                Console.WriteLine($"  {_status}");
+                Console.WriteLine($"  Command byte: {_command}");
+                Console.WriteLine($"  Current Cyl:  {_cylinder}  Head: {_head}  BusEn: {BusEnable}");
+                Console.WriteLine($"  Latched byte: 0x{_latchedData:x2}  Latched BusEn: {_latchedBusEnable}");
+            }
+
+            /// <summary>
+            /// Micropolis drive/controller register select (combinations of BA1/BA0).
+            /// These are the definitions mapped through to the M1203 (raw drive)!
+            /// </summary>
+            enum RegSelect
+            {
+                CylReg = 0x00,      //  BA0 - Cylinder<7:0>
+                HdCylReg = 0x20,    //  BA1 - Cylinder<11:8> + Head<3:0>
+                CtrlReg = 0x10,     //  BA2 - Control reg (bits below)
+                Latch = 0x30        //  BA3 - Nibble to byte latches
+            }
+
+            /// <summary>
+            /// Control register bits (when BA = 2).  Unused bits are assumed zero.
+            /// </summary>
+            [Flags]
+            enum M1200Command
+            {
+                None = 0x0,
+                WriteEnable = 0x1,
+                Unused2 = 0x2,
+                TrackOffsetPlus = 0x4,
+                TrackOffsetMinus = 0x8,
+                FaultReset = 0x10,
+                Unused20 = 0x20,
+                Restore = 0x40,
+                PreampHighGain = 0x80
+            }
+
+            // Local registers
+            byte _driveSelect;
+            ushort _cylinder;
+            byte _head;
+
+            // Nibble in progress
+            RegSelect _regSelect;
+            byte _latchedNibble;
+            byte _latchedData;
+            bool _busEnable;
+            bool _latchedBusEnable;
+
+            MicropolisDiskController _control;
+            M1200Command _command;
+            HWStatus _status;
+
+            // Drive(s) attach here!
+            HardDisk _disk;
+        }
     }
 }
-
-/*
-    Notes:
-
-    This is the EIO/PERQ-2 version which is described in the Rose/EIO document.
-
-    The bit assignments for DSKCTL<7:0> (port 323/0xd3) are:
-     
-        DSKCTL<7>:  DriveSelect<0>
-        DSKCTL<6>:  DriveSelect<1>
-        DSKCTL<5>:  BA<0>     \_______  RegSelect bits
-        DSKCTL<4>:  BA<1>     /
-        DSKCTL<3>:  B<3>      \
-        DSKCTL<2>:  B<2>       \______  Nibble bus
-        DSKCTL<1>:  B<1>       /
-        DSKCTL<0>:  B<0>      /
-
-    The bit assignments for SMCTL<7:0> (port 322/0xd2) are:
-     
-        SMCTL<7>:   T2 H - Makes CRC errors non-fatal (proposed)
-        SMCTL<6>:   BusEn H - latch data into drive control electronics via DSKCTL<5:0>
-        SMCTL<5>:   T H - Enables "DB" interrupt
-	    SMCTL<4>:   Interrupts On H - Enable all interrupts to PERQ
-	    SMCTL<3>:   Reset L - Reset disk controller when Low; must be set High
-						     before doing any disk operations
-	    SMCTL<2>:   F2      \
-	    SMCTL<1>:   F1       >--------  Command bits
-	    SMCTL<0>:   F0      /
-
-
-    SMSTAT (port 123/0x53) contains 11 bits, SMSTAT<10:0> as follows:
-     
-        SMSTAT<10>: DiskType<1>         - not mentioned in ucode
-        SMSTAT<9>:  DiskType<0>
-        SMSTAT<8>:  Index/2  (?)
-
-        SMSTAT<7>:  Unit Ready L    
-        SMSTAT<6>:  On Cylinder L
-        SMSTAT<5>:  Fault L
-
-        SMSTAT<4>:  Seek Error L
-        SMSTAT<3>:  State Machine Interrupt H
-
-        SMSTAT<2>:  Status<2>   \
-        SMSTAT<1>:  Status<1>    >----  Status bits
-        SMSTAT<0>:  Status<0>   /
-
-    SMSTAT<3>, SMSTAT<4>, SMSTAT<6>, and SMSTAT<7> also cause an interrupt
-    to PERQ when asserted. Unit Ready, SMSTAT<7> will also cause an interrupt
-    if de-asserted.SMCTL<4> must be High to enable interrupts to PERQ.
-
-    The new hard disk controller uses port 320 (0xd0) to set the register
-    select pointer; subsequent writes to port 321 (0xd1) then store a byte
-    and autoincrement for the next one.  This replaces the individual ports
-    called out by the Shugart/IOB where each port is addressed directly.
-    
-*/

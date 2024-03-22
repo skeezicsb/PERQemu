@@ -63,7 +63,7 @@ namespace PERQemu.IO.Z80
             _channels[0].Reset();
             _channels[1].Reset();
 
-            Log.Debug(Category.SIO, "Reset");
+            Log.Debug(Category.SIO, "Unit {0} reset", _unit);
         }
 
         public string Name => $"Z80 SIO {_unit}";

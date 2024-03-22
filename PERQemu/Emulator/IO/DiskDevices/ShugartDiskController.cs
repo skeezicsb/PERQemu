@@ -521,6 +521,19 @@ namespace PERQemu.IO.DiskDevices
             }
         }
 
+        /// <summary>
+        /// Dump internal state to the console.
+        /// </summary>
+        public void DumpStatus()
+        {
+            var stat = DiskStatus;
+
+            Console.WriteLine("Shugart hard drive status:");
+            Console.WriteLine($"  Command: {_command}  Busy: {_controllerBusy}");
+            Console.WriteLine($"  Seek command:  {_seekCommand}  State: {_seekState}");
+            Console.WriteLine($"  Disk status:   0x{stat:x4} ({(Status)stat})");
+        }
+
         enum SeekState
         {
             WaitForStepSet = 0,

@@ -85,8 +85,7 @@ namespace PERQemu.IO
                      system.Config.GetDrivesOfType(DeviceType.Disk5Inch).Length > 0)
             {
                 // A PERQ-2/T2 or 2/T4
-                // _hardDiskController = new MFMDiskController(system);
-                throw new UnimplementedHardwareException("MFMDiskController not yet implemented");
+                _hardDiskController = new MFMDiskController();
             }
             else
             {
@@ -128,7 +127,7 @@ namespace PERQemu.IO
         {
             switch (port)
             {
-                case 0x53:      // DskStat (SMStat): read disk status reg
+                case 0x53:      // SMStat: read disk status reg
                     return _hardDiskController.ReadStatus();
 
                 case 0x54:      // 124 EioZ80In: dismiss Z80 interrupt
@@ -157,7 +156,10 @@ namespace PERQemu.IO
 
                 // Z80 control register
                 case 0xc5:
-                    // Todo: if bit 3 set, inform the PDMA
+                    // Note: if bit 3 set, DMA address generation is disabled for
+                    // the ExtA channel.  So far none of the known optional I/O
+                    // devices use that functionality.  Audre?  MLO?  It seems very
+                    // unlikely that emulation of this feature will ever be needed.
                     _z80System.WriteStatus(value);
                     break;
 

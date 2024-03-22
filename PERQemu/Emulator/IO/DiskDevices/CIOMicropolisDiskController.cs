@@ -29,19 +29,10 @@ namespace PERQemu.IO.DiskDevices
     /// Represents a Micropolis 8" hard drive controller which manages disk
     /// drives in the Disk8Inch class.  This is implemented in the PERQ as an
     /// adapter from the SA4000 interface to the Micropolis 1200-series drives.
+    /// This version of the driver attempts to suss out the CIO version of the
+    /// controller, for which there is almost no documentation or surviving
+    /// software support.
     /// </summary>
-    /// <remarks>
-    /// Although the 1220 controller can manage a string of up to four drives,
-    /// there doesn't appear to be any software support for setting the Drive
-    /// Select value.  This statement in a recently unearthed document also
-    /// corrects my misconception that the ICL cabinet could house two drives:
-    /// 
-    ///     "None of the PERQ cabinets has enough space for mounting more
-    ///      than one 8" drive internally."
-    ///         -- config.doc Rev 3, Steve Clark 18 Dec 84
-    /// 
-    /// As with the Shugart, emulation for now is limited to a single drive. :-(
-    /// </remarks>
     public sealed class CIOMicropolisDiskController : IStorageController
     {
 
@@ -687,6 +678,11 @@ namespace PERQemu.IO.DiskDevices
             {
                 _system.CPU.ClearInterrupt(InterruptSource.HardDisk);
             }
+        }
+
+        public void DumpStatus()
+        {
+            throw new NotImplementedException();
         }
 
         /// <summary>

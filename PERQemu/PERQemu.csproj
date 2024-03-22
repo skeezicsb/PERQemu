@@ -219,6 +219,7 @@
     <Compile Include="UI\Output\Page.cs" />
     <Compile Include="UI\Output\PNGFormatter.cs" />
     <Compile Include="UI\Output\TIFFFormatter.cs" />
+    <Compile Include="Emulator\IO\DiskDevices\MFMDiskController.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="COPYING.txt" />
@@ -722,6 +723,8 @@
     <None Include="Resources\printing-3.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="Docs\Hardware References\EIO_Disk_Quick_Feb83.txt" />
+    <None Include="Docs\HardDisks.txt" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">

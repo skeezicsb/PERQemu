@@ -403,12 +403,6 @@ namespace PERQemu
                         }
                     }
                 }
-                else
-                {
-                    // fixme: this shouldn't happen if our state machine is complete... 
-                    // so make this an error or just remove it once finally debugged
-                    Log.Error(Category.Controller, "What, bad steps!? Key {0} yeilded no value!", key);
-                }
             }
             else
             {
@@ -535,7 +529,19 @@ namespace PERQemu
                         new Transition(() => { SetState(RunState.ShuttingDown); }, RunState.Off) }
                 },
                 {
+                    new SMKey(RunState.RunInst, RunState.Paused), new List<Transition> {
+                        new Transition(() => { SetState(RunState.Paused); }, RunState.Paused) }
+                },
+                {
                     new SMKey(RunState.RunInst, RunState.Halted), new List<Transition> {
+                        new Transition(() => { SetState(RunState.Halted); }, RunState.Halted) }
+                },
+                {
+                    new SMKey(RunState.RunZ80Inst, RunState.Paused), new List<Transition> {
+                        new Transition(() => { SetState(RunState.Paused); }, RunState.Paused) }
+                },
+                {
+                    new SMKey(RunState.RunZ80Inst, RunState.Halted), new List<Transition> {
                         new Transition(() => { SetState(RunState.Halted); }, RunState.Halted) }
                 },
                 {

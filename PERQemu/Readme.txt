@@ -441,20 +441,22 @@ v1.0 - TBD
   - Working audio output :-)
 
 v0.9 - TBD
+  Fill in the final pieces:
+  - Expand available media library
+  - Full-featured Ethernet
+  - 24-bit "T4" model with larger memory
+
+v0.7 - TBD
   Leverage the new architecture to roll out new models, new peripherals and
   open up the full range of available operating systems!
   - PERQ-2 EIO emulation support: expanded IO Board with faster Z80, second
     serial port, RTC chip, support for two hard disks
   - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
-  - 24-bit "T4" model with larger memory
 
-v0.7 - TBD
-  Additional I/O Options once the baseline devices are complete:
-  - Ethernet!
-  - Expand available media library!
-  - (Progress toward) EIO/PERQ-2
+v0.5.6 - Experimental branch (ongoing)
+  - Progress toward EIO/PERQ-2
 
-v0.5.5 - Experimental branch (v0.7.0 pre-release)
+v0.5.5 - Main branch (v0.7.0 pre-release)
   - Ethernet running (but requires root/admin access)
   - Patch for Turkish keyboard in CLI
   - Limited Micropolis 8" disk support
@@ -577,6 +579,7 @@ v0.1 - First public release.
 
 Update history:
 
+3/21/2024 - skeezicsb - v0.5.6 (experimental)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0
 1/17/2023 - skeezicsb - v0.4.9 (main)

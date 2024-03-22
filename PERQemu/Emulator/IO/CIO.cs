@@ -91,7 +91,8 @@ namespace PERQemu.IO
         }
 
         /// <summary>
-        /// Writes a word to the given I/O port.
+        /// Writes a word to the given I/O port.  Same as IOB, with one extra
+        /// port for the Micropolis.
         /// </summary>
         public override void IOWrite(byte port, int value)
         {
