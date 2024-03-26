@@ -8,6 +8,27 @@ avoid wasting precious time scrolling to the end. :-)
 
 March, 2024:
 
+    8. All kids love Log.  Rework the debug file rotation since pushing it too
+    hard with a TON of debugging output turnt up kept hard crashing Mono, so I
+    had to address the thread crap (AND NO, IT STILL AIN'T RIGHT) but as long as
+    it grinds out the info I need to pinpoint where the PERQ-2 boot process is
+    binding up I'll call it a win. :-P  Speaking of which, PERQ-Z80 DMA device
+    added, refinements to the Z80 interrupts/DMAC, more bit fiddling to get the
+    finicky floppy boot sequence to complete... inching closer to a potential
+    bare metal POS G install on a PERQ-2/8" Micropolis.  Snapshot to checkpoint
+    progress and for regression testing on Windows/Linux.
+
+    7. Update the PERQ<->Z80 FIFOs to use a regular lock to protect from cross-
+    thread access (like the IOB/CIO latches, the EIO FIFOs talk to both CPU and
+    Z80).  Rework/expand/correct some finer details of the Am9519 and i8237,
+    plus a small EIO fix for the floppy.  Um... attempted floppy boot of a PERQ2
+    Micropolis configuration now makes it to 157 on the DDS.  Holy crap! :-)
+
+    6. Plumbed in most of the i8237 DMA chip and created the special PERQ DMA
+    hardware.  This is a _second_ set of FIFOs that allow memory-to-memory
+    transfers with no CPU intervention.  Add some debug commands to improve
+    visibility into the DMAC internals and hard disk drivers.
+
     5. Micropolis 8" DIB showing signs of life: first little green shoots of
     PERQ-2 support pushing up through the ground.  Am9519 is fielding Z80 IRQs,
     the updated PERQ/Z80 FIFOs seem to be exchanging data, and the VT-100 style
@@ -246,4 +267,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Thu Mar 21 20:41:51 PDT 2024
+Last update: skeezics    Mon Mar 25 21:02:55 PDT 2024

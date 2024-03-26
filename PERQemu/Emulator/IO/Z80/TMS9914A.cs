@@ -47,8 +47,8 @@ namespace PERQemu.IO.Z80
 
             // For EIO, these are signals wired directly to the bus transceivers
             // but we handle them here (or ignore them, for now :-)
-            _ports[8] = SCaddr;
-            _ports[9] = PEaddr;
+            _ports[8] = SCaddr;     // GPControl  0 = Not controller, 1 = Controller
+            _ports[9] = PEaddr;     // GPTriState 0 = Open collector data, 1 = Tristate
 
             // Put ourselves on the bus!
             _bus.AddDevice(this);
@@ -102,6 +102,7 @@ namespace PERQemu.IO.Z80
 
         public string Name => "TMS9914A";
         public byte[] Ports => _ports;
+
         public byte? ValueOnDataBus => 0x22;            // GPIVEC (IOB/CIO)
         public bool IntLineIsActive => _interruptActive;
 

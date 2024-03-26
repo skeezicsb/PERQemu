@@ -22,6 +22,7 @@ using System.IO;
 using System.Threading;
 using System.Diagnostics;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
 namespace PERQemu
@@ -136,8 +137,6 @@ namespace PERQemu
             _fileLevel = Severity.Info;         // A bit more info to the file
             _logToFile = false;                 // Log only to the console
 
-            _logSize = 1024 * 1024 * 10;        // Default log size is 10MB?
-            _logLimit = 99;                     // Keep 100 files? (0..99)
             _logDirectory = Paths.OutputDir;
             _currentFile = string.Empty;
 
@@ -156,10 +155,13 @@ namespace PERQemu
 #if TRACING_ENABLED
             _loggingAvailable = true;
 
-            _log = null;
-            _turnstile = -1;
+            _logSize = 1024 * 1024 * 10;        // Default log size is 10MB?
+            _logLimit = 99;                     // Keep 100 files? (0..99)
             _logFilePattern = "debug{0:d2}.log";
             _currentFileNum = 0;
+
+            _log = null;
+            _queue = new ConcurrentQueue<string>();
 
             Initialize();
 #else
@@ -302,7 +304,8 @@ namespace PERQemu
             if ((s >= _minLevel) && ((c & _categories) != 0) || (c == Category.All))
 #endif
             {
-                var output = string.Format(c != Category.All ? c.ToString() + ": " + fmt : fmt, args);
+                var catfmt = (c == Category.All) ? fmt : c.ToString() + ": " + fmt;
+                var output = (args == null) ? catfmt : string.Format(catfmt, args);
 
                 // Cut down on the noise: things like the processor looping to
                 // check an I/O status byte spews a lot... summarize that (but
@@ -366,44 +369,9 @@ namespace PERQemu
                 if (_logToFile && s >= _fileLevel)
                 {
                     var me = Thread.CurrentThread.ManagedThreadId;
+                    var stamped = $"{DateTime.Now:yyyyMMdd HHmmss.ffff} [{me}]: {_lastOutput}";
 
-                    // Does the file need to be rotated?
-                    if (Interlocked.Read(ref _turnstile) < 0 && _log.BaseStream.Length > _logSize)
-                    {
-                        // Make sure only one thread does it!
-                        if (Interlocked.Exchange(ref _turnstile, _currentFileNum) < 0)
-                        {
-                            RotateFile();
-
-                            // While we're here...
-                            _log.WriteLine("{0:yyyyMMdd HHmmss.ffff} [{1}]: {2}",
-                                           DateTime.Now, me, output);
-
-                            // Reset for next time!
-                            Interlocked.Exchange(ref _turnstile, -1);
-
-                            return;
-                        }
-                    }
-
-                    // If the rotation is in progress, hold up here
-                    if (Interlocked.Read(ref _turnstile) >= 0)
-                    {
-                        while (Interlocked.Read(ref _turnstile) >= 0)
-                        {
-                            Thread.SpinWait(10);
-                        }
-                    }
-
-                    // Write it, lazy & slow (_log is Synchronized)
-                    // But this is still wrong, results in corrupt log entries,
-                    // and someday I should fix it but right now it's enough to
-                    // help with the debugging.  At least until (under heavy
-                    // load) it blows up Mono and crashes.  So much for relying
-                    // on the "synchronized" stream.  Time for a more methodical
-                    // locking approach, or per-thread streams and no locking?
-                    _log.WriteLine("{0:yyyyMMdd HHmmss.ffff} [{1}]: {2}",
-                                   DateTime.Now, me, output);
+                    _queue.Enqueue(stamped);
                 }
 #endif
             }
@@ -454,6 +422,9 @@ namespace PERQemu
 
             // Ready for if/when file logging is enabled
             _currentFile = Paths.BuildOutputPath(string.Format(_logFilePattern, _currentFileNum));
+
+            // Create a timer for the log flush callback
+            _logTimerHandle = HighResolutionTimer.Register(100d, FlushQueue, "Logger");
         }
 
         static int GetFileNum(string filename)
@@ -475,19 +446,46 @@ namespace PERQemu
 
             if (enable)
             {
+                // Open log and start the timer
                 _log = File.AppendText(_currentFile);
-                Stream.Synchronized(_log.BaseStream);
+                HighResolutionTimer.Enable(_logTimerHandle, true);
                 return true;
             }
 
             if (_log != null)
             {
-                _log.Flush();       // A bit of overkill, hmm?
+                // Stop timer, flush entries, and close the file EMPHATICALLY :-]
+                HighResolutionTimer.Enable(_logTimerHandle, false);
+                FlushQueue(new HRTimerElapsedEventArgs(0d));
+
+                _log.Flush();
                 _log.Close();
                 _log.Dispose();
                 _log = null;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Flush queued messages to the file, rotating if necessary.  Runs as a
+        /// timer callback on the main thread (so no worries about concurrency
+        /// when rotating the file).
+        /// </summary>
+        static void FlushQueue(HRTimerElapsedEventArgs a)
+        {
+        	if (_log == null) return;
+
+        	string line;
+
+        	while (_queue.TryDequeue(out line))
+        	{
+        		if (_log.BaseStream.Length > _logSize)
+        		{
+        			RotateFile();
+        		}
+
+        		_log.WriteLine(line);
+        	}
         }
 
         /// <summary>
@@ -506,20 +504,23 @@ namespace PERQemu
 
             // On rotate, overwrite rather than append
             _log = File.CreateText(_currentFile);
-            Stream.Synchronized(_log.BaseStream);
         }
-#endif
 
         /// <summary>
         /// Last one out, turn off the lights.
         /// </summary>
-        [Conditional("TRACING_ENABLED")]
         public static void Shutdown()
         {
             ToConsole = false;
             WriteInternal(Severity.None, Category.All, "PERQemu shutting down at {0}", DateTime.Now);
+            FlushQueue(new HRTimerElapsedEventArgs(0d));
             ToFile = false;
         }
+#else
+        public static void Shutdown()
+        {
+        }
+#endif
 
         /// <summary>
         /// Sets up a dictionary for mapping Categories to console colors,
@@ -628,14 +629,15 @@ namespace PERQemu
         static string _currentFile;
         static string _lastOutput;
         static int _repeatCount;
-        static int _logSize;
-        static int _logLimit;
 
 #if TRACING_ENABLED
+        static int _logSize;
+        static int _logLimit;
         static string _logFilePattern;
         static int _currentFileNum;
 
-        static long _turnstile;
+        static int _logTimerHandle;
+        static ConcurrentQueue<string> _queue;
         static StreamWriter _log;
 #endif
     }

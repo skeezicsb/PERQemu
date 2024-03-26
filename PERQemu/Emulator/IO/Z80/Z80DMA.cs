@@ -19,6 +19,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace PERQemu.IO.Z80
 {
@@ -39,7 +40,10 @@ namespace PERQemu.IO.Z80
         {
             _memoryBus = memoryBus;
             _ioBus = ioBus;
+
             _baseAddress = baseAddress;
+            _ports = new byte[] { _baseAddress };
+
             _wr = new byte[7];
             _statusData = new Queue<byte>();
         }
@@ -73,8 +77,10 @@ namespace PERQemu.IO.Z80
         }
 
         public string Name => "Z80 DMA";
-        public byte[] Ports => new byte[] { _baseAddress };
-        public byte? ValueOnDataBus => _interruptVector;    // TODO: implement dynamic vector based on type
+        public byte[] Ports => _ports;
+
+        // Todo: implement dynamic vector based on type?
+        public byte? ValueOnDataBus => _interruptVector;
         public bool IntLineIsActive => _interruptEnabled && _interruptActive;
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
@@ -89,21 +95,25 @@ namespace PERQemu.IO.Z80
             _deviceB = device;
         }
 
-        public void Clock()
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Clock()
         {
-            // TODO: handle "Interrupt on RDY" option
+            // Todo: handle "Interrupt on RDY" option?
 
             // If DMA is in progress, make it happen
             if (_enableDMA)
             {
-                _state = RunStateMachine();
+                return RunStateMachine();
             }
+
+            return 0;
         }
 
         /// <summary>
         /// Run the DMA state machine.  We have to split the transaction into
         /// two bus cycles because the Z80 can't do two memory/port operations
-        /// between instructions; data corruption results.
+        /// between instructions; data corruption results.  Returns the number
+        /// of clock cycles the operation required.
         /// </summary>
         /// <remarks>
         /// DANGER, Will Robinson!  This extremely simplistic first hack is to
@@ -113,9 +123,10 @@ namespace PERQemu.IO.Z80
         /// transaction this house of cards collapses.  If it solves the problem
         /// I'll figure out how to make it more robust...
         /// </remarks>
-        DMAState RunStateMachine()
+        int RunStateMachine()
         {
             DMAState nextState = _state;
+            var cycles = 0;
 
             // Only here if enabled, so jump right in
             if (_state == DMAState.Idle)
@@ -167,10 +178,12 @@ namespace PERQemu.IO.Z80
                         if (sourceIsIO)
                         {
                             _data = _ioBus[sourceAddress];
+                            cycles = 4;
                         }
                         else
                         {
                             _data = _memoryBus[sourceAddress];
+                            cycles = 3;
                         }
 
                         Log.Detail(Category.Z80DMA,
@@ -190,10 +203,12 @@ namespace PERQemu.IO.Z80
                         if (destIsIO)
                         {
                             _ioBus[destAddress] = _data;
+                            cycles = 4;
                         }
                         else
                         {
                             _memoryBus[destAddress] = _data;
+                            cycles = 3;
                         }
 
                         // Ready active
@@ -264,7 +279,9 @@ namespace PERQemu.IO.Z80
                     }
                     break;
             }
-            return nextState;
+
+            _state = nextState;
+            return cycles;
         }
 
         /// <summary>
@@ -583,6 +600,12 @@ namespace PERQemu.IO.Z80
             }
         }
 
+        // Debugging
+        public void DumpStatus()
+        {
+            Console.WriteLine("Z80 DMA status:  not available");
+        }
+
         enum DMAState
         {
             Idle = 0,
@@ -678,39 +701,43 @@ namespace PERQemu.IO.Z80
             new RegisterDecodes(0x83, 0x83)     // WR6
         };
 
-        Z80IOBus _ioBus;
-        Z80MemoryBus _memoryBus;
-        IDMADevice _deviceA;
-        IDMADevice _deviceB;
-        byte _baseAddress;
-
-        bool _writeBaseRegister;
-        int _baseRegister;
-
-        byte[] _wr;
-
-        ushort _portAddressAInit;
-        ushort _portAddressBInit;
-        ushort _blockLength;
-        byte _maskByte;
-        byte _matchByte;
-        byte _interruptControl;
-        byte _pulseControl;
-        byte _interruptVector;
-        byte _data;
 
         DMAState _state;
-        RR0 _status;
-        ReadMask _statusMask;
-        Queue<byte> _statusData;
-
-        bool _enableDMA;
-        bool _interruptActive;
-        bool _interruptEnabled;
+        IDMADevice _deviceA;
+        IDMADevice _deviceB;
 
         // Current port addresses
         ushort _portAddressA;
         ushort _portAddressB;
         ushort _byteCounter;
+
+        ushort _portAddressAInit;
+        ushort _portAddressBInit;
+        ushort _blockLength;
+
+        byte _data;
+        byte _maskByte;
+        byte _matchByte;
+        byte _pulseControl;
+        byte _interruptControl;
+        byte _interruptVector;
+
+        bool _enableDMA;
+        bool _interruptActive;
+        bool _interruptEnabled;
+
+        byte[] _wr;
+        bool _writeBaseRegister;
+        int _baseRegister;
+
+        RR0 _status;
+        ReadMask _statusMask;
+        Queue<byte> _statusData;
+
+        Z80IOBus _ioBus;
+        Z80MemoryBus _memoryBus;
+
+        byte _baseAddress;
+        byte[] _ports;
     }
 }

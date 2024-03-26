@@ -18,7 +18,7 @@
 //
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 
 using PERQemu.Processor;
 
@@ -39,23 +39,22 @@ namespace PERQemu.IO.Z80
         public PERQToZ80FIFO(PERQSystem system)
         {
             _system = system;
-            _fifo = new ConcurrentQueue<byte>();
+            _lock = new object();
+            _fifo = new Queue<byte>();
             _interruptEnabled = false;
         }
 
         public void Reset()
         {
-            byte punt;
-
             // Clear the decks
-            while (!_fifo.IsEmpty) _fifo.TryDequeue(out punt);
+            _fifo.Clear();
 
             // Assume this resets as well
             _interruptEnabled = false;
             _perqIntRaised = false;
             _z80IntRaised = false;
 
-            Log.Debug(Category.FIFO, "PERQ->Z80 FIFO reset");
+            Log.Debug(Category.FIFO, "{0} reset", Name);
         }
 
         public string Name => "PERQ->Z80 FIFO";
@@ -64,7 +63,10 @@ namespace PERQemu.IO.Z80
         public byte? ValueOnDataBus => null;        // Supplied by the Am9519
         public bool IntLineIsActive => _z80IntRaised;
 
-        public bool IsReady => _fifo.IsEmpty;
+        public bool IsReady
+        {
+            get { lock (_lock) { return _fifo.Count == 0; } }
+        }
 
         /// <summary>
         /// PERQ access to the enabled flag from the IO bus control register.
@@ -106,17 +108,21 @@ namespace PERQemu.IO.Z80
                 _perqIntRaised = false;
             }
 
-            if (_fifo.Count > 16)
+            lock (_lock)
             {
-                Log.Warn(Category.FIFO, "PERQ overran FIFO, byte 0x{0:x2} will be lost", value);
-                return;
+                if (_fifo.Count < 16)
+                {
+                    // Queue the byte
+                    _fifo.Enqueue((byte)value);
+                    _z80IntRaised = true;
+
+                    Log.Detail(Category.FIFO, "PERQ wrote byte 0x{0:x2} to FIFO ({1} bytes)", value, _fifo.Count);
+                }
+                else
+                {
+                    Log.Warn(Category.FIFO, "PERQ overran FIFO, byte 0x{0:x2} will be lost", value);
+                }
             }
-
-            // Queue the byte
-            _fifo.Enqueue((byte)value);
-            _z80IntRaised = true;
-
-            Log.Detail(Category.FIFO, "PERQ wrote byte 0x{0:x2} to FIFO ({1} bytes)", value, _fifo.Count);
         }
 
         //
@@ -131,25 +137,29 @@ namespace PERQemu.IO.Z80
         {
             byte value = 0;
 
-            if (!_fifo.TryDequeue(out value))
+            lock (_lock)
             {
-                _z80IntRaised = false;
-                Log.Warn(Category.FIFO, "Z80 read from empty FIFO, returning 0");
-                return 0;
-            }
-
-            Log.Detail(Category.FIFO, "Z80 read byte 0x{0:x2} from FIFO ({1} bytes left)", value, _fifo.Count);
-
-            // Is the FIFO empty?  Then interrupt if the PERQ has asked us to
-            // and deassert the Z80 IRQ (no more data to read)
-            if (_fifo.IsEmpty)
-            {
-                _z80IntRaised = false;
-
-                if (_interruptEnabled)
+                if (_fifo.Count > 0)
                 {
-                    _system.CPU.RaiseInterrupt(InterruptSource.Z80DataIn);
-                    _perqIntRaised = true;
+                    value = _fifo.Dequeue();
+                    Log.Detail(Category.FIFO, "Z80 read byte 0x{0:x2} from FIFO ({1} bytes left)", value, _fifo.Count);
+                }
+                else
+                {
+                    Log.Warn(Category.FIFO, "Z80 read from empty FIFO, returning 0");
+                }
+
+                // Is the FIFO empty?  Then interrupt if the PERQ has asked us to
+                // and deassert the Z80 IRQ (no more data to read)
+                if (_fifo.Count == 0)
+                {
+                    _z80IntRaised = false;
+
+                    if (_interruptEnabled)
+                    {
+                        _system.CPU.RaiseInterrupt(InterruptSource.Z80DataIn);
+                        _perqIntRaised = true;
+                    }
                 }
             }
 
@@ -163,14 +173,15 @@ namespace PERQemu.IO.Z80
             throw new NotImplementedException("Z80 write to read-only FIFO");
         }
 
-        // debug
+
+        // Debugging
         public void DumpFifo()
         {
             Console.WriteLine($"PERQ->Z80 FIFO: IRQ enabled={_interruptEnabled}");
 
             Console.Write("PERQ->Z80 FIFO: ");
 
-            if (_fifo.IsEmpty)
+            if (_fifo.Count == 0)
             {
                 Console.WriteLine("is empty.");
                 return;
@@ -182,48 +193,16 @@ namespace PERQemu.IO.Z80
             Console.WriteLine();
         }
 
-        PERQSystem _system;
-        ConcurrentQueue<byte> _fifo;
+
+        Queue<byte> _fifo;
+        readonly object _lock;
 
         bool _interruptEnabled;
         bool _perqIntRaised;
         bool _z80IntRaised;
 
         byte[] _ports = { 0x70 };  // PERQ.IN
+
+        PERQSystem _system;
     }
 }
-
-/*
-    Notes:
-    WRITE == PERQ TO EIO, READ == EIO to CPU (from EIO.doc)
-
-    On the 225, IR means the memory is FULL; OR means it is NOT empty
-
-    (PERQ)IOB -> (Z80)D produces PERQ INT when the FIFO is NOT EMPTY (OR),
-    meaning the PERQ has sent a byte.  IR is not used.
-
-    If the PtoZ FIFO is NOT empty:
-        PERQ INT is true H; this is the Am9519 IREQ1 line 
-        This reasserts the Z80 interrupt until all the bytes are read
-        UPROC RDY is false L; this tells the PERQ the Z80 hasn't drained the data
-
-    If the PtoZ FIFO IS empty:
-        PERQ INT is false; no Z80 IRQ
-        UPROC RDY is true, reflected in the and UPROC RDY ENB are both true, assert UPROC RDY INT
-        (otherwise de-assert UPROC RDY INT)
-
-    UPROC RDY is bit 6 in the Z80's status register, AND bit 7 in the PERQ's
-
-    When the Z80 reads a byte, PERQ INT and UPROC RDY INT are dismissed, then
-    reasserted if the FIFO isn't yet empty.  For efficiency, the PERQ interrupt
-    doesn't need to be cleared/reasserted; because the PERQ INT is the highest
-    priority on the Z80 side it'll immediately be retriggered in the next Z80
-    instruction cycle.
-
-    THUS:   IsReady tells the PERQ that the FIFO is EMPTY and can receive up to
-            16 bytes (a quad word DMA transfer) or it can start a new message
-
-            IsReady tells the Z80 that there are NO more bytes to read, which 
-            is counterintuitive and why this is so fucking confusing
-
- */

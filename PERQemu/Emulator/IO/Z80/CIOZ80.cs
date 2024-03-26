@@ -324,11 +324,11 @@ namespace PERQemu.IO.Z80
             // Yes!  Run an instruction
             var ticks = _cpu.ExecuteNextInstruction();
 
+            // Run a DMA cycle (and account for the cycles used)
+            ticks += _z80dma.Clock();
+
             // Advance our wakeup time now so the CPU can chill a bit
             _wakeup = (long)(_scheduler.CurrentTimeNsec + ((ulong)ticks * IOBoard.Z80CycleTime));
-
-            // Run a DMA cycle
-            _z80dma.Clock();
 
             // Run the scheduler
             _scheduler.Clock(ticks);
@@ -362,6 +362,11 @@ namespace PERQemu.IO.Z80
         public override void DumpIRQStatus()
         {
             _bus.DumpInterrupts();
+        }
+
+        public override void DumpDMAStatus()
+        {
+            _z80dma.DumpStatus();
         }
 
 

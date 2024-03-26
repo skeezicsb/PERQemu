@@ -88,6 +88,7 @@ namespace PERQemu.IO.Z80
         public abstract void DumpPortAStatus();
         public abstract void DumpPortBStatus();
         public abstract void DumpIRQStatus();
+        public abstract void DumpDMAStatus();
 
 
         /// <summary>

@@ -1106,13 +1106,6 @@ namespace PERQemu
         }
 
         [Conditional("DEBUG")]
-        [Command("debug dump fifos")]
-        void DumpFifos()
-        {
-            PERQemu.Sys.IOB.Z80System.DumpFifos();
-        }
-
-        [Conditional("DEBUG")]
         [Command("debug dump qcodes")]
         void DumpQcodes()
         {

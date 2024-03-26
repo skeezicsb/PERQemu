@@ -30,7 +30,7 @@ namespace PERQemu.IO
     /// <summary>
     /// Represents an EIO or NIO card in a PERQ2 system.  This contains hardware
     /// for a Micropolis or MFM disk controller, an Ethernet controller (not
-    /// present on the NIO) and a Z80 for controlling low-speed devices.
+    /// present on the NIO) and a Z80 subsystem for attaching low-speed devices.
     /// </summary>
     public sealed class EIO : IOBoard
     {
@@ -85,7 +85,7 @@ namespace PERQemu.IO
                      system.Config.GetDrivesOfType(DeviceType.Disk5Inch).Length > 0)
             {
                 // A PERQ-2/T2 or 2/T4
-                _hardDiskController = new MFMDiskController();
+                _hardDiskController = new MFMDiskController(/* incomplete */);
             }
             else
             {
@@ -130,10 +130,10 @@ namespace PERQemu.IO
                 case 0x53:      // SMStat: read disk status reg
                     return _hardDiskController.ReadStatus();
 
-                case 0x54:      // 124 EioZ80In: dismiss Z80 interrupt
+                case 0x54:      // EioZ80In: dismiss Z80 interrupt
                     return _z80System.ReadData();
 
-                case 0x55:      // 125 EioZ80Stat: read Z80 interface status
+                case 0x55:      // EioZ80Stat: read Z80 interface status
                     return _z80System.ReadStatus();
 
                 default:
@@ -280,7 +280,7 @@ namespace PERQemu.IO
 
         /// <remarks>
         /// These EIO registers are not implemented:
-        /// 120     50      FPSat           read floating point status
+        /// 120     50      FPStat          read floating point status
         /// 121     51      FPResult        read floating point result
         /// 234     9C      AdrReg*         enable state machine addr reg
         /// 235     9D      WrtRam*         load ethernet test mumble
@@ -296,51 +296,3 @@ namespace PERQemu.IO
         ChannelName _chanSelect;
     }
 }
-
-/*
-    Notes:
-
-    This write register needs some special attention:
-    
-           305  Control register  bit 3  - Disable Ext A address
-                                           (see PERQ DMA)
-                                  bit 2  - Z80 reset when clear
-                                  bit 1  - Enable write channel;
-                                           interrupt when set
-                                  bit 0  - Enable read channel;
-                                           interrupt when set
-
-    ACK!  This is very confusing and finicky:
-
-    PERQ TO the Z80 is the "Write FIFO", or Z80 IO BUS INPUT (schematics pg 10):
-    
-        writes data to port 304 (LD_UPROC_DATA_L) trigger PERQ_INT on the Z80
-        and set UPROC_RDY if the FIFO OR signal is true (i.e., not empty)
-
-        control register (port 305) bit 1 is the UPROC_RDY_ENB flag; this enables
-        the UPROC_RDY_INT_L interrupt (Z80DataOut) to be sent TO the PERQ when
-        there is NO data in the FIFO AND the UPROC_RDY_ENB is set (meaning, "I'm
-        ready for more data")
-
-        bit 0 is the UPROC_ENB flag, which enables read-side (Z80DataIn) interrupts
-        (see below)
-
-        data is read from the FIFO on port 124 (0x54) RD_UPROC_DATA_L
-
-        the PERQ UPROC_INT_L is asserted when IOD_OUT_RDY is asserted by the Z80,
-        the FIFO OR is asserted (i.e., not empty) and the UPROC_ENB bit is set.
-
-        reads from the status register (125, 0x55, RD_UPROC_STAT_L) return the
-        IOD_OUT_RDY (output ready) bit as set by the Z80 directly) and UPROC_RDY
-        (meaning the Z80->PERQ FIFO is empty)
-        
-
-    Z80 to the PERQ is the "Read FIFO", mislabeled Z80 IO BUS INPUT (schematics
-    pg 9) when it is clearly output from BUF_D<> -> IOB<>
-
-        IOD_OUT_RDY is the one-bit register written to by the Z80 when it has
-        data to send TO the PERQ; it is latched in the '259 by writes to the
-        control register at port 170Q (0x78)
-
-        data bytes are queued by writes to port 161Q (0x71), SEL_IOD_WR_L
-*/

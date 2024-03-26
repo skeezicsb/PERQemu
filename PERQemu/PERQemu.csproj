@@ -220,6 +220,7 @@
     <Compile Include="UI\Output\PNGFormatter.cs" />
     <Compile Include="UI\Output\TIFFFormatter.cs" />
     <Compile Include="Emulator\IO\DiskDevices\MFMDiskController.cs" />
+    <Compile Include="Emulator\IO\Z80\PERQDMA.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="COPYING.txt" />

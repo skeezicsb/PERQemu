@@ -234,27 +234,6 @@ namespace PERQemu.IO.Z80
 /*
     Notes:
 
-    ;
-    ;        Clock
-    ;
-    Clk.CSR     equ 166Q        ; Control register for clock
-    Clk.DATA    equ 167Q        ; Data register
-    ClkHold     equ 01000000B   ; Hold bit
-    ClkWrite    equ 00100000B   ; Write bit
-    ClkRead     equ 00010000B   ; Read bit
-    ClkY10      equ 0CH         ; Year 10s
-    ClkY1       equ 0BH         ; Year 1s
-    ClkMo10     equ 0AH         ; Month 10s
-    ClkMo1      equ 09H         ; Month 1s
-    ClkD10      equ 08H         ; Day 10s
-    ClkD1       equ 07H         ; Day 1s
-    ClkH10      equ 05H         ; Hour 10s
-    ClkH1       equ 04H         ; Hour 1s
-    ClkM10      equ 03H         ; Minute 10s
-    ClkM1       equ 02H         ; Minute 1s
-    ClkS10      equ 01H         ; Second 10s
-    ClkS1       equ 00H         ; Second 1s
-
     Note that the PERQ always selects 24-hour time and ignores the Day of Week
     register (6).  This chip only tracks 2-digit years, so it's not Y2K compliant.
 
@@ -281,4 +260,3 @@ namespace PERQemu.IO.Z80
     the number of "power on hours" increased... I mean, if you want a _true_
     emulation experience, it's the little details that matter!  :-]
  */
-

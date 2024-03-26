@@ -39,7 +39,8 @@ namespace PERQemu.IO.Z80
             _z80ToPerqFifo = new Z80ToPERQFIFO(_system);
 
             _irqControl = new Am9519(0x60);
-            _dmac = new i8237DMA(0x38, 0x30);
+            _dmac = new i8237DMA(0x38, 0x30, _memory, _bus);
+            _pdma = new PERQDMA(_system);
 
             // Set up the EIO peripherals
             _tms9914a = new TMS9914A(0, 0x7b, 0x7c);
@@ -55,7 +56,9 @@ namespace PERQemu.IO.Z80
             // _speech = new Speech(...)
 
             // Same Z80 code for EIO/NIO
-            // TODO: verify for all variants?  8"/5.25", 24-bit?
+            // Todo: verify for all variants?  8"/5.25", 24-bit?  The real fun
+            // begins when we load a ZBoot file and start executing dynamically
+            // loaded code from RAM.  Hmmm.
             _z80Debugger = new Z80Debugger("eioz80.lst");
 
             DeviceInit();
@@ -140,9 +143,12 @@ namespace PERQemu.IO.Z80
             _bus.RegisterDevice(_z80sioA);
             _bus.RegisterDevice(_z80sioB);
             _bus.RegisterDevice(_irqControl);
+
+            // These guys are NOT direct Z80 interrupt sources
             _bus.RegisterDevice(_fdc, false);
             _bus.RegisterDevice(_rtc, false);
             _bus.RegisterDevice(_dmac, false);
+            _bus.RegisterDevice(_pdma, false);
             _bus.RegisterDevice(_timerA, false);
             _bus.RegisterDevice(_timerB, false);
             _bus.RegisterDevice(_tms9914a, false);
@@ -155,14 +161,24 @@ namespace PERQemu.IO.Z80
             _irqControl.RegisterDevice(Am9519.IRQNumber.Z80DMA, _dmac);
             _irqControl.RegisterDevice(Am9519.IRQNumber.Z80toPERQ, _z80ToPerqFifo);
             _irqControl.RegisterDevice(Am9519.IRQNumber.PERQtoZ80, _perqToZ80Fifo);
-            // not sure yet how to do the perq dma completion interrupt...
+            _irqControl.RegisterDevice(Am9519.IRQNumber.PERQDMA, _pdma);
+
+            // Assign DMA devices to their channel
+            _dmac.AttachChannelDevice(0, _fdc, 0x21);
+            _dmac.AttachChannelDevice(1, _tms9914a, 0x07);
+            _dmac.AttachChannelDevice(2, _z80sioA, 0x10);   // Todo: speech
+            _dmac.AttachChannelDevice(3, _pdma, 0x75);
         }
 
         protected override void DeviceReset()
         {
-            // Todo: verify all this with the schematics
             _fdc.Reset();
             _tms9914a.Reset();
+            _z80sioA.Reset();
+            _z80sioB.Reset();
+
+            _dmac.Reset();
+            _pdma.Reset();
             _z80ToPerqFifo.Reset();
             _perqToZ80Fifo.Reset();
         }
@@ -219,17 +235,15 @@ namespace PERQemu.IO.Z80
             // eliminate this hack, but it's time to consider a stripped down,
             // purpose-built homegrown Z80 that better suits us (like, allowing
             // for the DMA chip to request bus cycles).
-
             var peek = (ushort)(_memory[_cpu.Registers.PC] << 8 |
                                 _memory[_cpu.Registers.PC + 1]);
 
-            // Run an instruction.  The interrupt controller watches for checks
-            // to IntLineIsActive to run its state machine so no need for an
-            // explicit call to a Clock() function.
-            var ticks = _cpu.ExecuteNextInstruction();
+            // Update the interrupt controller's state.  Do this separately so
+            // that debug commands from the CLI don't affect the flags?
+            _irqControl.Clock();
 
-            // Advance our wakeup time now so the CPU can chill a bit
-            _wakeup = (long)(_scheduler.CurrentTimeNsec + ((ulong)ticks * IOBoard.Z80CycleTime));
+            // Run the instruction
+            var ticks = _cpu.ExecuteNextInstruction();
 
             // Did we just do a RETI?
             if (peek == 0xed4d)
@@ -247,7 +261,10 @@ namespace PERQemu.IO.Z80
             }
 
             // Clock the EIO DMA
-            _dmac.Clock();
+            ticks += _dmac.Clock();
+
+            // Advance our wakeup time now so the CPU can chill a bit
+            _wakeup = (long)(_scheduler.CurrentTimeNsec + ((ulong)ticks * IOBoard.Z80CycleTime));
 
             // Run the scheduler
             _scheduler.Clock(ticks);
@@ -300,8 +317,8 @@ namespace PERQemu.IO.Z80
         /// </summary>
         public override int ReadStatus()
         {
-            int status = (_z80ToPerqFifo.IsReady ? 0x8000 : 0);    // Bit 15: read ready
-            status |= (_perqToZ80Fifo.IsReady ? 0x0080 : 0);    // Bit 7: write ready
+            int status = (_z80ToPerqFifo.IsReady ? 0x8000 : 0);     // Bit 15: read ready
+            status |= (_perqToZ80Fifo.IsReady ? 0x0080 : 0);        // Bit 7: write ready
 
             Log.Debug(Category.FIFO, "PERQ read FIFO status 0x{0:x4}", status);
             return status;
@@ -336,6 +353,7 @@ namespace PERQemu.IO.Z80
         {
             _z80ToPerqFifo.DumpFifo();
             _perqToZ80Fifo.DumpFifo();
+            _pdma.DumpFIFOs();
         }
 
         public override void DumpPortAStatus()
@@ -354,6 +372,11 @@ namespace PERQemu.IO.Z80
             _irqControl.DumpStatus();
         }
 
+        public override void DumpDMAStatus()
+        {
+            _dmac.DumpStatus();
+        }
+
         //
         // EIO/NIO boards
         //
@@ -361,67 +384,49 @@ namespace PERQemu.IO.Z80
         Z80SIO _z80sioA, _z80sioB;
         i8254PIT _timerA, _timerB;
         i8237DMA _dmac;
+        PERQDMA _pdma;
         Oki5832RTC _rtc;
         SerialKeyboard _keyboard;
         PERQToZ80FIFO _perqToZ80Fifo;
         Z80ToPERQFIFO _z80ToPerqFifo;
-
     }
 }
 
 /*
     Notes:
 
-    FIFO interface from EIO.doc corresponds with the EIO source code defs:
+    Full EIO Z80 decode map:
     
-    IOZ  REGISTER USE
-    160  Write FIFO         bits 0:7 - Data from CPU
-    161  Read FIFO          bits 0:7 - Data to CPU
-    162  Status register    bit 7  - Read FIFO not full
-							bit 6  - Write FIFO not empty
-    170  Control register   bit 0  - Output ready
+    RTC     SEL CLK DATA L      167 (0x77)      Oki5832RTC
+            SEL CLK CTRL L      166 (0x76)
 
+    PDMA    SEL DMA START L     163 (0x73)      PERQDMA
+            SEL DMA FLUSH L     164 (0x74)
+            SEL DMA DATA        165 (0x75)      <fake!>
+            UPROC WR H          172 (0x7a)
 
-            PERQ READ AND WRITE PORTS
+    FIFO    SEL IOD STAT L      162 (0x72)      Z80ToPERQFIFO
+            SEL IOD WR L        161 (0x71)
+            IOD OUT RDY         170 (0x78)
 
-    PERQ.IN   equ 160Q    ; PERQ Input port
-    PERQ.OUT  equ 161Q    ; PERQ Output port
-    PERQ.STS  equ 162Q    ; PERQ Status port
-    PERQ.Rdy  equ 170Q    ; PERQ Ready port
+            SEL IOD RD L        160 (0x70)      PERQToZ80FIFO
 
-    ----
-    GPIB
-    ----
+    GPIB    GPIB PE             174 (0x7c)      TMS9914A
+            GPIB SC             173 (0x7b)
+            SEL GPIB L          0:17 (0x0)      (8 used?)
 
-    ;
-    ;        GPIB
-    ;
-    ;              READ REGISTERS
-    ;
-    GPIntSt0   EQU 000Q         ; INTERRUPT STATUS 0
-    GPIntSt1   EQU 001Q         ; Interrupt status 1
-    GPAdrSt    EQU 002Q         ; Address status
-    GPBusSt    EQU 003Q         ; Bus Status
-    GPAdrSw1   EQU 004Q         ; Address switch 1
-    GPCmdPass  EQU 006Q         ; Command pass through
-    GPDIn      EQU 007Q         ; DATA IN
+    SIOA    SEL SIO A L         20:37 (0x10)    Z80SIO (4 used)
+    SIOB    SEL SIO B L         100:137 (0x40)  Z80SIO (4 used)
 
-    ;
-    ;              WRITE REGISTERS
-    ;
-    GPIMsk0     equ 000Q        ; INTERRUPT MASK 0
-    GPIMsk1     equ 001Q        ; INTERRUPT MASK 1
-    GPAux       equ 003Q        ; AUXILLIARY COMMAND
-    GPDOut      equ 007Q        ; DATA OUT
+    SIO?    SPEECH SEL L        171 (0x79)      <tbd>
 
-    GPControl   equ 173Q        ; 0 = Not controller, 1 = controller
-    GPTriState  equ 174Q        ; 0 = Open Collector data, 1 = TriState
+    CTCA    SEL CTC A L         120:127 (0x50)  i8254PIT (4 used?)
+    CTCB    SEL CTC B L         130:137 (0x54)  i8254PIT (4 used?)
 
-    Did they RENUMBER THE DECODES for the 9914 registers!?  WHAT?
-    I'm assuming these are just remapped BY the Z80 code and presented to the
-    PERQ in the shuffled order and the hardware obviously hasn't changed; look
-    at the code in detail to see where this occurs.  SIMILARLY, double check if
-    the port f*ckery for the SIO chip(s) is strictly necessary.  (In that case
-    it DOES look like they specifically decode the addresses to swap regs 1&2.)
+    FDC     SEL FLOPPY L        40:57 (0x20)    NECuPD765A (2 used)
+
+    IRQ     SEL INT L           140:157 (0x60)  Am9519 (2 used)
+
+    DMAC    SEL DMA L           60:77 (0x30)    i8237DMA (16 used)
 
  */

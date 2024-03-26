@@ -97,7 +97,9 @@ namespace PERQemu.IO.Z80
                 _pollEvent = null;
             }
 
-            _interruptsEnabled = false;
+            // IOB/CIO uses IOReg3 to set this; EIO has no equivalent
+            _interruptsEnabled = PERQemu.Sys.IOB.Z80System.IsEIO;
+
             _interruptActive = false;
             _nonDMAMode = false;
             _status = Status.RQM;
@@ -119,7 +121,8 @@ namespace PERQemu.IO.Z80
 
         public string Name => "uPD765A FDC";
         public byte[] Ports => _ports;
-        public byte? ValueOnDataBus => 0x24;    // FLPVEC
+
+        public byte? ValueOnDataBus => 0x24;    // FLPVEC (IOB/CIO)
         public bool IntLineIsActive => _interruptActive && _interruptsEnabled;
 
         public bool InterruptsEnabled
@@ -208,6 +211,10 @@ namespace PERQemu.IO.Z80
         {
             if (portAddress == StatusPort)
             {
+                // For EIO (and possibly IOB/CIO too?) a read clears... otherwise
+                // the SenseInterruptStatus gets continually reasserted
+                //_interruptActive = false;
+
                 Log.Debug(Category.FloppyDisk, "FDC status read: {0} (0x{1:x})", _status, (byte)_status);
                 return (byte)_status;
             }
@@ -457,6 +464,7 @@ namespace PERQemu.IO.Z80
                 Log.Warn(Category.FloppyDisk, "{0} issued but drive {1} not ready", cmd, _unitSelect);
 
                 _seekEnd = true;
+                _pcn[_unitSelect] = 0;
                 SetErrorStatus(StatusRegister0.AbnormalTermination);
                 FinishCommand(true);
             }
@@ -1355,8 +1363,7 @@ namespace PERQemu.IO.Z80
 }
 
 /*
- 
- Notes:
+    Notes:
 
     Ha!  I misread the datasheet for the status polling interval: it actually
     does say 1.024ms, not 1,024 -- but there's no way I'm going to run the drive
@@ -1403,5 +1410,4 @@ namespace PERQemu.IO.Z80
     The best part is that it's all sure to change when we try to run v10.017 on
     this thing, where it DOES look like the use all the FDC commands (except the
     search functions).  Just shoot me now.
-
 */

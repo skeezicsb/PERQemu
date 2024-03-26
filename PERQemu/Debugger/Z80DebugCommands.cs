@@ -82,10 +82,25 @@ namespace PERQemu
         }
 
         //[Conditional("DEBUG")]
+        [Command("debug dump fifos")]
+        [Command("debug z80 dump fifos")]
+        void DumpFifos()
+        {
+            PERQemu.Sys.IOB.Z80System.DumpFifos();
+        }
+
+        //[Conditional("DEBUG")]
         [Command("debug z80 dump interrupts")]
         void DumpIRQs()
         {
             if (CheckSys()) PERQemu.Sys.IOB.Z80System.DumpIRQStatus();
+        }
+
+        //[Conditional("DEBUG")]
+        [Command("debug z80 dump dma registers")]
+        void DumpDMA()
+        {
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.DumpDMAStatus();
         }
 
         //[Conditional("DEBUG")]
@@ -104,7 +119,7 @@ namespace PERQemu
             Console.WriteLine(rtc);
         }
 
-        // todo: rom disassembler, like the perq microcode disassembler?
+        // todo: ram & rom disassembler, like the perq microcode disassembler?
         // todo: i/o port reads - and writes!?
         // todo: interrogate memory, fifos, peripheral controllers & registers, etc.
     }

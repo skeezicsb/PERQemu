@@ -498,6 +498,8 @@ namespace PERQemu.IO.DiskDevices
             {
                 Log.Write(Category.HardDisk, "FinishCommand completion: {0}", code);
                 _status = code;
+                _busyEvent = null;
+
                 SetInterrupt(true);
             });
         }

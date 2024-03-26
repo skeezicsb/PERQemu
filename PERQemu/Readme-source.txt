@@ -381,7 +381,11 @@ Support for the EIO requires several new controller chips:
       arrangement with the two SIO chips;                    [Testing/debugging]
       
     - New Intel i8237 (DMAC) and i8254 (PIT) chips replace the Zilog DMA and
-      CTC chips used on the original IOB.                          [In progress]
+      CTC chips used on the original IOB;                          [In progress]
+
+    - The "PERQDMA" class is a simulation of the EIO hardware that provides two
+      _more_ FIFOs between the PERQ DMA engine and the Z80 DMAC.  Seriously,
+      there are over 20 74S225s on this board!?                    [In progress]
 
 
 2.3.2  Serial Devices
@@ -468,7 +472,7 @@ Emulator/IO/DiskDevices:
       list, as source code and schematics are unavailable;
 
     - The "MFMDiskController" and "SMDController" classes will someday provide
-      support for Disk5Inch and DiskSMD devices (on PERQ-2 models).
+      support for Disk5Inch and DiskSMD devices (on PERQ-2/T2 and T4 models).
 
 Several tape drives will also be supported, but PERQemu does not yet emulate
 the controllers for these.  Tape media will be accessed through the PERQmedia
@@ -750,7 +754,7 @@ PERQ info and lore.  More to come!
 
 Update history:
 
-v2.3 - 3/21/2024 - skeezics
+v2.3 - 3/25/2024 - skeezics
 v2.2 - 2/18/2024 - skeezics - updated for the v0.5.5 interim release
 v2.1 - 3/8/2023 - skeezics
 v2.0 - 1/24/2023 - skeezics - corresponds to the merge for v0.5.0

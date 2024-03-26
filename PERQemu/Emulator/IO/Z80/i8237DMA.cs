@@ -18,6 +18,7 @@
 //
 
 using System;
+using System.Runtime.CompilerServices;
 
 namespace PERQemu.IO.Z80
 {
@@ -25,8 +26,7 @@ namespace PERQemu.IO.Z80
     /// AMD Am9517 (aka Intel i8237) DMA chip.
     /// </summary>
     /// <remarks>
-    /// This four-channel DMA controller is used on the EIO board, replacing
-    /// the single-channel Z80 DMA chip from the older IO boards.  This chip
+    /// This four-channel DMA controller is used on the EIO board.  This chip
     /// uses two blocks of addresses: control/status registers in one block,
     /// and four address/word count registers in a second.
     /// 
@@ -36,8 +36,11 @@ namespace PERQemu.IO.Z80
     /// </remarks>
     public class i8237DMA : IZ80Device
     {
-        public i8237DMA(byte csrBase, byte chnBase)
+        public i8237DMA(byte csrBase, byte chnBase, Z80MemoryBus memoryBus, Z80IOBus ioBus)
         {
+            _memory = memoryBus;
+            _iobus = ioBus;
+
             _controlBase = csrBase;
             _channelBase = chnBase;
             _ports = new byte[16];
@@ -56,8 +59,7 @@ namespace PERQemu.IO.Z80
         public string Name => "i8237 DMA";
         public byte[] Ports => _ports;
 
-        // Fixme: placeholders until implemented so we can start debugging
-        public bool IntLineIsActive => false;
+        public bool IntLineIsActive => _interruptEnabled;
         public byte? ValueOnDataBus => null;        // Supplied by the Am9519
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
@@ -65,22 +67,184 @@ namespace PERQemu.IO.Z80
         public void Reset()
         {
             // Hardware reset or Master Clear command
-            _channels[0].Masked = true;
-            _channels[0].LowByte = true;
-            _channels[1].Masked = true;
-            _channels[1].LowByte = true;
-            _channels[2].Masked = true;
-            _channels[2].LowByte = true;
-            _channels[3].Masked = true;
-            _channels[3].LowByte = true;
+            for (var c = 0; c < _channels.Length; c++)
+            {
+                _channels[c].Terminated = false;
+                _channels[c].Masked = true;
+                _channels[c].LowByte = true;
+            }
+
             _command = 0;
             _temporary = 0;
-            Log.Debug(Category.Z80DMA, "i8237 reset");
+
+            _active = 0;
+            _lastServed = 0;
+
+            _state = DMAState.Idle;
+            _interruptEnabled = false;
+
+            Log.Info(Category.Z80DMA, "i8237 reset");
         }
 
-        public void Clock()
+
+        public void AttachChannelDevice(int chan, IDMADevice dev, byte port)
         {
-            // Todo: Run the state machine!
+#if DEBUG
+            if (chan < 0 || chan > _channels.Length - 1)
+                throw new ArgumentOutOfRangeException(nameof(chan));
+            
+            if (_channels[chan].Device != null)
+                throw new InvalidOperationException($"Channel {chan} already assigned to {dev}");
+#endif
+            _channels[chan].Device = dev;
+            _channels[chan].DataPort = port;
+            Log.Info(Category.Z80DMA, "Channel {0} assigned to {1} (port 0x{2:x2})", chan, dev, port);
+        }
+
+        /// <summary>
+        /// If a DMA operation is in progress, complete it; if idle, look for the
+        /// next device that's requesting service and start it.  Return the cycle
+        /// count if any work is done.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Clock()
+        {
+            DMAState nextState = _state;
+            int cycles = 0;
+
+            if (_state == DMAState.Idle)
+            {
+                var chan = NextRequester();
+                if (chan < 0) return 0;         // Twiddle thumbs
+
+                // Got one!
+                _active = chan;
+                _state = DMAState.SourceRead;
+            }
+
+            // Transfer mode = direction: Write TO mem, Read FROM mem
+            // (Verify is not supported since PERQ doesn't use it?)
+            var devToMem = (_channels[_active].Transfer == TransferMode.Write);
+
+            switch (_state)
+            {
+                case DMAState.SourceRead:
+                    //
+                    // On reads we just stash the byte in the _temporary reg (so
+                    // it can be read out if desired, though that's only for mem-
+                    // to-mem xfers which PERQ doesn't use?).  Address and byte
+                    // counts are always adjusted in the second half.
+                    //
+                    if (devToMem)
+                    {
+                        // Is the source ready? (It better be, since right now
+                        // we don't have any timeout or reset if things get out
+                        // of sync!
+                        if (!_channels[_active].Device.ReadDataReady)
+                        {
+                            // Bug out, _state unchanged
+                            Log.Info(Category.Z80DMA, "Device {0} not ready on read!", _active);
+                            return 0;
+                        }
+
+                        // Grab the byte; logging done on bus read
+                        _temporary = _iobus[_channels[_active].DataPort];
+                    }
+                    else
+                    {
+                        // Memory is always ready
+                        _temporary = _memory[_channels[_active].CurrentAddress];
+                    }
+
+                    nextState = DMAState.DestWrite;
+                    cycles = 4;
+                    break;
+
+                case DMAState.DestWrite:
+                    //
+                    // Writes handle the counters and do EOP/TC and autoinit if
+                    // so programmed.  As with reads, memory is always ready but
+                    // a destination device may not have buffer space or be in a
+                    // state to receive the byte; in that case we just loop until
+                    // it does.  We'll have to see if this is a problem!
+                    // 
+                    if (!devToMem)
+                    {
+                        if (!_channels[_active].Device.WriteDataReady)
+                        {
+                            Log.Info(Category.Z80DMA, "Device {0} not ready on write!", _active);
+                            return 0;
+                        }
+
+                        // Write it!
+                        _iobus[_channels[_active].DataPort] = _temporary;
+                    }
+                    else
+                    {
+                        // Save the data
+                        _memory[_channels[_active].CurrentAddress] = _temporary;
+                    }
+
+                    // The usual EIO Z80 code doesn't use Block mode... but maybe
+                    // PNX does?  Would love some source code to find out...
+                    nextState = (_channels[_active].Mode == ChannelMode.Block) ? DMAState.SourceRead : DMAState.Idle;
+
+                    // Bump the counters and test for TC
+                    if (_channels[_active].CountComplete())
+                    {
+                        Log.Info(Category.Z80DMA, "Channel {0} transfer complete!", _active);
+
+                        // Whack the device
+                        _channels[_active].Device.DMATerminate();
+
+                        // Reinit?  Will reset or mask as appropriate
+                        _channels[_active].Reinit();
+
+                        // Ping the Am9519
+                        _interruptEnabled = true;
+
+                        // Regardless of channel mode
+                        nextState = DMAState.Idle;
+                    }
+
+                    _lastServed = _active;
+                    cycles = 3;
+                    break;
+            }
+
+            _state = nextState;
+            return cycles;
+        }
+
+
+        /// <summary>
+        /// Scan for the next device to service, in priority order.  Also does
+        /// the AutoInitialization for ports that are at TC and are configured
+        /// to re-init.  Returns -1 if nobody's active.
+        /// </summary>
+        int NextRequester()
+        {
+            // Anybody want service?  Update flags
+            for (var c = 0; c < _channels.Length; c++)
+            {
+                // Update the Requested flag
+                _channels[c].CheckReady();
+            }
+
+            // Scan by priority
+            var start = _command.HasFlag(CommandBits.RotatingPriority) ? _lastServed : 3;
+            var next = (start + 1) % 4;
+
+            while (next != start)
+            {
+                if (_channels[next].Requested)
+                {
+                    Log.Info(Category.Z80DMA, "Channel {0} wants service!", next);
+                    return next;
+                }
+                next = (next + 1) % 4;  // Wrap that rascal
+            }
+            return -1;
         }
 
         /// <summary>
@@ -103,7 +267,7 @@ namespace PERQemu.IO.Z80
 
             if (ostatus != _status)
             {
-                Log.Info(Category.Z80DMA, "Status change: 0x{0:x2}", _status);  // todo: a toBinary() might be nice here
+                Log.Info(Category.Z80DMA, "Status change: 0x{0:x2}", _status);
             }
         }
 
@@ -115,17 +279,18 @@ namespace PERQemu.IO.Z80
                 UpdateStatus();
 
                 byte save = _status;
-                Log.Debug(Category.Z80DMA, "Read 0x{0:x2} from status register", save);
+                Log.Info(Category.Z80DMA, "Read 0x{0:x2} from status register", save);
 
                 // Reading status clears the EOP bits (S3..S0)!
                 _status &= 0xf0;
+                _interruptEnabled = false;
 
                 return save;
             }
 
             if (portAddress == _controlBase + 5)
             {
-                Log.Debug(Category.Z80DMA, "Read 0x{0:x2} from temporary reg", _temporary);
+                Log.Info(Category.Z80DMA, "Read 0x{0:x2} from temporary reg", _temporary);
                 return _temporary;
             }
 
@@ -149,11 +314,10 @@ namespace PERQemu.IO.Z80
                     half = (_channels[chan].LowByte ? (byte)val : (byte)(val >> 8));
                 }
 
-                // Log it
                 Log.Info(Category.Z80DMA, "Read 0x{0:x2} from channel {1} current {2} ({3} byte)",
-                                          half, chan,
-                                          (addr ? "address" : "word count"),
-                                          (_channels[chan].LowByte ? "low" : "high"));
+                                            half, chan,
+                                           (addr ? "address" : "word count"),
+                                           (_channels[chan].LowByte ? "low" : "high"));
 
                 // Toggle the flip flop for the next read
                 _channels[chan].LowByte = !_channels[chan].LowByte;
@@ -161,7 +325,6 @@ namespace PERQemu.IO.Z80
             }
 
             Log.Warn(Category.Z80DMA, "Bad read from port 0x{0:x2} (illegal address)", portAddress);
-            // throw ...
             return 0;
         }
 
@@ -197,12 +360,13 @@ namespace PERQemu.IO.Z80
                         _channels[chan].WordCount += (ushort)(value << 8);
 
                     _channels[chan].CurrentCount = _channels[chan].WordCount;
+                    _channels[chan].Terminated = false;
                 }
 
                 Log.Info(Category.Z80DMA, "Write 0x{0:x2} to channel {1} {2} ({3} byte)",
-                                          value, chan,
-                                          (addr ? "base address" : "word count"),
-                                          (_channels[chan].LowByte ? "low" : "high"));
+                                            value, chan,
+                                           (addr ? "base address" : "word count"),
+                                           (_channels[chan].LowByte ? "low" : "high"));
 
                 // Toggle the flip flop for the next write
                 _channels[chan].LowByte = !_channels[chan].LowByte;
@@ -217,26 +381,30 @@ namespace PERQemu.IO.Z80
             {
                 case 0x0:   // Write command register
                     _command = (CommandBits)value;
-                    Log.Debug(Category.Z80DMA, "Write 0x{0:x2} ({1}) to command register",
-                                                value, _command);
+                    Log.Info(Category.Z80DMA, "Write 0x{0:x2} ({1}) to command register", value, _command);
                     break;
 
                 case 0x1:   // Write request bit
+                    if (_channels[chan].Mode != ChannelMode.Block)
+                    {
+                        Log.Info(Category.Z80DMA, "Channel {0} Request write ignored (not in Block mode)", chan);
+                        break;
+                    }
                     _channels[chan].Requested = (value & 0x04) > 0;
-                    Log.Debug(Category.Z80DMA, "Channel {0} Requested is {1}", chan, _channels[chan].Requested);
+                    Log.Info(Category.Z80DMA, "Channel {0} Requested is {1}", chan, _channels[chan].Requested);
                     break;
 
                 case 0x2:   // Write single mask bit
                     _channels[chan].Masked = (value & 0x04) > 0;
-                    Log.Debug(Category.Z80DMA, "Channel {0} Masked is {1}", chan, _channels[chan].Masked);
+                    Log.Info(Category.Z80DMA, "Channel {0} Masked is {1}", chan, _channels[chan].Masked);
                     break;
 
                 case 0x3:   // Write mode register
-                    _channels[chan].Mode = (TransferMode)((value & 0x0c) >> 2);
+                    _channels[chan].Transfer = (TransferMode)((value & 0x0c) >> 2);
                     _channels[chan].AutoInit = ((value & 0x10) != 0);
                     _channels[chan].AddrDecrement = ((value & 0x20) != 0);
-                    _channels[chan].Select = (ChannelMode)((value & 0xc0) >> 6);
-                    Log.Debug(Category.Z80DMA, "Write 0x{0:x2} to channel {1} mode reg", value, chan);
+                    _channels[chan].Mode = (ChannelMode)((value & 0xc0) >> 6);
+                    Log.Info(Category.Z80DMA, "Write 0x{0:x2} to channel {1} mode reg", value, chan);
                     break;
 
                 case 0x4:   // Clear byte pointer flip flop
@@ -256,18 +424,35 @@ namespace PERQemu.IO.Z80
 
                 default:
                     Log.Warn(Category.Z80DMA, "Bad write to port 0x{0:x2} (illegal address), ignored", portAddress);
-                    // throw
                     break;
             }
         }
 
+        // Debugging
+        public void DumpStatus()
+        {
+            Console.WriteLine("i8237 DMAC status:");
+            Console.WriteLine($"  Command: {_command}  Status: 0x{_status:x2}  IRQ: {_interruptEnabled}");
+            Console.WriteLine($"  State: {_state}  Active: {_active}  Last: {_lastServed}");
+            Console.WriteLine();
+            Console.Write("Channels:");
+
+            for (var c = 0; c < _channels.Length; c++)
+            {
+                if (_channels[c].Device == null) continue;
+
+                Console.WriteLine($"\n  {c}  {_channels[c].ToString()}");
+            }
+        }
+
+
         [Flags]
         enum CommandBits
         {
-            MemToMemEnable = 0x1,
-            Chan0AddrChange = 0x2,
-            MasterEnable = 0x4,
-            CompressedTiming = 0x8,
+            MemToMemEnable = 0x01,
+            Chan0AddrChange = 0x02,
+            MasterDisable = 0x04,
+            CompressedTiming = 0x08,
             RotatingPriority = 0x10,
             ExtendedWrite = 0x20,
             DREQLow = 0x40,
@@ -290,80 +475,100 @@ namespace PERQemu.IO.Z80
             Cascade = 3
         }
 
+        enum DMAState
+        {
+            Idle = 0,
+            SourceRead,
+            DestWrite
+        }
+
         /// <summary>
         /// Contains the internal byte count and vector response memory for a
         /// single channel (plus some extra data for convenient grouping).
         /// </summary>
         protected struct ChannelRegister
         {
+            public IDMADevice Device;
+            public byte DataPort;
+
             public bool Requested;          // DREQ active
             public bool Masked;             // Enable bit
-            public TransferMode Mode;       // Mode bits 2,3
+            public TransferMode Transfer;   // Mode bits 2,3
             public bool AutoInit;           // Mode bit 4
             public bool AddrDecrement;      // Mode bit 5
-            public ChannelMode Select;      // Mode bits 6,7
+            public ChannelMode Mode;        // Mode bits 6,7
             public bool Terminated;         // Completed or cancelled
             public bool LowByte;            // Flip flop for LSB/MSB for R/W
+
             public ushort BaseAddress;
             public ushort CurrentAddress;
             public ushort WordCount;
             public ushort CurrentCount;
+
+            public bool CountComplete()
+            {
+                // Bump the address
+                CurrentAddress += (ushort)(AddrDecrement ? -1 : 1);
+
+                // Count is weird: it's always 1 more than programmed.  EOP
+                // is triggered on wrap around from zero!  And, YES, wraparound
+                // of a 16-bit ushort is exactly as the hardware does it. :-P
+                CurrentCount--;
+
+                if (CurrentCount == 0xffff)
+                {
+                    Terminated = true;
+                }
+                return Terminated;
+            }
+
+            public void Reinit()
+            {
+                if (AutoInit)
+                {
+                    CurrentAddress = BaseAddress;
+                    CurrentCount = WordCount;
+                    Terminated = false;
+                    Log.Info(Category.Z80DMA, "{0} channel autoinitialized", Device);
+                }
+                else Masked = true;
+            }
+
+            public void CheckReady()
+            {
+                // Set the Requested flag if the channel is ready to go
+                // Note: Use |= if software requests/block mode allowed...
+                Requested = (!Masked && !Terminated &&
+                            ((Transfer == TransferMode.Read && Device.WriteDataReady) ||
+                             (Transfer == TransferMode.Write && Device.ReadDataReady)));
+            }
+
+            public override string ToString()
+            {
+                if (Device == null) return "<No device attached>";
+
+                return $"{Device} (RW port 0x{DataPort:x2})  Select={Mode}\n" +
+                    $"  DREQ={Requested}  Masked={Masked}  TC={Terminated}  Auto={AutoInit}  Low={LowByte}\n" +
+                    $"  Base=0x{BaseAddress:x4} ({WordCount})  Cur=0x{CurrentAddress:x4} ({CurrentCount})  Mode={Transfer}  AddrDec={AddrDecrement}";
+            }
         }
 
         byte _status;                       // State of all channel req/eop bits
         byte _temporary;                    // Current "in flight" data byte
+
+        int _active;
+        int _lastServed;
+
         CommandBits _command;
+        DMAState _state;
+        bool _interruptEnabled;
 
         ChannelRegister[] _channels;
+        Z80MemoryBus _memory;
+        Z80IOBus _iobus;
 
         byte _controlBase;
         byte _channelBase;
         byte[] _ports;
     }
 }
-
-/*
-    Notes:
-    
-    ;
-    ;        DMA
-    ;
-    DMACSR      equ 070Q    ; DMA control and status
-    DMAREQ      equ 071Q    ; DMA request register
-    DMAMASK     equ 072Q    ; DMA Mask register
-    D.Floppy    equ 00H     ; Channel 0 select
-    D.GPIB      equ 01H     ; Channel 1 select
-    D.SIO       equ 02H     ; Channel 2 select
-    D.PERQ      equ 03H     ; Channel 3 select
-    D.Set       equ 04H     ; Set mask register bit
-    D.Clear     equ 00H     ; Clear mask register bit
-    DMAMODE     equ 073Q    ; DMA Mode register
-    D.Read      equ 008H    ; Read transfer
-    D.Write     equ 004H    ; Write transfer
-    D.AutoInit  equ 010H    ; Autoinitialize
-    D.Incr      equ 000H    ; Increment mode selected
-    D.Decr      equ 020H    ; Decrement mode selected
-    D.Demand    equ 000H    ; Demand mode transfer
-    D.Single    equ 040H    ; Single transfer
-    D.Block     equ 080H    ; Block mode transfer
-    DMAPOINT    equ 074Q    ; DMA clear pointer register
-    DMATEMP     equ 075Q    ; DMA Temporary register(Read Only)
-    DMAMCLR     equ 075Q    ; DMA Master Clear(Write Only)
-    DMACLRMASK  equ 076Q    ; DMA Clear mask register
-    DMASETMASK  equ 077Q    ; DMA Set/Clear Mask bits
-
-    DMAADR0     equ 060Q    ; DMA Channel 0 address
-    DMAWC0      equ 061Q    ; DMA Channel 0 word count
-    DMAADR1     equ 062Q    ; DMA Channel 1 address
-    DMAWC1      equ 063Q    ; DMA Channel 1 word count
-    DMAADR2     equ 064Q    ; DMA Channel 2 address
-    DMAWC2      equ 065Q    ; DMA Channel 2 word count
-    DMAADR3     equ 066Q    ; DMA Channel 3 address
-    DMAWC3      equ 067Q    ; DMA Channel 3 word count
-
-
-    PDMAStart   equ 163Q    ; Force PERQ DMA cycle to fill/empty FiFos
-    PDMAFlush   equ 164Q    ; Flush DMA FiFo to PERQ
-    PDMADirect  equ 172Q    ; 0 = DMA from PERQ, 1 = DMA to PERQ
-
- */
