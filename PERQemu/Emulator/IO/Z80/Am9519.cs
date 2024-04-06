@@ -121,8 +121,8 @@ namespace PERQemu.IO.Z80
                 return;
             }
 
-            // Keep it simple, for now, and don't allow nested interrupts; if the
-            // _busy flag is set we don't rescan until that clears
+            // Keep it simple, for now, and don't allow nested interrupts;
+            // if the busy flag is set we don't rescan until that clears
             if (_busy)
             {
                 _interruptEnabled = false;
@@ -140,40 +140,45 @@ namespace PERQemu.IO.Z80
             if (_response[(int)IRQNumber.Z80DMA].Device.IntLineIsActive) scan |= IRQMask.EOP;
 
             // Any change?
-            if ((byte)scan != _registers[IRR])
+            if (_registers[IRR] != (byte)scan)
             {
                 Log.Debug(Category.Z80IRQ, "Interrupt state change: {0}", scan);
 
                 // Save the new state
                 _registers[IRR] = (byte)scan;
-
-                // Update status so we can check flags
-                UpdateStatus();
-
-                // Status register will contain the highest priority unmasked IRQ;
-                // check bit S7 to see if it's valid before checking priorities.
-                // (This should be the only place we rely on this flag bit)
-                if (_status.HasFlag(StatusBits.NoGroupInt))
-                {
-                    if (_interruptEnabled || _active >= 0)
-                        Console.WriteLine($"NoGroupInt but int={_interruptEnabled} active={_active}?!?");
-
-                    _interruptEnabled = false;
-                    _active = -1;
-                }
-                else
-                {
-                    // Get the current highest priority bit (where 0 = highest)
-                    var highest = (int)(_status & StatusBits.PriorityMask);
-
-                    // If already active, only bump according to the highest fixed
-                    // priority (i.e., lower numbered IRQ)
-                    _active = (_active < 0 ? highest : Math.Min(_active, highest));
-                    _interruptEnabled = true;
-
-                    Log.Debug(Category.Z80IRQ, "Highest active interrupt now {0}", _active);
-                }
             }
+
+            // Update status (in case mask or mode bits changed)
+            UpdateStatus();
+
+            // Check status bit S7 to see if it's valid before checking priorities.
+            // (This should be the only place we rely on this flag bit)
+            if (_status.HasFlag(StatusBits.NoGroupInt))
+            {
+                // We're waiting to complete the only outstanding request (IRR
+                // bit clear but ISR set... but we can't rely on that since ACR
+                // might have cleared it :-) so wait for RETI to finish normally
+                if (_interruptEnabled && _active >= 0)
+                {
+                    return;
+                }
+
+                // Otherwise punt; nothing active, no valid requests pending
+                // (or something is out of sync!?)
+                _interruptEnabled = false;
+                _active = -1;
+                return;
+            }
+
+            // Here if NOT busy, AND there's at least one unmasked IRR set (pre-
+            // computed in status bits S2..S0).  If not raised, assign the active
+            // IRQ and raise the interrupt; if already set but not yet acknowledged
+            // we can bump the priority if a higher (_lower_ numbered!) request has
+            // come in.
+            _active = (int)(_status & StatusBits.PriorityMask);
+            _interruptEnabled = true;
+
+            Log.Debug(Category.Z80IRQ, "Highest active interrupt now {0}", _active);
         }
 
         /// <summary>
@@ -269,7 +274,6 @@ namespace PERQemu.IO.Z80
             // Read from the control register address returns the status register
             if (portAddress == _baseAddress + 1)
             {
-                UpdateStatus();
                 Log.Debug(Category.Z80IRQ, "Read 0x{0:x2} from status register ({1})",
                                            (byte)_status, _status);
                 return (byte)_status;

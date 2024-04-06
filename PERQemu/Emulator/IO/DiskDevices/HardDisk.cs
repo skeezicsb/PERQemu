@@ -336,7 +336,7 @@ namespace PERQemu.IO.DiskDevices
         {
             ulong delay = 100;
 
-            if ((Settings.Performance & RateLimit.StartupDelay) != 0)
+            if (Settings.Performance.HasFlag(RateLimit.StartupDelay) && _lastIndexPulse == 0)
             {
                 // This makes sense if we do the whole "watch the screen warm up
                 // and play audio of the fans & disks whirring" for the total
@@ -347,15 +347,15 @@ namespace PERQemu.IO.DiskDevices
                 // really appreciate this attention to detail.  Otherwise it's
                 // basically just insane.
 
-                // Introduce a little variation, from 50-95% of max startup time
+                // Introduce a little variation, from 66-99% of max startup time
                 var rand = new Random();
-                delay = (ulong)(Specs.StartupDelay / 100 * rand.Next(50, 95));
+                delay = (ulong)(Specs.StartupDelay / 100 * rand.Next(66, 99));
             }
 
             _startupEvent = _scheduler.Schedule(delay * Conversion.MsecToNsec, DriveReady);
 
-            Log.Debug(Category.HardDisk, "Drive {0} motor start ({1} sec delay)",
-                      Info.Name, delay * Conversion.MsecToSec);
+            Log.Debug(Category.HardDisk, "Drive {0} motor start (ready in {1:n} seconds)",
+                                          Info.Name, delay * Conversion.MsecToSec);
         }
 
         /// <summary>

@@ -64,9 +64,6 @@ namespace PERQemu.IO.Z80
             DeviceInit();
         }
 
-        // Dorky but faster than "_sys is EIOZ80" everywhere?
-        public override bool IsEIO => true;
-
         // Port "A" is public, since it's a DMA-capable device
         public override Z80SIO SIOA => _z80sioA;
 

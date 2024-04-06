@@ -69,8 +69,6 @@ namespace PERQemu.IO.Z80
             DeviceInit();
         }
 
-        public override bool IsEIO => false;
-
         // Expose to the DMA router
         public override Z80SIO SIOA => _z80sio;
 

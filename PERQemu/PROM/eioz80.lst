@@ -1,4 +1,2225 @@
-﻿ROM:0000 ; Placeholder until listing can be generated!
+﻿ROM:0000 ;
+ROM:0000 ; EIO Z80 v100.017
+ROM:0000 ; Copyright (C) 1982, 1983 Three Rivers Computer Corporation
+ROM:0000 ; Assembled/massaged for PERQemu by skeezicsb from original source
+ROM:0000 ; Rebuilt and verified with zasm online Fri Apr  5 04:32:56 PDT 2024
+ROM:0000 ;
+ROM:0000 ; Hardware Start location  (0)
+ROM:0000 Loc0:
+ROM:0000    DI                      ; Disable All interrupts until init done
+ROM:0001    JP  Start               ; Jump to start of initialization
+ROM:0004 ;
+ROM:0004 Version:
+ROM:0004    byte 64h                ; VerMajor
+ROM:0005    byte 11h                ; VerMinor
+ROM:0006    byte 0                  ; Checksum of ROM
+ROM:0007    byte 0                  ; Filler
+ROM:0008 ;
+ROM:0008 ; Clock (Not present in ROM)
+ROM:0008 ClockInit:
+ROM:0008    XOR A
+ROM:0009    LD  (Clock.Flg), A      ; Clear clock flag byte
+ROM:000C    RET
+ROM:000D XClock:
+ROM:000D    LD  HL, Clock.Flg       ; Point at flag byte
+ROM:0010    SET NAKFlgBit, (HL)     ; All others get NAKed
+ROM:0012    JP  PERQEnable          ; Re-enable PERQ input and return
+ROM:0015 ZClock:
+ROM:0015    LD  C, DevClock         ; Device code
+ROM:0017    LD  HL, Clock.Flg       ; Check Clock for NAK
+ROM:001A    BIT NAKFlgBit, (HL)
+ROM:001C    JP  NZ, SendNAK         ; If necessary send NAK and return
+ROM:001F    RET
+ROM:0020 ;
+ROM:0020 ; GPIB (Not present in ROM)
+ROM:0020 GPIB.ISR:
+ROM:0020    JP   EIRETI             ; Dummy interrupt routine
+ROM:0023 GPIBInit:
+ROM:0023    XOR  A                  ; Get a zero
+ROM:0024    LD  (GPIB.Flg), A       ; Clear all the flags
+ROM:0027    OUT (GPIMsk0), A        ; Disable all interrupts
+ROM:0029    OUT (GPControl), A      ; Setup as Not system controller
+ROM:002B    RET
+ROM:002C XGPIB:
+ROM:002C    LD   HL, GPIB.Flg
+ROM:002F    SET  NAKFlgBit, (HL)    ; Set NAK pending flag
+ROM:0031    JP   PERQEnable         ; And re-enable interrupts
+ROM:0034 ZGPIB:
+ROM:0034    LD   C, DevGPIB         ; Device code
+ROM:0036    LD   HL, GPIB.Flg       ; Check for NAK
+ROM:0039    BIT  NAKFlgBit, (HL)
+ROM:003B    JP   NZ, SendNAK        ; If necessary send NAK and return
+ROM:003E    RET
+ROM:003F GPIBTask:
+ROM:003F    LD   HL, GPIB.Cmd
+ROM:0042    CALL Wait               ; Wait for command
+ROM:0045    JR   GPIBTask           ; Repeat
+ROM:0047 ;
+ROM:0047 ; Low Volume task
+ROM:0047 LVTask:
+ROM:0047    CALL ZGPIB              ; Check for GPIB activity
+ROM:004A    CALL ZRSA               ; Check for RS232A activity
+ROM:004D    CALL ZRSB               ; Check for RS232B activity
+ROM:0050    CALL ZSpeech            ; Check for Speech activity
+ROM:0053    CALL ZZ80               ; Check for Z80 activity
+ROM:0056    CALL CPUGive            ; Relinquish CPU for task
+ROM:0059    CALL ZGPIB              ; Check for GPIB activity again
+ROM:005C    CALL ZPointer           ; Check for Pointer activity
+ROM:005F    CALL ZFloppy            ; Check for Floppy activity
+ROM:0062    CALL ZKB                ; Check for Keyboard activity
+ROM:0065    CALL ZClock             ; Check for Clock activity       
+ROM:0068    CALL CPUGive            ; Relinquish CPU for task
+ROM:006B    JP   LVTask             ; Start check again
+ROM:006E ;
+ROM:006E ; Pointer task (Not present in ROM)
+ROM:006E PointInit:
+ROM:006E    XOR  A
+ROM:006F    LD  (Kriz.Flg), A       ; Turn it off
+ROM:0072    LD   A, RSWR3
+ROM:0074    OUT (SPControl), A      ; Select write register 3
+ROM:0076    LD   A, 00000000B
+ROM:0078    OUT (SPControl), A      ; Receiver disabled
+ROM:007A    RET                     ; Thats all just now
+ROM:007B XPointer:
+ROM:007B    LD  HL, Kriz.Flg        ; Point to flag byte
+ROM:007E    SET NAKFlgBit, (HL)
+ROM:0080    JP  PERQEnable
+ROM:0083 ZPointer:
+ROM:0083    LD  HL, Kriz.Flg        ; Check Pointer for ACK/NAK
+ROM:0086    LD  C, DevPointer       ; Setup device number
+ROM:0088    BIT NAKFlgBit, (HL)
+ROM:008A    JP  NZ, SendNAK         ; If necessary send NAK and return
+ROM:008D    RET
+ROM:008E PtrRx.ISR:
+ROM:008E    JP  EIRETI
+ROM:0091 PtrSp.ISR:
+ROM:0091    JP  EIRETI
+ROM:0094 ;
+ROM:0094 ;   0094-00C2  RSA       SECTION BYTE 
+ROM:0094 RSA:
+ROM:00C2 ;   0094-00C2  RSA       SECTION BYTE 
+ROM:00C3 ;   00C3-00F1  RSB       SECTION BYTE 
+ROM:00C3 RSB:
+ROM:00F1 ;   00C3-00F1  RSB       SECTION BYTE 
+ROM:0100 ;
+ROM:0100 ; Vectors (What goes here?)
+ROM:0110    word   020E         ; VecPDMA
+ROM:0112    word   0C81         ; VecPERQO
+ROM:0114    word   09EA         ; VecPERQI
+ROM:0116    word   0655         ; VecFloppy
+ROM:0118    word   0020         ; VecGPIB
+ROM:011A    word   01BE         ; VecZDMA
+ROM:0120 VecRS0:
+ROM:0120    word   0C93         ; SPTx.ISR  Speech transmit buffer empty
+ROM:0122    word   0C93         ; SPSt.ISR  Speech status change
+ROM:0124    word   008E         ; PtrRx.ISR Pointer receive buffer full
+ROM:0126    word   0091         ; PtrSp.ISR Pointer special receive condition
+ROM:0128    word   0094         ; RSATx.ISR Channel A transmit buffer empty
+ROM:012A    word   0094         ; RSASt.ISR Channel A status change
+ROM:012C    word   0094         ; RSARx.ISR Channel A receive buffer full
+ROM:012E    word   0094         ; RSASp.ISR Channel A special receive condition
+ROM:0130 VecRS1:
+ROM:0130    word   099D         ; KBTx.ISR Keyboard transmit buffer empty
+ROM:0132    word   09B0         ; KBSt.ISR Keyboard status change
+ROM:0134    word   0972         ; KBRx.ISR Keyboard receive buffer full
+ROM:0136    word   09BB         ; KBSp.ISR Keyboard special receive condition
+ROM:0138    word   00C3         ; RSBTx.ISR Channel A transmit buffer empty
+ROM:013A    word   00C3         ; RSBSt.ISR Channel A status change
+ROM:013C    word   00C3         ; RSBRx.ISR Channel A receive buffer full
+ROM:013E    word   00C3         ; RSBSp.ISR Channel A special receive condition
+ROM:0140 EIRETI:
+ROM:0140    EI
+ROM:0141    RETI
+ROM:0142 ; End Vectors
+ROM:0143 ;
+ROM:0143 ; DMA
+ROM:0143 DMAInit:
+ROM:0143    OUT (DMAMCLR), A        ; Issue master clear
+ROM:0145    IN   A, (DMACSR)        ; Read to clear status register
+ROM:0147    LD   A, 01100000B       ; DACK active low, DREQ active LOW, Extend Writ
+ROM:0149    OUT (DMACSR), A         ; Fixed Prio, Normal timing, enable cotroller
+ROM:014B    LD   A, I.WrRes | I.By1 | I.ZDMA; 1 byte response for Z80 DMA interrupt
+ROM:014D    OUT (INTCSR), A         ; Enable writting response memory
+ROM:014F    LD   A, LO(VecZDMA)
+ROM:0151    OUT (INTDATA), A        ; Set PERQ Input interrupt vector
+ROM:0153    LD   A, I.WrRes | I.By1 | I.PDMA; 1 byte response for PERQ DMA interrupt
+ROM:0155    OUT (INTCSR), A         ; Enable writting response memory
+ROM:0157    LD   A, LO(VecPDMA)
+ROM:0159    OUT (INTDATA), A        ; Set PERQ Input interrupt vector
+ROM:015B    LD   A, I.CIMRIRR | I.PDMA
+ROM:015D    OUT (INTCSR), A         ; Clear IMR and IRR for PERQ DMA interrupts
+ROM:015F    XOR  A
+ROM:0160    LD  (DMA.GNBC+1), A     ; Clear flag byte for GPIB.
+ROM:0163    LD  (DMA.SNBC+1), A     ; Clear flag byte for SIO.
+ROM:0166    RET
+ROM:0167 DMAtoMem:
+ROM:0167    LD   L, A               ; Save channel number
+ROM:0168    DEC  BC                 ; DMA expects count -1
+ROM:0169    LD   H, C               ; Save
+ROM:016A    SLA  A                  ; * 2
+ROM:016C    ADD  A, DMAADR0         ; Bias by channel 0 I/O address
+ROM:016E    LD   C, A               ; Point to device
+ROM:016F    OUT (DMAPOINT), A       ; Clear pointer
+ROM:0171    OUT (C), E              ; Output low address
+ROM:0173    OUT (C), D              ; Output high address
+ROM:0175    INC  C                  ; Point to Word count I/O Address
+ROM:0176    OUT (DMAPOINT), A       ; Clear pointer
+ROM:0178    OUT (C), H              ; Send low byte count
+ROM:017A    OUT (C), B              ; Send high byte count
+ROM:017C    LD   A, D.Write | D.Incr| D.Single ; Write to memory
+ROM:017E    OR   L                  ; OR in channel number
+ROM:017F    OUT (DMAMODE), A        ; Set mode increment single byte read transfer
+ROM:0181    LD   A, L               ; Get channel number
+ROM:0182    OR   D.Clear            ; Clear mask bit
+ROM:0184    OUT (DMAMASK), A        ; Enable DMA transfer
+ROM:0186    LD   C, H               ; Copy back low byte of BC
+ROM:0187    INC  BC                 ; Restore byte count
+ROM:0188    RET
+ROM:0189 DMAtoDev:
+ROM:0189    LD   L, A               ; Save channel number
+ROM:018A    DEC  BC                 ; DMA expects count -1
+ROM:018B    LD   H, C               ; Save
+ROM:018C    SLA  A                  ; * 2
+ROM:018E    ADD  A, DMAADR0         ; Bias by channel 0 I/O address
+ROM:0190    LD   C, A               ; Point to device
+ROM:0191    OUT (DMAPOINT), A       ; Clear pointer
+ROM:0193    OUT (C), E              ; Output low address
+ROM:0195    OUT (C), D              ; Output high address
+ROM:0197    INC  C                  ; Point to Word count I/O Address
+ROM:0198    OUT (DMAPOINT), A       ; Clear pointer
+ROM:019A    OUT (C), H              ; Send low byte count
+ROM:019C    OUT (C), B              ; Send high byte count
+ROM:019E    LD   A, D.Read | D.Incr| D.Single ; Read from memory
+ROM:01A0    OR   L                  ; OR in channel number
+ROM:01A1    OUT (DMAMODE), A        ; Set mode increment single byte write transfer
+ROM:01A3    LD   A, L               ; Get channel number
+ROM:01A4    OR   D.Clear            ; Clear mask bit
+ROM:01A6    OUT (DMAMASK), A        ; Enable DMA transfer
+ROM:01A8    LD   C, H               ; Copy back low byte of BC
+ROM:01A9    INC  BC                 ; Restore byte count
+ROM:01AA    RET
+ROM:01AB DMAStop:
+ROM:01AB    LD   H, A               ; Save channel number
+ROM:01AC    CALL DMAStatus
+ROM:01AF    LD   A, B               ; Test for zero byte count
+ROM:01B0    OR   C                  ; Add high byte
+ROM:01B1    JR   Z, DMAStopX        ; Exit if already at Zero
+ROM:01B3    LD   C, H               ; Get channel number back
+ROM:01B4    LD   B, 0
+ROM:01B6    LD   HL, DMADone        ; Address of channel 0 semaphore
+ROM:01B9    ADD  HL, BC             ; Offset by channel number
+ROM:01BA    CALL Signal             ; Signal
+ROM:01BD DMAStopX:
+ROM:01BD    RET
+ROM:01BE ZDMA.ISR:
+ROM:01BE    EXX
+ROM:01BF    EX   AF, AF
+ROM:01C0    IN   A, (DMACSR)        ; Read the status register
+ROM:01C2    PUSH AF                 ; Save for later
+ROM:01C3    BIT  D.GPIB, A          ; GPIB DMA done?
+ROM:01C5    JR   Z, Ch1X            ; Branch if not complete
+ROM:01C7    Ld   A, D.GPIB          ; Load channel number
+ROM:01C9    CALL DMANext            ; Try to start next DMA command
+ROM:01CC    LD   HL, DMAGPIB
+ROM:01CF    CALL Signal             ; Signal end of DMA transfer
+ROM:01D2 Ch1X:
+ROM:01D2    POP  AF                 ; Get back the status register
+ROM:01D3    PUSH AF                 ; Save it again
+ROM:01D4    BIT  D.SIO, A           ; SIO DMA done?
+ROM:01D6    JR   Z, Ch2X            ; Branch if not complete
+ROM:01D8    LD   A, D.SIO           ; Load channel number
+ROM:01DA    CALL DMANext            ; Try to start next DMA command
+ROM:01DD    LD   HL, DMASIO
+ROM:01E0    CALL Signal             ; Signal end of DMA transfer
+ROM:01E3 Ch2X:
+ROM:01E3    POP  AF                 ; Get back the status register
+ROM:01E4    BIT  D.PERQ, A          ; PERQ DMA done?
+ROM:01E6    JR   Z, Ch3X            ; Branch if not complete
+ROM:01E8    LD   HL, DMAPERQ
+ROM:01EB    CALL Signal             ; Signal end of DMA transfer
+ROM:01EE Ch3X:
+ROM:01EE    EXX
+ROM:01EF    EX   AF, AF
+ROM:01F0    EI
+ROM:01F1    RETI
+ROM:01F3 DMAStatus:
+ROM:01F3    OR   D.Set              ; Add bit to mask the channel
+ROM:01F5    OUT (DMAMASK), A        ; Disable the DMA channel
+ROM:01F7    AND !D.Set              ; Remove added bit
+ROM:01F9    SLA  A                  ; * 2
+ROM:01FB    Add  A, DMAADR0         ; Bias by DMA channel 0 I/O address
+ROM:01FD    LD   C, A               ; Set I/O Address
+ROM:01FE    OUT (DMAPOINT), A       ; Reset internal even/odd byte pointer
+ROM:0200    IN   E, (C)             ; Get low address
+ROM:0202    IN   D, (C)             ; Get high address
+ROM:0204    INC  C                  ; Bump to Word Count I/O Address
+ROM:0205    OUT (DMAPOINT), A       ; Reset internal even/odd byte pointer
+ROM:0207    IN   A, (C)             ; Get low byte count
+ROM:0209    IN   B, (C)             ; Get high byte count
+ROM:020B    LD   C, A               ; Set low byte count
+ROM:020C    INC  BC                 ; Adjust to true remaining byte count
+ROM:020D    RET
+ROM:020E PDMA.ISR:
+ROM:020E    EXX
+ROM:020F    EX   AF, AF
+ROM:0210    LD   A, I.PDMA | I.Single | I.SIMR
+ROM:0212    OUT (INTCSR), A         ; Disable further interrupts
+ROM:0214    EXX
+ROM:0215    EX   AF, AF
+ROM:0216    EI
+ROM:0217    RETI
+ROM:0219 DMANext:
+ROM:0219    CP   D.GPIB             ; Is the GPIB channel being selected?
+ROM:021B    JR   NZ, TrySIO         ; If not, see if it is the SIO
+ROM:021D    LD   HL, DMA.GNBC+1     ; Otherwise, point to flag byte for GPIB
+ROM:0220    BIT  7, (HL)            ; Test if next DMA should be started
+ROM:0222    RET  Z                  ; Return if not
+ROM:0223    RES  7, (HL)            ; Clear bit
+ROM:0225    LD   BC, (DMA.GNBC)     ; Get byte count (Bit 15 = zero)
+ROM:0229    LD   DE, (DMA.GNAdr)    ; Set buffer address
+ROM:022D    JP   DoDMA              ; Go make the setup call
+ROM:0230 TrySIO:
+ROM:0230    CP   D.SIO              ; Is the SIO channel being selected?
+ROM:0232    RET  NZ                 ; If not, exit
+ROM:0233    LD   HL, DMA.SNBC+1     ; Otherwise, point to flag byte for SIO
+ROM:0236    BIT  7, (HL)            ; Test if next DMA should be started
+ROM:0238    RET  Z                  ; Return if not
+ROM:0239    RES  7, (HL)            ; Clear bit
+ROM:023B    LD   BC, (DMA.SNBC)     ; Get byte count (Bit 15 = zero)
+ROM:023F    LD   DE, (DMA.SNAdr)    ; Set buffer address
+ROM:0243 DoDMA:
+ROM:0243 ; NB: Reg A still holds the DMA Channel number
+ROM:0243    BIT  6, B               ; To or From memory?
+ROM:0245    JP   Z, DMAtoDev        ; Branch if should DMA to device
+ROM:0248    RES  6, B               ; Clear it
+ROM:024A    JP   DMAtoMEM           ; Branch if should DMA to memory
+ROM:024C ;
+ROM:024C ; End DMA
+ROM:024D ;
+ROM:024D ; Floppy
+ROM:024D FloppyInit:
+ROM:024D    LD   A, 0
+ROM:024F    LD  (Floppy.Rdy), A     ; Initialize i/o semaphore
+ROM:0252    LD  (Floppy.Flg), A     ; Clear the flag byte
+ROM:0255    LD  (Flop.Ratn), A      ; Clear attention pending flag
+ROM:0258    LD  (F.Command), A      ; Clear current command
+ROM:025B    LD  (F.Status), A       ; Set No status present
+ROM:025E    LD   A, FC_Idle         ; Force to Idle
+ROM:0260    LD  (F.CmdBuf), A
+ROM:0263    CALL GetResult          ; Remove any pending status from controller
+ROM:0266    LD   HL, BufFloppy
+ROM:0269    LD  (AdrFloppy), HL     ; Address of first buffer
+ROM:026C    LD   HL, BufFloppy + BufSFloppy
+ROM:026F    LD  (AdrFloppy+2), HL   ; Address of second buffer
+ROM:0272    LD   A, I.WrRes | I.By1 | I.Floppy; 1 byte response for DMA interrupt
+ROM:0274    OUT (INTCSR), A         ; Enable writting response memory
+ROM:0276    LD   A, LO(VecFlopppy)  ; Get address of vector
+ROM:0278    OUT (INTDATA), A        ; Set PERQ Input interrupt vector
+ROM:027A    RET
+ROM:027B XFloppy:
+ROM:027B    LD   A, (PI.Command)    ; Get command byte
+ROM:027E    CP   CmdSense           ; Is it a sense command?
+ROM:0280    LD   HL, Floppy.Cmd     ; Semaphore for floppy task
+ROM:0283    JP   NZ, Signal         ; If sense Signal to floppy task and return
+ROM:0286    LD   HL, Floppy.Flg     ; Address of floppy flag byte
+ROM:0289    SET  SRFlgBit, (HL)     ; Set status pending flag
+ROM:028B    JP   PERQEnable         ; Re-enable PERQ input and return
+ROM:028E ZFloppy:
+ROM:028E    LD   C, DevFloppy       ; Device code
+ROM:0290    XOR  A
+ROM:0291    LD   HL, Flop.Ratn      ; Address of Attention mask
+ROM:0294    CP  (HL)                ; Attention to be sent?
+ROM:0295    CALL NZ, SendAttn       ; Send Attention and return
+ROM:0298    LD   HL, Floppy.Flg     ; Check Floppy for ACK/NAK/status
+ROM:029B    LD   A, (HL)
+ROM:029C    AND  RespMask           ; Any responses pending?
+ROM:029E    RET  Z                  ; Return if no response pending
+ROM:029F    LD   C, DevFloppy       ; Device code
+ROM:02A1    BIT  ACKFlgBit, A
+ROM:02A3    JP   NZ, SendACK        ; If necessary send ACK and return
+ROM:02A6    BIT  NAKFlgBit, A
+ROM:02A8    JP   NZ, SendNAK        ; If necessary send NAK and return
+ROM:02AB    Bit  SRFlgBit, A
+ROM:02AD    RET  Z                  ; Return if no status to send
+ROM:02AE    Res  SRFlgBit, (HL)     ; Reset status request pending
+ROM:02B0    LD   HL, PERQO.Cmd
+ROM:02B3    CALL Wait               ; Wait for output port to be free
+ROM:02B6    LD   A, 10              ; Floppy status message is 10 bytes
+ROM:02B8    LD  (PERQOBuff), A      ; Length of status
+ROM:02BB    LD   A, DevFloppy
+ROM:02BD    LD  (PERQOBuff+1), A    ; Insert the device code
+ROM:02C0    LD   A, CmdStatus
+ROM:02C2    LD  (PERQOBuff+2), A    ; Set command field to status
+ROM:02C5    LD   BC, 8              ; Set up the count
+ROM:02C8    LD   HL, F.Status       ; Floppy results area
+ROM:02CB    LD   DE, PERQOBuff+3    ; Points to data area in buffer
+ROM:02CE    LDIR                    ; Copy it across
+ROM:02D0    JP   SendPERQ           ; Send message, release port and return
+ROM:02D3 FloppyTask:
+ROM:02D3    LD   A, 26              ; Default highest sector on track
+ROM:02D5    LD  (F.EOT), A
+ROM:02D8    LD   A, 7               ; Single density gap length
+ROM:02DA    LD  (F.GPL), A
+ROM:02DD    LD   A, 0               ; sector length encoded = 0 (128 bytes)
+ROM:02DF    LD  (F.DTL), A
+ROM:02E2    LD   A, 00000000B       ; Set options MT = 0, MF = Single, SK = 0
+ROM:02E4    LD  (F.Options), A
+ROM:02E7    LD   HL, F.Command      ; Point to command buffer
+ROM:02EA    LD  (HL), CmdSpecify    ; Force specify command
+ROM:02EC    INC  HL
+ROM:02ED    LD  (HL), 3             ; Default Step Rate in milliseconds
+ROM:02EF    INC  HL
+ROM:02F0    LD  (HL), 15            ; Head unload time in 16 millisecond units
+ROM:02F2    INC  HL
+ROM:02F3    LD  (HL), 36            ; Head load time in 2 millsecond units
+ROM:02F5    CALL FloppyIO           ; Send the defaults to the controller
+ROM:02F8    JP   C, CmdWait         ; Must not be disc in drive
+ROM:02FB    LD   HL, F.Command      ; Point to command buffer
+ROM:02FE    LD  (HL), CmdRecal      ; Force recalibate
+ROM:0300    INC  HL
+ROM:0301    XOR  A                  ; Zero
+ROM:0302    LD  (HL), A             ; Clear the unit number 
+ROM:0303    LD  (F.Cyl), A          ; Clear stored cylinder number
+ROM:0306    CALL FloppyIO           ; Execute the Recal
+ROM:0309    JP   C, CmdWait         ; Must not be disc in drive
+ROM:030C    LD   HL, Floppy.Rdy
+ROM:030F    CALL Wait               ; Wait for Recal to finish
+ROM:0312 CmdWait:
+ROM:0312    LD   HL, Floppy.Cmd     ; Address of command semaphore
+ROM:0315    CALL Wait               ; Wait for a command
+ROM:0318 RetryCmd:
+ROM:0318    LD   DE, F.Command      ; Address command area
+ROM:031B    LD   HL, PI.Command     ; Address of PERQ input command area
+ROM:031E    LD   BC, 6              ; Move command and 5 parameters
+ROM:0321    LDIR                    ; Copy command to DCB
+ROM:0323    CALL PERQEnable         ; Re-enable PERQ input port interrupts
+ROM:0326    LD   HL, F.Command      ; Get address of command
+ROM:0329    LD   A, (HL)            ; Get command value
+ROM:032A    INC  HL                 ; Point to parameter 1
+ROM:032B    CALL CmdDispatch        ; Call dispatch, returns from command
+ROM:032E    JR   CmdWait            ; Start a new command
+ROM:0330 CmdDispatch:
+ROM:0330    CP  CmdSeek             ; Seek command?
+ROM:0332    JP  Z, DO_Seek
+ROM:0335    CP  CmdRead             ; Read command?
+ROM:0337    JP  Z, DO_Rd
+ROM:033A    CP  CmdWrite            ; Write command?
+ROM:033C    JP  Z, DO_Wr
+ROM:033F    CP  CmdRecal            ; Recalibrate
+ROM:0341    JP  Z, DO_Recal
+ROM:0344    CP  CmdSnsDrive         ; Sense device status command?
+ROM:0346    JP  Z, DO_SDrive
+ROM:0349    CP  CmdSpecify          ; Specify command?
+ROM:034B    JP  Z, DO_Specify
+ROM:034E    CP  CmdFormat           ; Format command?
+ROM:0350    JP  Z, DO_Format
+ROM:0353    CP  CmdConfig           ; Configure Command?
+ROM:0355    JP  Z, DO_Config
+ROM:0358    CP  CmdRdID             ; Read Id command?
+ROM:035A    JP  Z, DO_RdID
+ROM:035D    CP  CmdRdDel            ; Read deleted data command?
+ROM:035F    JP  Z, DO_RdDel
+ROM:0362    CP  CmdWrDel            ; Write Deleted data?
+ROM:0364    JP  Z, DO_WrDel
+ROM:0367    CP  CmdBoot             ; Boot command?
+ROM:0369    JP  Z, DO_Boot
+ROM:036C    CP  CmdReset            ; Reset Command?
+ROM:036E    JP  Z, DO_Reset         ; Fall into NAKFinish
+ROM:0371 NAKFinish:
+ROM:0371    LD  HL, Floppy.Flg      ; Address of floppy flag byte
+ROM:0374    LD  C, DevFloppy
+ROM:0376    JP  SendNAK             ; Send NAK for command, and return
+ROM:0379 ACKFinish:
+ROM:0379    LD  HL, Floppy.Flg      ; Address of floppy flag byte
+ROM:037C    LD  C, DevFloppy
+ROM:037E    JP  SendACK             ; Send ACK for command, and return
+ROM:0381 CmdAbort:
+ROM:0381    LD  HL, Floppy.Flg      ; Point to flag byte
+ROM:0384    SET NAKFlgBit, (HL)     ; Cue Low Volume to do NAK
+ROM:0386    POP HL                  ; Clean up stack
+ROM:0387    JP  RetryCmd            ; Go process the new cmd
+ROM:038A SetAddr:
+ROM:038A    INC HL                  ; Point to Parm2
+ROM:038B    LD  A, (HL)             ; Save sector starting number
+ROM:038C    LD  (F.Sector), A
+ROM:038F    INC HL                  ; Point to F.Parm3
+ROM:0390    LD  C, (HL)             ; Get low byte of byte count
+ROM:0391    INC HL                  ; Point to F.Parm4
+ROM:0392    LD  B, (HL)             ; Get high byte of byte cont
+ROM:0393    LD  (F.ByteCnt), BC     ; Set initial byte count
+ROM:0397    RET
+ROM:0398 SetSize:
+ROM:0398    LD  A, (F.DTL)          ; Get data length
+ROM:039B    LD  BC, 128             ; Assume size is 128 bytes / sector
+ROM:039E    OR  A                   ; Test for zero
+ROM:039F    JR  Z, SetMin           ; Return if size = 128
+ROM:03A1    LD  BC, 256             ; use size = 256
+ROM:03A4    DEC A                   ; Decrement size
+ROM:03A5    JR  Z, SetMin           ; Return if size = 256
+ROM:03A7    LD  BC, 512             ; Set size = 512
+ROM:03AA    DEC A                   ; Decrement size
+ROM:03AB    JR  Z, SetMin           ; Return if size = 512
+ROM:03AD    LD  BC, 1024            ; Set size = 1024
+ROM:03B0    DEC A                   ; Decrement size
+ROM:03B1    JR  Z, SetMin           ; Return if size = 1024
+ROM:03B3    LD  BC, 128             ; Use default size
+ROM:03B6 SetMin:
+ROM:03B6    LD  HL, (F.ByteCnt)     ; Get remaining byte count
+ROM:03B9    OR  A                   ; Clear carry bit
+ROM:03BA    SBC HL, BC              ; Subtract sector size from remaining
+ROM:03BC    RET NC                  ; Return if enough for sector
+ROM:03BD    ADD HL, BC              ; Restore remaining byte
+ROM:03BE    LD  B, H                ; Copy count remaining
+ROM:03BF    LD  C, L
+ROM:03C0    XOR A                   ; Clear A
+ROM:03C1    LD  L, A                ; Clear Low byte of remaining count
+ROM:03C2    LD  H, A                ; Clear High byte of remaining count
+ROM:03C3    RET
+ROM:03C4 CheckStatus:
+ROM:03C4    LD  HL, F.Status        ; Address of status buffer
+ROM:03C7    LD  A, (HL)             ; Get current status type
+ROM:03C8    OR  A                   ; Check if no status
+ROM:03C9    SCF                     ; Force error
+ROM:03CA    RET Z                   ; Return error if no status present
+ROM:03CB    CP  2                   ; Check if only device status
+ROM:03CD    SCF                     ; Force error
+ROM:03CE    RET Z                   ; Return if drive status
+ROM:03CF    INC HL                  ; Point to Status register 0
+ROM:03D0    LD  A, (HL)             ; Get first status byte
+ROM:03D1    AND 0C0H                ; Retain only bits 7 and 6
+ROM:03D3    RET Z                   ; Return with carry = 0 if no error
+ROM:03D4    SCF                     ; Set error flag
+ROM:03D5    RET
+ROM:03D6 DO_Config:
+ROM:03D6    LD  B, (HL)             ; Get Highest sector number from parameter 1
+ROM:03D7    INC HL
+ROM:03D8    LD  C, (HL)             ; Get Gap Length from parameter 2
+ROM:03D9    INC HL
+ROM:03DA    LD  A, (HL)             ; Get Data Length from parameter 3
+ROM:03DB    INC HL
+ROM:03DC    CP  2                   ; Is it too large?
+ROM:03DE    JR  NC, NAKFinish       ; Branch if invalid config
+ROM:03E0    LD  (F.DTL), A          ; Save data length
+ROM:03E3    LD  A, (HL)             ; Get option bits
+ROM:03E4    AND 0E0H                ; Retain only MT, MF, SK
+ROM:03E6    LD  (F.Options), A      ; Save option bits
+ROM:03E9    LD  HL, F.EOT           ; Address of end of track
+ROM:03EC    LD  (HL), B             ; Set Highest sector number
+ROM:03ED    LD  HL, F.GPL           ; Address of gap length
+ROM:03F0    LD  (HL), C             ; Set Gap Length
+ROM:03F1    JR  ACKFinish           ; Get new command
+ROM:03F3 DO_Rd:
+ROM:03F3 DO_RdDel:
+ROM:03F3    CALL SetAddr            ; Set address and transfer request size
+ROM:03F6    LD   A, C               ; Copy low byte count address
+ROM:03F7    OR   B                  ; Or in high byte
+ROM:03F8    JP   Z, ACKFinish       ; Branch to done if zero length transfer
+ROM:03FB    CALL StartRead          ; Start read of sector into Buffer A
+ROM:03FE    JR   C, ReadError       ; Take exit if error
+ROM:0400 ReadLoop:
+ROM:0400    LD   DE, (AdrFloppy)    ; Get first buffer address
+ROM:0404    LD   HL, (AdrFloppy+2)  ; Get other buffer address
+ROM:0407    LD  (AdrFloppy), HL     ; Set first to other
+ROM:040A    LD  (AdrFloppy+2), DE   ; Set other to first
+ROM:040E    LD   HL, Floppy.Rdy     ; Address of I/O completion
+ROM:0411    CALL Wait               ; Wait for Floppy completion
+ROM:0414    CALL CheckStatus        ; Check status of transfer
+ROM:0417    JR   C, ReadError       ; Error on read
+ROM:0419    LD   HL, F.Sector       ; Address of current sector number
+ROM:041C    INC (HL)                ; Update sector number
+ROM:041D    CALL SetSize            ; Set size to read in BC
+ROM:0420    PUSH BC                 ; Save byte count
+ROM:0421    LD  (F.ByteCnt), HL     ; Set remaining byte count
+ROM:0424    LD   A, L               ; Copy low remaining count
+ROM:0425    OR   H                  ; Or high remaining count to check for zero
+ROM:0426    CALL NZ, StartRead      ; If more then Start read of another sector
+ROM:0429    POP  BC                 ; Restore byte count
+ROM:042A    JR   C, ReadError       ; Jump if error or read
+ROM:042C    LD   HL, Floppy.Cmd     ; Address of command flag
+ROM:042F    LD   DE, (AdrFloppy+2)  ; Address of buffer just read
+ROM:0433    LD   A, DevFloppy       ; Device code
+ROM:0435    CALL SendBlkData        ; CALL routine to send block data to PERQ
+ROM:0438    JP   C, CmdAbort        ; Abort if error in sending
+ROM:043B    LD   HL, (F.ByteCnt)    ; Get address of remaining byte count
+ROM:043E    LD   A, H               ; Get low byte of length
+ROM:043F    OR   L                  ; Or High byte of length
+ROM:0440    JR   NZ, ReadLoop       ; If any left to read then repeat
+ROM:0442 ReadDone:
+ROM:0442    JP  ACKFinish           ; Send ACK and start new command
+ROM:0445 ReadError:
+ROM:0445    JP  NAKFinish           ; Send NAK and start new command
+ROM:0448 StartRead:
+ROM:0448    CALL SetSize            ; Load BC with byte count
+ROM:044B    LD   DE, (AdrFloppy)    ; Start with first buffer
+ROM:044F    LD   A, D.Floppy        ; Address of floppy
+ROM:0451    DI
+ROM:0452    CALL DMAtoMem           ; Setup DMA Channel for single sector transfer
+ROM:0455    EI
+ROM:0456    JP   FloppyIO           ; Do command setup and start transfer command
+ROM:0459 DO_Wr:
+ROM:0459 DO_WrDel:
+ROM:0459    CALL SetAddr            ; Set address and transfer request size
+ROM:045C    LD   A, C               ; Copy low byte count address
+ROM:045D    OR   B                  ; Or in high byte
+ROM:045E    JP   Z, ACKFinish       ; Branch to done if zero length transfer
+ROM:0461    CALL GetBlk             ; Setup for and call GetBlkData
+ROM:0464    JR   C, WrBlk1Err       ; Branch if can not get block data
+ROM:0466 WrLoop:
+ROM:0466    LD   A, B               ; Test BC = 0
+ROM:0467    OR   C
+ROM:0468    JR   Z, WRExit          ; Branch if no more data
+ROM:046A    LD   DE, (AdrFloppy)    ; Get first buffer address
+ROM:046E    LD   HL, (AdrFloppy+2)  ; Get other buffer address
+ROM:0471    LD  (AdrFloppy), HL     ; Set first to other
+ROM:0474    LD  (AdrFloppy+2), DE   ; Set other to first
+ROM:0478    PUSH BC                 ; Save byte count
+ROM:0479    CALL StartWr            ; Setup and start write to floppy
+ROM:047C    POP  BC                 ; Restore BC
+ROM:047D    JR   C, WrError         ; Take error exit
+ROM:047F    LD   HL, F.Sector       ; Address of current sector number
+ROM:0482    INC (HL)                ; Update sector number
+ROM:0483    LD   HL, (F.ByteCnt)    ; Get current byte count
+ROM:0486    OR   A                  ; Clear Carry bit
+ROM:0487    SBC  HL, BC             ; Subtract this chunk
+ROM:0489    LD  (F.ByteCnt), HL     ; Put remaining size back
+ROM:048C    LD   A, H               ; Check HL = 0
+ROM:048D    OR   L
+ROM:048E    CALL NZ, GetBlk         ; If HL <> 0 then get new block of data
+ROM:0491    JR   C, WRBlkNErr       ; Branch if error getting data
+ROM:0493    PUSH BC                 ; Save the byte count
+ROM:0494    LD   HL, Floppy.Rdy     ; Floppy io semaphore
+ROM:0497    CALL Wait               ; Wait for I/O to complete
+ROM:049A    CALL CheckStatus        ; See if Write was ok
+ROM:049D    POP  BC                 ; Restore byte count
+ROM:049E    JR   C, WRError         ; Branch if error on write
+ROM:04A0    LD   HL, (F.ByteCnt)    ; Get address of remaining byte count
+ROM:04A3    LD   A, H               ; Get low byte of length
+ROM:04A4    OR   L                  ; Or High byte of length
+ROM:04A5    JR   NZ, WrLoop         ; If any left to read to back and repeat
+ROM:04A7 WrExit:
+ROM:04A7    JP   ACKFinish          ; Send ACK and await next command
+ROM:04AA WrBlkNErr:
+ROM:04AA    LD   HL, Floppy.Rdy     ; Floppy I/O Semaphore
+ROM:04AD    CALL Wait               ; Wait for I/O to complete
+ROM:04B0 WrBlk1Err:
+ROM:04B0    JP   CmdAbort           ; Abort the write cmd
+ROM:04B3 WrError:
+ROM:04B3    JP   NAKFinish          ; Send NAK and await next command
+ROM:04B6 GetBlk:
+ROM:04B6    CALL SetSize            ; Set BC with bytes in sector to request
+ROM:04B9    LD   DE, (AdrFloppy)    ; Address of buffer
+ROM:04BD    LD   A, DevFloppy       ; Device code
+ROM:04BF    LD   HL, Floppy.Cmd     ; Floppy command semaphore address
+ROM:04C2    JP   GetBlkData         ; CALL routine to send block data to PERQ
+ROM:04C5 StartWr:
+ROM:04C5    LD   DE, (AdrFloppy+2)  ; Start with first buffer
+ROM:04C9    LD   A, D.Floppy        ; Address of floppy
+ROM:04CB    DI
+ROM:04CC    CALL DMAtoDev           ; Setup DMA Channel for single sector transfer
+ROM:04CF    EI
+ROM:04D0    JP   FloppyIO           ; Start the write
+ROM:04D3 DO_Seek:
+ROM:04D3    LD   A, (F.Parm2)       ; Get desired cylinder number
+ROM:04D6    JR   DO_SkRecal         ; Join Seek
+ROM:04D8 DO_Recal:
+ROM:04D8    XOR  A                  ; Recalibrate is to cylinder 0
+ROM:04D9 DO_SkRec:
+ROM:04D9    LD  (F.Cyl), A          ; Store in cylinder
+ROM:04DC    CALL FloppyIO           ; Execute Seek or Recal
+ROM:04DF    JP   C, NAKFinish       ; If error Send NAK and start next command
+ROM:04E2    LD   HL, Floppy.Rdy
+ROM:04E5    CALL Wait               ; Wait for I/O to complete
+ROM:04E8    CALL CheckStatus        ; See if it worked
+ROM:04EB    JP   C, NAKFinish       ; If error Send NAK and start next command
+ROM:04EE    JP   ACKFinish          ; Send ACK and do next command
+ROM:04F1 DO_Specify:
+ROM:04F1    CALL FloppyIO           ; Execute specify
+ROM:04F4    JP   C, NAKFinish       ; If error Send NAK and start next command
+ROM:04F7    JP   ACKFinish          ; Send ACK and do next command
+ROM:04FA DO_SDrive:
+ROM:04FA    CALL FloppyIO           ; Start Sense Drive command
+ROM:04FD    JP   C, NAKFinish       ; Return NAK
+ROM:0500    LD   HL, Floppy.Flg
+ROM:0503    SET  SRFlgBit, (HL)     ; Request low volume to send status
+ROM:0505    RET                     ; Return to next command
+ROM:0506 DO_RdId:
+ROM:0506    CALL FloppyIO           ; Start Read Id command
+ROM:0509    JP   C, NAKFinish       ; Return NAK
+ROM:050C    LD   HL, Floppy.Rdy
+ROM:050F    CALL Wait               ; Wait for I/O to complete
+ROM:0512    LD   HL, Floppy.Flg
+ROM:0515    SET  SRFlgBit, (HL)     ; Request low volume to send status
+ROM:0517    RET                     ; Return to next command
+ROM:0518 DO_Format:
+ROM:0518    LD   B, 0               ; Clear high byte
+ROM:051A    LD   HL, F.Parm2        ; Point to parameter 
+ROM:051D    LD   C, (HL)            ; Number of sectors per track
+ROM:051E    SLA  C                  ; Bytes in table is 4 * sectors 
+ROM:0520    SLA  C
+ROM:0522    LD   DE, (AdrFloppy)    ; Address of buffer
+ROM:0526    LD   A, DevFloppy       ; Device code
+ROM:0528    LD   HL, Floppy.Cmd     ; Floppy command semaphore address
+ROM:052B    CALL GetBlkData         ; Call routine to get block data from PERQ
+ROM:052E    JP   C, CmdAbort        ; Branch if no block data
+ROM:0531    LD   DE, (AdrFloppy)    ; Start with first buffer
+ROM:0535    LD   A, D.Floppy        ; Address of floppy
+ROM:0537    DI
+ROM:0538    CALL DMAtoDev           ; Setup DMA Channel for transfer
+ROM:053B    EI
+ROM:053C    CALL FloppyIO           ; Now start the format
+ROM:053F    LD   HL, Floppy.Rdy
+ROM:0542    CALL Wait               ; Wait until format of track complete
+ROM:0545    CALL CheckStatus        ; See it it worked
+ROM:0548    JR   C, FmtErr          ; Branch if format error
+ROM:054A    JP   ACKFinish          ; Send ACK and await new command
+ROM:054D FmtErr:
+ROM:054D    JP   NAKFinish          ; Send NAK and await new command
+ROM:0550 DO_Reset:
+ROM:0550    LD   A, 0
+ROM:0552    LD  (Floppy.Rdy), A     ; Initialize I/O semaphore
+ROM:0555    LD  (Floppy.Flg), A     ; Clear the flag byte
+ROM:0558    LD  (Flop.Ratn), A      ; Clear attention pending flag
+ROM:055B    LD  (F.Command), A      ; Clear current command
+ROM:055E    LD  (F.Status), A       ; Set No status present
+ROM:0561    LD   A, FC_Idle         ; Force to Idle
+ROM:0563    LD  (F.CmdBuf), A
+ROM:0566    CALL GetResult          ; Read any pending status from controller
+ROM:0569    JP   ACKFinish          ; Send an ACK
+ROM:056C DO_Boot:
+ROM:056C    LD   A, 26              ; Default highest sector on track
+ROM:056E    LD  (F.EOT), A
+ROM:0571    LD   A, 7               ; Single density gap length
+ROM:0573    LD  (F.GPL), A
+ROM:0576    LD   A, 0               ; Sector length encoded = 0 (128 bytes)
+ROM:0578    LD  (F.DTL), A
+ROM:057B    LD   A, 00000000B       ; Set options MT = 0, MF = Single, SK = 0
+ROM:057D    LD  (F.Options), A
+ROM:0580    LD   HL, F.Command      ; Point to command buffer
+ROM:0583    LD  (HL), CmdSpecify    ; Force specify command
+ROM:0585    INC  HL
+ROM:0586    LD  (HL), 3             ; Default Step Rate in milliseconds
+ROM:0588    INC  HL
+ROM:0589    LD  (HL), 15            ; Head unload time in 16 millisecond units
+ROM:058B    INC  HL
+ROM:058C    LD  (HL), 36            ; Head load time in 2 millsecond units
+ROM:058E    CALL FloppyIO           ; Send the defaults to the controller
+ROM:0591    JP   C, NAKFinish       ; Must not be disc in drive
+ROM:0594    LD   HL, F.Command      ; Point to command buffer
+ROM:0597    LD  (HL), CmdRecal      ; Force recalibate
+ROM:0599    INC  HL
+ROM:059A    XOR  A                  ; Zero
+ROM:059B    LD  (HL), A             ; Clear the unit number 
+ROM:059C    LD  (F.Cyl), A          ; Clear stored cylinder number
+ROM:059F    CALL FloppyIO           ; Execute the Recal
+ROM:05A2    JP   C, NAKFinish       ; Must not be disc in drive
+ROM:05A5    LD   HL, Floppy.Rdy
+ROM:05A8    CALL Wait               ; Wait for Recalibrate to finish
+ROM:05AB    LD   A, 1
+ROM:05AD    LD  (F.Sector), A       ; Set sector = 1
+ROM:05B0    LD  (F.Cyl), A          ; Start in cylinder 1
+ROM:05B3    XOR  A                  ; Zero
+ROM:05B4    LD  (F.Parm1), A        ; Set Unit select to zero, head = 0
+ROM:05B7    CALL BootRead           ; Start read of sector into Buffer A
+ROM:05BA    JR   C, BootError       ; Take error exit
+ROM:05BC    LD   HL, Floppy.Rdy     ; Address of I/O completion
+ROM:05BF    CALL Wait               ; Wait for Floppy completion
+ROM:05C2    CALL CheckStatus        ; Check status of transfer
+ROM:05C5    JR   C, BootError       ; Error on read
+ROM:05C7    LD   HL, (AdrFloppy)    ; Get address of buffer just read
+ROM:05CA    LD   A, (HL)            ; Get first byte
+ROM:05CB    CP   055H               ; Is 1st byte correct for boot sector?
+ROM:05CD    JR   NZ, BootError      ; Branch if not correct
+ROM:05CF    INC  HL
+ROM:05D0    LD   A, (HL)
+ROM:05D1    CP   0AAH               ; Is 2nd byte correct?
+ROM:05D3    JR   NZ, BootError      ; Error, return NAK
+ROM:05D5    CALL BootIncSec         ; Increment sector/head/cylinder
+ROM:05D8    CALL BootRead           ; Start read of sector into Buffer A
+ROM:05DB    JR   C, BootError       ; Take error exit
+ROM:05DD BootLoop:
+ROM:05DD    LD   DE, (AdrFloppy)    ; Get first buffer address
+ROM:05E1    LD   HL, (AdrFloppy+2)  ; Get other buffer address
+ROM:05E4    LD  (AdrFloppy), HL     ; Set first to other
+ROM:05E7    LD  (AdrFloppy+2), DE   ; Set other to first
+ROM:05EB    LD   HL, Floppy.Rdy     ; Address of I/O completion
+ROM:05EE    CALL Wait               ; Wait for Floppy completion
+ROM:05F1    CALL CheckStatus        ; Check status of transfer
+ROM:05F4    JR   C, BootError       ; Error on read
+ROM:05F6    CALL BootIncSec         ; Increment sector/head/cylinder
+ROM:05F9    CALL BootRead           ; If more then Start read of another sector
+ROM:05FC    JR   C, BootError       ; Branch if not started correct
+ROM:05FE    LD   HL, Floppy.Cmd     ; Address of command flag
+ROM:0601    LD   BC, 128            ; Size of sector
+ROM:0604    LD   DE, (AdrFloppy+2)  ; Address of  buffer
+ROM:0608    LD   A, DevFloppy       ; Device code
+ROM:060A    CALL SendBootData       ; Call routine to send block data to PERQ
+ROM:060D    JR   BootLoop           ; Get data just read
+ROM:060F BootError:
+ROM:060F    JP   NAKFinish          ; Send NAK and EXIT
+ROM:0612 BootRead:
+ROM:0612    LD   A, (F.Sector)      ; Address of current sector
+ROM:0615    CP   1                  ; Is it 1st sector of cylindar?
+ROM:0617    JR   NZ, BootNoSeek     ; No, just read
+ROM:0619    LD   A, (F.Parm1)       ; Get command options
+ROM:061C    BIT  2, A               ; Is this head 0?
+ROM:061E    JR   NZ, BootNoSeek     ; No, just read
+ROM:0620    LD   HL, F.Command      ; Point to command area
+ROM:0623    LD  (HL), CmdSeek       ; Set command to seek
+ROM:0625    CALL FloppyIO           ; Start seek
+ROM:0628    RET  C                  ; Return if error
+ROM:0629    LD   HL, Floppy.Rdy     ; Address of Floppy I/O semaphore
+ROM:062C    CALL Wait               ; Wait for seek to complete
+ROM:062F BootNoSeek:
+ROM:062F    LD   BC, 128            ; Get size of boot sectors
+ROM:0632    LD   DE, (AdrFloppy)    ; Start with first buffer
+ROM:0636    LD   A, D.Floppy        ; Address of floppy
+ROM:0638    DI
+ROM:0639    CALL DMAtoMem           ; Setup DMA Channel for single sector transfer
+ROM:063C    EI
+ROM:063D    LD   HL, F.Command      ; Point to command area
+ROM:0640    LD  (HL), CmdRead       ; Set to read command
+ROM:0642    JP   FloppyIO           ; Do command setup and start transfer command
+ROM:0645 BootIncSec:
+ROM:0645    LD   HL, F.Sector       ; Address of current sector number
+ROM:0648    INC (HL)                ; Increment to next sector
+ROM:0649    LD   A, (F.EOT)         ; Get highest sector on track
+ROM:064C    CP  (HL)                ; Compare current with highest
+ROM:064D    RET  NC                 ; Return if not end of track
+ROM:064E    LD  (HL), 1             ; Restart at first sector
+ROM:0650    LD   HL, F.Cyl          ; Get cylinder number
+ROM:0653    INC (HL)                ; Increment cylinder
+ROM:0654    RET                     ; Return all incremented
+ROM:0655 Floppy.ISR:
+ROM:0655    EXX
+ROM:0656    EX   AF, AF
+ROM:0657    LD   HL, F.CmdBuf       ; Get command buffer address
+ROM:065A    LD   A, (HL)            ; Get command
+ROM:065B    AND  FC_Mask            ; Retain only the command
+ROM:065D    JR   Z, IH_Idle         ; Branch if idle
+ROM:065F    CP   FC_Seek            ; Was it Seek?
+ROM:0661    JR   Z, IH_SenseI       ; Branch if sense interrupt required
+ROM:0663    CP   FC_Recal           ; Was it recalibrate?
+ROM:0665    JR   NZ, IH_Result      ; Branch if neither
+ROM:0667 IH_SenseI:
+ROM:0667    LD  (HL), FC_Sint       ; Change command to Sense interrupt status
+ROM:0669    LD   B, 1               ; Length of command
+ROM:066B    CALL SendCommand        ; Send command to the floppy
+ROM:066E IH_Result:
+ROM:066E    CALL GetResult          ; Get result status from controller
+ROM:0671 IH_Signal:
+ROM:0671    LD   HL, Floppy.Rdy     ; Address of IO complete semaphore
+ROM:0674    CALL Signal             ; Release task
+ROM:0677    LD   A, FC_Idle         ; Force to Idle
+ROM:0679    LD  (F.CmdBuf), A
+ROM:067C    JR   IH_Exit            ; Exit
+ROM:067D IH_Idle:
+ROM:067E    LD  (HL), FC_Sint       ; Change to sense interrupt status
+ROM:0680    LD   B, 1
+ROM:0682    CALL SendCommand        ; Send command to the floppy
+ROM:0685    LD   A, FC_Idle
+ROM:0687    LD  (F.CmdBuf), A       ; Force to Idle
+ROM:068A    CALL GetResult          ; Get the result bytes
+ROM:068D    LD   HL, Flop.Ratn      ; Address of attention flag
+ROM:0690    SET  0, (HL)            ; Set attention reason
+ROM:0692 IH_Exit:
+ROM:0692    EXX
+ROM:0693    EX  AF, AF
+ROM:0694    EI
+ROM:0695    RETI
+ROM:0697 FloppyIO:
+ROM:0697    LD  HL, F.CmdBuf        ; Address of command buffer
+ROM:069A    LD  A, (F.Command)      ; Get command byte
+ROM:069D    CP  CmdRead
+ROM:069F    JR  Z, OP_Rd            ; Branch if Read  command
+ROM:06A1    CP  CmdWrite
+ROM:06A3    JR  Z, OP_Wr            ; Branch if Write command
+ROM:06A5    CP  CmdSeek
+ROM:06A7    JP  Z, OP_Seek          ; Branch if Seek command
+ROM:06AA    CP  CmdRecal
+ROM:06AC    JP  Z, OP_Recal         ; Branch if Recalibrate
+ROM:06AF    CP  CmdRdDel
+ROM:06B1    JR  Z, OP_RdDel         ; Branch if Read Deleted
+ROM:06B3    CP  CmdWrDel
+ROM:06B5    JR  Z, OP_WrDel         ; Branch if Write Deleted
+ROM:06B7    CP  CmdRdId
+ROM:06B9    JP  Z, OP_RdId          ; Branch if Read id
+ROM:06BC    CP  CmdSpecify
+ROM:06BE    JP  Z, OP_Specify       ; Branch if Specify command
+ROM:06C1    CP  CmdFormat
+ROM:06C3    JP  Z, OP_Format        ; Branch if Format command
+ROM:06C6    CP  CmdSnsDrive
+ROM:06C8    JP  Z, OP_SnsDrive      ; Branch if Sense Drive Status 
+ROM:06CB    SCF                     ; Error on FloppyIO
+ROM:06CC    RET                     ; Return
+ROM:06CD OP_Rd:
+ROM:06CD    LD  B, FC_Rd            ; Command to Read floppy
+ROM:06CF    JR  OP_Xfer             ; Continue with transfer
+ROM:06D1 OP_RdDel:
+ROM:06D1    LD  B, FC_RdDel         ; Command to Read Deleted
+ROM:06D3    JR  OP_Xfer             ; Continue with transfer
+ROM:06D5 OP_Wr:
+ROM:06D5    LD  B, FC_Wr            ; Command to Write data
+ROM:06D7    JR  OP_Xfer             ; Continue with transfer
+ROM:06D9 OP_WrDel:
+ROM:06D9    LD  B, FC_WrDel         ; Command to Write Deleted data
+ROM:06DB    JR  OP_Xfer             ; Continue with transfer
+ROM:06DD OP_Xfer:
+ROM:06DD    CALL InsCmdOpt          ; Insert command and options
+ROM:06E0    CALL InsAddr            ; Insert address and params
+ROM:06E3    LD   B, 9               ; Length of command
+ROM:06E5    JP   SendCommand        ; Send command to floppy
+ROM:06E8 OP_RdId:
+ROM:06E8    LD   B, FC_RdId         ; Command to Read Id
+ROM:06EA    CALL InsCmdOpt          ; Insert command and options
+ROM:06ED    LD   B, 2               ; Length of command
+ROM:06EF    JP   SendCommand        ; Send command to the floppy
+ROM:06F2 OP_Format:
+ROM:06F2    LD   B, FC_Fmt          ; Command to format floppy
+ROM:06F4    CALL InsCmdOpt          ; Insert command and options
+ROM:06F7    LD   A, (F.DTL)         ; Set data length (Bytes per sector)
+ROM:06FA    LD  (HL), A
+ROM:06FB    INC  HL
+ROM:06FC    LD   A, (F.Parm2)       ; Set sector/track from parameter 2
+ROM:06FF    LD  (HL), A
+ROM:0700    INC  HL
+ROM:0701    LD   A, (F.Parm4)       ; Set gap length
+ROM:0704    LD  (HL), A
+ROM:0705    INC  HL
+ROM:0706    LD   A, (F.Parm3)       ; Set filler byte from parameter 3
+ROM:0709    LD  (HL), A
+ROM:070A    LD   B, 6               ; Number of bytes in command
+ROM:070C    JP   SendCommand        ; Send command to the floppy
+ROM:070F OP_Recal:
+ROM:070F    LD  (HL), FC_Recal      ; Command to recalibrate the floppy
+ROM:0710    INC  HL
+ROM:0712    LD   A, (F.Parm1)       ; Set options from Parameter 1
+ROM:0715    LD  (HL), A
+ROM:0716    LD   B, 2
+ROM:0718    JP   SendCommand        ; Send command to the floppy
+ROM:071B OP_SnsDrive:
+ROM:071B    LD  (HL), FC_SDrive     ; Command to sense drive status
+ROM:071D    INC  HL
+ROM:071E    LD   A, (F.Parm1)       ; Set command options
+ROM:0721    LD  (HL), A
+ROM:0722    LD   B, 2               ; Length of command
+ROM:0724    CALL SendCommand        ; Send command to the floppy
+ROM:0727    RET  C                  ; Return if error sending command to floppy
+ROM:0728    JP   GetResult          ; Get result from controller and return
+ROM:072B OP_Specify:
+ROM:072B    LD  (HL), FC_Specify    ; Command to specify new options
+ROM:072D    INC  HL
+ROM:072E    LD   A, (F.Parm1)       ; Set STP and HUT from Parameter 1
+ROM:0731    CP   16                 ; Compare with highest + 1 valid
+ROM:0733    JR   NC, BadSpecify     ; Branch if parameter is GEQ 16
+ROM:0735    NEG                     ; Arg for controller is - step rate
+ROM:0737    SLA  A                  ; Shift 4 bits to position in high nibble
+ROM:0739    SLA  A
+ROM:073B    SLA  A
+ROM:073D    SLA  A
+ROM:073F    LD   B, A               ; Save until head unload time ready
+ROM:0740    LD   A, (F.Parm2)       ; Get head unload time
+ROM:0743    CP   16                 ; Compare with highest + 1 valid
+ROM:0745    JR   NC, BadSpecif      ; Branch if parameter is GEQ 16
+ROM:0747    OR   B                  ; Combine SRT and HUT
+ROM:0748    LD  (HL), A             ; Store byte to set SRT and HUT
+ROM:0749    INC  HL
+ROM:074A    LD   A, (F.Parm3)       ; Set Head Load Time from Parameter 2
+ROM:074D    CP   128                ; Is head load time too large?
+ROM:074F    JR   NC, BadSpecify     ; Branch if Parameter too large
+ROM:0751    SLA  A                  ; Position and set to DMA move (Bit 0)
+ROM:0753    LD  (HL), A
+ROM:0754    LD   B, 3               ; Length of command
+ROM:0756    JR   SendCommand        ; Send command to the floppy
+ROM:0758 BadSpecify:
+ROM:0758    SCF                     ; Set FloppyIO failed
+ROM:0759    RET
+ROM:075A OP_Seek:
+ROM:075A    LD  (HL), FC_Seek       ; Command for seek
+ROM:075C    INC  HL
+ROM:075D    LD   A, (F.Parm1)       ; Get command options
+ROM:0760    LD  (HL), A
+ROM:0761    INC  HL
+ROM:0762    LD   A, (F.Cyl)         ; Get new cylinder number
+ROM:0765    LD  (HL), A
+ROM:0766    LD   B, 3               ; Command length
+ROM:0768    JR   SendCommand        ; Send command to the floppy
+ROM:076A SendCommand:
+ROM:076A    LD   HL, F.CmdBuf       ; Get address of command
+ROM:076D SendNext:
+ROM:076D    LD   C, 255             ; Per byte retry count
+ROM:076F SendRetry:
+ROM:076F    IN   A, (IOAFStat)      ; Get Floppy main status
+ROM:0771    BIT  7, A               ; Is floppy ready?
+ROM:0773    JR   NZ, SendReady      ; Branch if floppy ready
+ROM:0775    DEC  C
+ROM:0776    JR   NZ, SendRetry      ; Retry unless already tried too many times
+ROM:0778    SCF                     ; Set error flag
+ROM:0779    RET
+ROM:077A SendReady:
+ROM:077A    BIT  6, A               ; Check if ready for output
+ROM:077C    JR   NZ, SendError      ; Branch if byte ready from controller
+ROM:077E    LD   A, (HL)            ; Get current character
+ROM:077F    INC  HL
+ROM:0780    OUT (IOAFData), A       ; Write byte to controller
+ROM:0782    DJNZ SendNext           ; Branch if more to send
+ROM:0784    OR   A                  ; Clear Carry Bit
+ROM:0785    RET
+ROM:0786 SendError:
+ROM:0786    CALL GetResult          ; Get result from floppy
+ROM:0789    SCF                     ; Set error occured
+ROM:078A    RET
+ROM:078B GetResult:
+ROM:078B    LD  HL, F.Status + 1    ; Point to status buffer
+ROM:078E    LD  B, 0                ; Count bytes received
+ROM:0790 ResNext:
+ROM:0790    LD  C, 255              ; Per byte retry count
+ROM:0792 ResRetry:
+ROM:0792    IN  A, (IOAFStat)       ; Get Floppy main status
+ROM:0794    BIT 7, A                ; Is floppy ready?
+ROM:0796    JR  NZ, ResReady        ; Branch if floppy ready
+ROM:0798    DEC C
+ROM:0799    JR  NZ, ResRetry        ; Retry unless already tried too many times
+ROM:079B    SCF                     ; Set error flag
+ROM:079C    RET
+ROM:079D ResReady:
+ROM:079D    BIT 6, A                ; Check if ready for Input
+ROM:079F    JR  Z, ResEnd           ; Branch if ready to send to controller
+ROM:07A1    IN  A, (IOAFData)       ; Read status byte from controller
+ROM:07A3    LD  (HL), A             ; Save current byte
+ROM:07A4    INC HL
+ROM:07A5    INC B                   ; Count byte received
+ROM:07A6    JR  ResNext             ; Branch to check for more
+ROM:07A8 ResEnd:
+ROM:07A8    LD  A, B                ; Copy bytes received
+ROM:07A9    LD  B, 3                ; Type code for status length = 7
+ROM:07AB    CP  7                   ; Is this full status?
+ROM:07AD    JR  Z, ResSetType       ; Yes, set the status type
+ROM:07AF    LD  B, 2                ; Type code for status length = 1
+ROM:07B1    CP  1                   ; Was status length = 1
+ROM:07B3    JR  Z, ResSetType       ; Yes, set status type
+ROM:07B5    LD  B, 1                ; Type code for status length = 2
+ROM:07B7    CP  2                   ; Was status length = 2
+ROM:07B9    JR  Z, ResSetType       ; Yes, set status type
+ROM:07BB    LD  B, 0                ; No status present
+ROM:07BD ResSetType:
+ROM:07BD    LD   A, B
+ROM:07BE    LD  (F.Status), A       ; Set status type
+ROM:07C1    OR   A                  ; Clear carry flag
+ROM:07C2    RET
+ROM:07C3 InsCmdOpt:
+ROM:07C3    LD   A, (F.Options)     ; Get command options
+ROM:07C6    OR   B                  ; Or in the command bits
+ROM:07C7    LD  (HL), A
+ROM:07C8    INC  HL
+ROM:07C9    LD   A, (F.Parm1)       ; Get head and unit select options
+ROM:07CC    LD  (HL), A             ; Insert copy of options
+ROM:07CD    INC  HL
+ROM:07CE    RET
+ROM:07CF InsAddr:
+ROM:07CF    LD   A, (F.Cyl)         ; Get current cylinder
+ROM:07D2    LD  (HL), A
+ROM:07D3    INC  HL
+ROM:07D4    LD   A, (F.Parm1)       ; Set head number from command option bit 2
+ROM:07D7    SRA  A                  ; Shift bit 2 to bit 1
+ROM:07D9    SRA  A                  ; Shift bit 1 to bit 0
+ROM:07DB    AND  1                  ; Isolate bit 0
+ROM:07DD    LD  (HL), A
+ROM:07DE    INC  HL
+ROM:07DF    LD   A, (F.Sector)      ; Set starting sector from current sector
+ROM:07E2    LD  (HL), A
+ROM:07E3    INC  HL
+ROM:07E4    LD   A, (F.DTL)         ; Get encoded data length (N)
+ROM:07E7    LD  (HL), A
+ROM:07E8    INC  HL
+ROM:07E9    LD   A, (F.EOT)         ; Set Last sector on track
+ROM:07EC    LD  (HL), A
+ROM:07ED    INC  HL
+ROM:07EE    LD   A, (F.GPL)         ; Set Gap length on track
+ROM:07F1    LD  (HL), A
+ROM:07F2    INC  HL
+ROM:07F3    LD  (HL), 128           ; Set Data length to 128 (used only if n=0)
+ROM:07F5    INC  HL
+ROM:07F6    RET
+ROM:07F7 ;
+ROM:07F7 ; Initial
+ROM:07F7 Start:
+ROM:07F7    DI                      ; Disable all interrupts until init done
+ROM:07F8    LD   SP, BufFloppy+128      ; Default stack during initialization
+ROM:07FB    XOR  A                  ; Clear A
+ROM:07FC    LD  (RSA.Cmd), A        ; RSA command not available
+ROM:07FF    LD  (RSB.Cmd), A        ; RSB Command not available
+ROM:0802    LD  (Speech.Cmd), A     ; Speech command not available
+ROM:0805    LD  (Floppy.Cmd), A     ; Floppy command not available
+ROM:0808    LD  (KB.Cmd), A         ; Keyboard command not available
+ROM:080B    LD  (GPIB.Cmd), A       ; GPIB command not available
+ROM:081E    LD  (Clock.Cmd), A      ; Clock command not available
+ROM:0811    LD  (Z80.Cmd), A        ; Z80 command not available
+ROM:0814    LD  (Floppy.Rdy), A     ; Floppy I/O Not done
+ROM:0817    LD  (DMAPERQ), A        ; DMA to PERQ not done
+ROM:081A    LD  (DMAGPIB), A        ; DMA to GPIB not done
+ROM:081D    LD  (DMASIO), A         ; DMA to SIO not done
+ROM:0820    LD  (DMAFloppy), A      ; DMA to Floppy not done
+ROM:0823    INC  A                  ; Initialize with 1 unit available
+ROM:0824    LD  (PERQO.Cmd), A      ; PERQ output port is available
+ROM:0827    LD  (SIODMABusy), A     ; SIO DMA is available
+ROM:082A    LD  (PERQDMABusy), A    ; PERQ DMA is available
+ROM:082D    LD   A, 0
+ROM:082F    OUT (INTCSR), A         ; Reset Interrupt chip
+ROM:0831    LD   A, I.M01234|I.Fixed|I.Indiv|I.Interrupt|I.GrpLow|I.ReqHigh
+ROM:0833    OUT (INTCSR), A         ; Set Mode bits
+ROM:0835    LD   A, I.WrACR
+ROM:0837    OUT (INTCSR), A         ; Prepare to load Auto-Clear register
+ROM:0839    LD   A, 011111111B
+ROM:083B    OUT (IntData), A        ; Force all channels to autoclear 
+ROM:083D    CALL Z80Init            ; Initialize Z80 device
+ROM:0840    CALL PERQInit           ; Initialize PERQ port
+ROM:0843    CALL KBInit             ; Initialize keyboard
+ROM:0846    CALL DMAInit            ; Initialize DMA
+ROM:0849    CALL FloppyInit         ; Initialize Floppy
+ROM:084C    CALL ClockInit          ; Initialize Clock
+ROM:084F    CALL RSAInit            ; Initialize RS232 channel A
+ROM:0852    CALL RSBInit            ; Initialize RS232 channel B
+ROM:0855    CALL SPInit             ; Initialize Speech
+ROM:0858    CALL GPIBInit           ; Initialize GPIB
+ROM:085B    CALL PointInit          ; Initialize Kriz pointer
+ROM:085E    CALL InitTCBs           ; Initialize the Scheduler
+ROM:0861    LD   A, 1               ; Lowest possible priority for this task
+ROM:0863    LD   BC, LVTask         ; Entry point for the Low volume task
+ROM:0866    LD   HL, Stack1         ; Use this stack
+ROM:0869    CALL NewTask            ; Create the Low volume task
+ROM:086C    LD   A, 5               ; Priority for floppy task
+ROM:086E    LD   BC, FloppyTask     ; Start address
+ROM:0871    LD   HL, Stack2         ; Use this stack
+ROM:0874    CALL NewTask            ; Create the Floppy Task
+ROM:0877    LD   A, 5               ; Priority
+ROM:0879    LD   BC, RSATask        ; RS232 Channel A task
+ROM:087C    LD   HL, Stack3
+ROM:087F    CALL NewTask
+ROM:0882    LD   A, 5               ; Priority
+ROM:0884    LD   BC, RSBTask        ; RS232 Channel B task (Speech)
+ROM:0887    LD   HL, Stack4
+ROM:088A    CALL NewTask
+ROM:088D    LD   A, 5               ; Priority
+ROM:088F    LD   BC, GPIBTask       ; GPIB task entry point
+ROM:0892    LD   HL, Stack5
+ROM:0895    CALL NewTask
+ROM:0898    LD   A, 5               ; Priority
+ROM:089A    LD   BC, Z80Task        ; Z80 task entry point
+ROM:089D    LD   HL, Stack6
+ROM:08A0    CALL NewTask
+ROM:08A3    LD   A, 5               ; Priority
+ROM:08A5    LD   BC, SpTask         ; Speech task entry point
+ROM:08A8    LD   HL, Stack7
+ROM:08AB    CALL NewTask
+ROM:08AE    LD   A, I.M567 | I.Arm | I.RdISR
+ROM:08B0    OUT (INTCSR), A         ; Arm interrupt chip                
+ROM:08B2    LD   A, HI(Vectors)     ; Get MSB of interrupts vector area
+ROM:08B4    LD   I, A               ; Set interrupt vector page
+ROM:08B6    IM   2                  ; Set mode for vectored interrupts                
+ROM:08B8    LD   IX, (CurrTCB)      ; Default TCB to start searching
+ROM:08BC    JP   Despatch           ; Start highest priority task
+ROM:08BE ;
+ROM:08BE ; End Initial
+ROM:08BF ;
+ROM:08BF ; Keyboard
+ROM:08BF KBInit:
+ROM:08BF    XOR A
+ROM:08C0    LD  (KBIBuff), A        ; Clear PUT offset of the buffer
+ROM:08C3    LD  (KBIBuff+1), A      ; Clear GET offset of the buffer
+ROM:08C6    LD  HL, KB.Flg          ; Address of flag byte
+ROM:08C9    LD  (HL), A             ; Clear flag byte
+ROM:08CA    SET EnbFlgBit,(HL)      ; Enable the keyboard
+ROM:08CC    LD  A, CTC.KBSel | CTC.Both | CTC.M3
+ROM:08CE    OUT (CTCB.CSR), A       ; Select counter and mode
+ROM:08D0    LD  A, LO(833)          ; = 4Mhz / (300Baud * 16) = 833
+ROM:08D2    OUT (CTC.KB), A
+ROM:08D4    LD  A, HI(833)          ; High byte of 833
+ROM:08D6    OUT (CTC.KB), A
+ROM:08D8    IN  A,(KBData)          ; Clear any pending character
+ROM:08DA    IN  A,(KBData)          ; Clear any pending character
+ROM:08DC    IN  A,(KBData)          ; Clear any pending character
+ROM:08DE    LD  HL, InitTab         ; Address of initialization 
+ROM:08E1    LD  B, InitTabL         ; Total writes
+ROM:08E3    LD  C, KBControl        ; I/O Address of keyboard control
+ROM:08E5    OTIR
+ROM:08E7    RET
+ROM:08E8 ;
+ROM:08E8 ; Initialisation table for RS232
+ROM:08E8 InitTab:
+ROM:08E8    .byte  00011000B        ; Channel Reset command
+ROM:08E9    .byte          4        ; Select register 4
+ROM:08EA    .byte  01001000B        ; *16 clock, 1 1/2 stop, no parity
+ROM:08EB    .byte          3        ; Select Register 3
+ROM:08EC    .byte  11100001B        ; 8 Bits, Auto Enable, Rx Enable
+ROM:08ED    .byte          5        ; Select Register 5
+ROM:08EE    .byte  11100000B        ; DTR, 8 Bits, disable Tx
+ROM:08EF    .byte          1        ; Select register 1
+ROM:08F0    .byte  00011100B        ; Enables reciever interrupts
+ROM:08F1    .byte          2        ; Select Register 2
+ROM:08F2    .byte  LO(VecRS1)       ; Load interrupt vector
+ROM:08F3    .byte          0        ; Leave it pointing at R0
+ROM:08F3 ; InitTabL equ 12          ; Length of table
+ROM:08F3 ;
+ROM:08F4 XKB:
+ROM:08F4    LD   HL, KB.Flg         ; A useful pointer
+ROM:08F7    LD   A, (PERQIBuff+2)       ; The command byte
+ROM:08FA    CP   CmdConfig
+ROM:08FC    JR   Z, KBConfig        ; Branch if Configure command
+ROM:08FE    CP   CmdSense
+ROM:0900    JR   Z, KBSense         ; Branch if Sense command
+ROM:0902    CP   CmdReset           ; Is it Reset?
+ROM:0904    JR   NZ, NAKIt          ; Branch if invalid command
+ROM:0906    CALL KBINIT
+ROM:0909    JR   ACKIt
+ROM:090B KBSense:
+ROM:090B    SET  SRFlgBit,(HL)      ; Set the status request bit
+ROM:090D    JP   PERQEnable
+ROM:0910 KBConfig:
+ROM:0910    LD   A, (PERQIBuff+3)       ; The On/Off byte
+ROM:0913    OR   A                  ; Zero for Off?
+ROM:0914    JR   Z, KBCOff
+ROM:0916    SET  EnbFlgBit, (HL)
+ROM:0918    JR   ACKIt
+ROM:091A KBCOff:
+ROM:091A    RES  EnbFlgBit, (HL)
+ROM:091C ACKIt:
+ROM:091C    SET  ACKFlgBit, (HL)    ; Set a flag for the Low Vol Task
+ROM:091E    JP   PERQEnable
+ROM:0921 NAKIt:
+ROM:0921    SET  NAKFlgBit, (HL)    ; Set another flag for LowVol
+ROM:0923    JP   PERQEnable
+ROM:0926 ZKB:
+ROM:0926    LD   C, DevKB           ; Device code
+ROM:0928    LD   HL, KBIBuff        ; Address of input circular buffer
+ROM:092B    CALL SendData           ; Send data if any
+ROM:092E    LD   HL, KB.Flg         ; Check Keyboard for ACK/NAK
+ROM:0931    LD   A, (HL)            ; Copy of flags
+ROM:0932    AND  RespMask           ; Test for responses pending
+ROM:0934    RET  Z                  ; Return if none
+ROM:0935    LD   C, DevKB           ; Device code
+ROM:0937    BIT  ACKFlgBit, A
+ROM:0939    JP   NZ, SendACK        ; If necessary send ACK and return
+ROM:093C    BIT  NAKFlgBit, A
+ROM:093E    JP   NZ, SendNAK        ; If necessary send NAK and return
+ROM:0941    BIT  SRFlgBit, A
+ROM:0943    RET  Z                  ; Return if no status to send
+ROM:0944    RES  SRFlgBit, (HL)     ; Reset Status Request pending
+ROM:0946    LD   HL, PERQO.Cmd
+ROM:0949    CALL Wait               ; Wait for output port to be free
+ROM:094C    LD   A, 4
+ROM:094E    LD  (PERQOBuff), A      ; Length of status
+ROM:0951    LD   A,DevKB
+ROM:0953    LD  (PERQOBuff+1), A    ; Insert the device code
+ROM:0956    LD   A, CmdStatus
+ROM:0958    LD  (PERQOBuff+2), A    ; Set command field to status
+ROM:095B    LD   HL, KB.Flg         ; Address of keyboard flags
+ROM:095E    XOR  A                  ; Start with a zero
+ROM:095F    BIT  OvfFlgBit, (HL)
+ROM:0961    JR   Z, NoKBOver
+ROM:0963    INC  A                  ; Non-zero flag in A
+ROM:0964 NoKBOver:
+ROM:0964    LD  (PERQOBuff+4), A    ; OVERFLOW IND FIELD
+ROM:0967    RES  OvfFlgBit, (HL)    ; Overflow flag
+ROM:0969    LD   A, (HL)            ; Get flags in A
+ROM:096A    AND  EnbBitMsk          ; Mask for enable bit
+ROM:096C    LD  (PERQOBuff+3), A    ; On/Off field
+ROM:096F    JP   SendPERQ           ; Send message, release port and return
+ROM:0972 KBRx.ISR:
+ROM:0972    EXX
+ROM:0973    EX   AF, AF
+ROM:0974    IN   A, (KBData)        ; Keyboard input port
+ROM:0976    LD   HL, KB.Flg
+ROM:0979    BIT  EnbFlgBit, (HL)    ; Check to see if the keyboard is enabled
+ROM:097B    JR   Z, KB.ISRExit      ; Branch if not enabled
+ROM:097D    CPL                     ; Data from keyboard is inverted
+ROM:097E    LD   D, A               ; Save character
+ROM:097F ; Check for keyboard buffer full
+ROM:097F    LD   HL, KBIBuff
+ROM:0982    CALL BufCmp             ; Gets chars in buff to A
+ROM:0985    CP   BuffSize-2         ; Full?
+ROM:0987    JR   C, KBFree          ; Branch if space for 2 more characters
+ROM:0989 ; Set the Keyboard overflow indicator
+ROM:0989    LD   HL, KB.Flg         ; Keyboard flag word
+ROM:098C    SET  OvfFlgBit, (HL)    ; Overflow flag
+ROM:098E    JR   KB.ISRExit         ; Go to return point
+ROM:0990 KBFree:
+ROM:0990    XOR  A
+ROM:0991    CALL BufPut             ; Store Null Status byte
+ROM:0994    LD   A, D               ; Restore character 
+ROM:0995 ; HL still points to KBIBuff
+ROM:0995    CALL BufPut             ; and store off char
+ROM:0998 KB.ISRExit:
+ROM:0998    EXX
+ROM:0999    EX  AF, AF
+ROM:099A    EI
+ROM:099B    RETI
+ROM:099D KBTx.ISR:
+ROM:099D    EXX
+ROM:099E    EX   AF, AF
+ROM:099F    LD   A, 5
+ROM:09A1    OUT (KBControl), A      ; Select write register 5
+ROM:09A3    LD   A, 0
+ROM:09A5    OUT (KBControl), A      ; Clear entire transmit register
+ROM:09A7    LD   A, RSRTIP          ; Reset transmitter interrupt pending
+ROM:09A9    OUT (KBControl), A
+ROM:09AB    EXX
+ROM:09AC    EX   AF, AF
+ROM:09AD    EI
+ROM:09AE    RETI
+ROM:09B0 KBSt.ISR:
+ROM:09B0    EXX
+ROM:09B1    EX  AF, AF
+ROM:09B2    LD  A, RSRExtInt        ; Reset external interrupt
+ROM:09B4    OUT (KBControl), A
+ROM:09B6    EXX
+ROM:09B7    EX  AF, AF
+ROM:09B8    EI
+ROM:09B9    RETI
+ROM:09BB KBSp.ISR:
+ROM:09BB    EXX
+ROM:09BC    EX  AF, AF
+ROM:09BD    LD  A, RSRError         ; Error reset
+ROM:09BF    OUT (KBControl), A
+ROM:09C1    IN  A, (KBData)         ; Discard the char
+ROM:09C3    EXX
+ROM:09C4    EX  AF, AF
+ROM:09C5    EI
+ROM:09C6    RETI
+ROM:09C7 ;
+ROM:09C7 ; End Keyboard
+ROM:09C8 ;
+ROM:09C8 ; PERQ
+ROM:09C8 PERQInit:
+ROM:09C8    LD   A, I.WrRes | I.By1 | I.PERQI ; 1 byte response for PERQ input
+ROM:09CA    OUT (INTCSR), A         ; Enable writting response memory
+ROM:09CC    LD   A, LO(VecPERQI)
+ROM:09CE    OUT (INTDATA), A        ; Set PERQ Input interrupt vector
+ROM:09D0    LD   A, I.CIMRIRR | I.PERQI | I.Single
+ROM:09D2    OUT (INTCSR), A         ; Clear IMR and IRR for PERQ input
+ROM:09D4    LD   A, I.WrRes | I.By1 | I.PERQO ; 1 byte response for PERQ output
+ROM:09D6    OUT (INTCSR), A         ; Enable writting response memory
+ROM:09D8    LD   A, LO(VecPERQO)
+ROM:09DA    OUT (INTDATA), A        ; Set PERQ Output interrupt vector
+ROM:09DC    LD   A, I.CIMRIRR | I.PERQO | I.Single
+ROM:09DE    OUT (INTCSR), A         ; Clear IMR and IRR for PERQ Output
+ROM:09E0    LD   A, PI_Empty        ; Set input state to empty
+ROM:09E2    LD  (PI.State), A
+ROM:09E5    LD   A, 1               ; Set the output ready bit so PERQ can
+ROM:09E7    OUT (PERQ.Rdy), A       ; Get interrupts when data loaded to FIFO
+ROM:09E9    RET
+ROM:09EA PERQI.ISR:
+ROM:09EA    EXX
+ROM:09EB    EX   AF, AF
+ROM:09EC    LD   A, (PI.State)      ; Get input buffer state
+ROM:09EF    DEC  A                  ; Decrement and set CCs
+ROM:09F0    JR   Z, SaveData        ; Branch if state = 1 then save data
+ROM:09F2    DEC  A                  ; Decrement and set CCs
+ROM:09F3    JR   Z, SaveCount       ; Branch if state = 2 then save count
+ROM:09F5 WaitSOM:
+ROM:09F5    IN   A, (PERQ.STS)      ; Get status of FIFOs
+ROM:09F7    BIT  6, A               ; Test if data in input fifo
+ROM:09F9    JR   NZ, IH_Exit        ; Exit if no more characters in FIFO
+ROM:09FB    IN   A, (PERQ.IN)       ; Get character from PERQ input port
+ROM:09FD    CP   SOM                ; Is it start of new packet
+ROM:09FF    JR   NZ, WaitSOM        ; Branch if not, just ignore
+ROM:0A01    LD   A, PI_Count        ; Set state to count pending
+ROM:0A03    LD  (PI.State), A       ; Fall into next state
+ROM:0A06 SaveCount:
+ROM:0A06    IN   A, (PERQ.STS)      ; Get status of FIFOs
+ROM:0A08    BIT  6, A               ; Test if data in input fifo
+ROM:0A0A    JR   NZ, IH_Exit        ; Exit if no more characters in FIFO
+ROM:0A0C    IN   A, (PERQ.IN)       ; Get character from PERQ input port
+ROM:0A0E    OR   A                  ; Check for LEQ 0
+ROM:0A0F    JR   Z, CountZero       ; Branch if count = 0
+ROM:0A11 CountNZ:
+ROM:0A11    CP   MaxMsg + 1         ; See if count > Max allowed
+ROM:0A13    JR   NC, CountOvf       ; Branch if count > Max
+ROM:0A15 CountOk:
+ROM:0A15    LD   HL, PERQIBuff      ; Reset buffer ptr to base of buffer
+ROM:0A18    LD  (HL), A             ; Store count character
+ROM:0A19    INC  HL                 ; Update address
+ROM:0A1A    LD  (PI.Addr), HL       ; Store next address
+ROM:0A1D    LD  (PI.Remain), A      ; Put count in memory
+ROM:0A20    LD   A, PI_Data         ; Set state to data code expected
+ROM:0A22    LD  (PI.State), A       ; Fall into next state
+ROM:0A25 SaveData:
+ROM:0A25    IN   A, (PERQ.STS)      ; Get status of FIFOs
+ROM:0A27    BIT  6, A               ; Test if data in input fifo
+ROM:0A29    JR   NZ, IH_Exit        ; Exit if no more characters in FIFO
+ROM:0A2B    IN   A, (PERQ.IN)       ; Get character from PERQ input port
+ROM:0A2D    LD   HL, (PI.Addr)      ; Get current input buffer pointer
+ROM:0A30    LD  (HL), A             ; Store input character
+ROM:0A31    INC  HL                 ; Update address
+ROM:0A32    LD  (PI.Addr), HL       ; Store next address
+ROM:0A35    LD   HL, PI.Remain      ; Address of remaining count
+ROM:0A38    DEC (HL)                ; Decrement count of characters remaining
+ROM:0A39    JR   NZ, SaveData       ; Branch if more to come
+ROM:0A3B    CALL PERQDisable        ; Disable PERQ input interrupts
+ROM:0A3E    LD   A, PI_Empty        ; Set input buffer state to Empty
+ROM:0A40    LD  (PI.State), A       ; Next interrupt will start filling new buffer
+ROM:0A43    CALL ExaminePacket      ; Determine what to do with packet
+ROM:0A46 IH_Exit:
+ROM:0A46    EXX
+ROM:0A47    EX  AF, AF
+ROM:0A48    EI
+ROM:0A49    RETI
+ROM:0A4B CountZero:
+ROM:0A4B    LD   A, PI_Empty        ; Set input buffer state to Empty
+ROM:0A4D    LD  (PI.State), A       ; Next interrupt will start filling new buffer
+ROM:0A50    JR   WaitSOM            ; Check for more bytes in input
+ROM:0A52 CountOvf:
+ROM:0A52    LD   A, MaxMsg          ; Set to Max size
+ROM:0A54    JR   CountOK
+ROM:0A56 ExaminePacket:
+ROM:0A56    LD  A, (PERQIBuff+1)    ; Get device number
+ROM:0A59    CP  DevFloppy           ; Is device floppy?
+ROM:0A5B    JP  Z, XFloppy          ; Yes, have floppy module handle new command
+ROM:0A5E    CP  DevRSA              ; Is device RSA?
+ROM:0A60    JP  Z, XRSA             ; Yes, have RSA module handle new command
+ROM:0A63    CP  DevRSB              ; Is device RSB?
+ROM:0A65    JP  Z, XRSB             ; Yes, have RSB module handle new command
+ROM:0A68    CP  DevSpeech           ; Is device Speech?
+ROM:0A6A    JP  Z, XSpeech          ; Yes, have Speech module handle new command
+ROM:0A6D    CP  DevGPIB             ; Is device GPIB?
+ROM:0A6F    JP  Z, XGPIB            ; Yes, have GPIB module handle new command
+ROM:0A72    CP  DevKB               ; Is device Keyboard?
+ROM:0A74    JP  Z, XKB              ; Yes, have Keyboard module handle new command
+ROM:0A77    CP  DevClock            ; Is device Clock?
+ROM:0A79    JP  Z, XClock           ; Yes, have Clock module handle new command
+ROM:0A7C    CP  DevPointer          ; Is device Pointer?
+ROM:0A7E    JP  Z, XPointer         ; Yes, have Pointer module handle new command
+ROM:0A81    CP  DevZ80              ; Is device Z80?
+ROM:0A83    JP  Z, XZ80             ; Yes, Have Z80 module handle new command
+ROM:0A86 ;
+ROM:0A86 ; Unknown device code ignore the message
+ROM:0A86    JP   PERQEnable         ; Re-enable the port and return to handler
+ROM:0A89 SendPERQ:
+ROM:0A89    LD   HL, PERQOBuff      ; Point to the buffer
+ROM:0A8C    LD   B, (HL)            ; Get message byte count
+ROM:0A8D    INC  B                  ; Total message length
+ROM:0A8E    LD   C, PERQ.OUT        ; PERQ output port address
+ROM:0A90    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0A93    LD   A, SOM             ; Send Start of message character
+ROM:0A95    OUT (C), A
+ROM:0A97 CheckBusy:
+ROM:0A97    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0A9A    OUTI 
+ROM:0A9C    JR   NZ, CheckBusy      ; If more to send check busy again
+ROM:0A9E    LD   HL, PERQO.Cmd      ; Port semaphore
+ROM:0AA1    JP   Signal             ; Return after releasing the Port
+ROM:0AA4 SendAttn:
+ROM:0AA4    DI                      ; Disable during test and clear
+ROM:0AA5    LD   A, (HL)            ; Get attention mask
+ROM:0AA6    LD  (HL), 0             ; Clear the attention mask byte
+ROM:0AA8    EI                      ; Re-enable
+ROM:0AA9    OR   A                  ; Test for attentions
+ROM:0AAA    RET  Z                  ; Return none pending
+ROM:0AAB    LD   B, A               ; Save attention reason 
+ROM:0AAC    LD   HL, PERQO.Cmd
+ROM:0AAF    CALL Wait               ; Wait for the output buffer
+ROM:0AB2    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0AB5    LD   A, SOM             ; Send Start of message character
+ROM:0AB7    OUT (PERQ.OUT), A
+ROM:0AB9    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0ABC    LD   A, 3               ; Length of Attn
+ROM:0ABE    OUT (PERQ.OUT), A
+ROM:0AC0    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0AC3    LD   A, C               ; Set device to send ACK for
+ROM:0AC4    OUT (PERQ.OUT), A
+ROM:0AC6    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0AC9    LD   A, CmdAttn         ; Set command to attention
+ROM:0ACB    OUT (PERQ.OUT), A
+ROM:0ACD    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0AD0    LD   A, B               ; Set Attention reason
+ROM:0AD1    OUT (PERQ.OUT), A
+ROM:0AD3    JP   Signal             ; Release port and return
+ROM:0AD6 SendNAK:
+ROM:0AD6    RES  NAKFlgBit, (HL)    ; Reset NAK pending
+ROM:0AD8    LD   B, CmdNAK          ; Set command to NAK
+ROM:0ADA    JP   SendAN             ; Join common
+ROM:0ADD SendACK:
+ROM:0ADD    RES  ACKFlgBit, (HL)    ; Reset ACK pending
+ROM:0ADF    LD   B, CmdACK          ; Set command to ACK
+ROM:0AE1 SendAN:
+ROM:0AE1    LD   HL, PERQO.Cmd
+ROM:0AE4    CALL Wait               ; Reserve the PERQ output port
+ROM:0AE7    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0AEA    LD   A, SOM             ; Send Start of message character
+ROM:0AEC    OUT (PERQ.OUT), A
+ROM:0AEE    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0AF1    LD   A, 2               ; Length of ACK/NAK
+ROM:0AF3    OUT (PERQ.OUT), A
+ROM:0AF5    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0AF8    LD   A, C               ; Set device to send ACK for
+ROM:0AF9    OUT (PERQ.OUT), A
+ROM:0AFB    CALL FIFOWait           ; Wait until FIFO to PERQ not full
+ROM:0AFE    LD   A, B               ; Set command to send
+ROM:0AFF    OUT (PERQ.OUT), A
+ROM:0B01    JP   Signal             ; Release port and return
+ROM:0B04 SendData:
+ROM:0B04    CALL BufCmp             ; Compare buffer pointers
+ROM:0B07    AND  !1                 ; Send only even number of bytes
+ROM:0B09    RET  Z                  ; Return if no data in buffer
+ROM:0B0A    CP   MaxData            ; More data than will fit in one message?
+ROM:0B0C    JR   C, Enough          ; Branch if all the data will fit
+ROM:0B0E    LD   A, MaxData         ; Send maximum amount
+ROM:0B10 Enough:
+ROM:0B10    EX   DE, HL             ; Save buffer pointer
+ROM:0B11    LD   B, A               ; Save count
+ROM:0B12    LD   HL, PERQO.Cmd      ; Get output channel
+ROM:0B15    CALL Wait               ; Wait for PERQ port
+ROM:0B18    LD   A, B               ; Restore count
+ROM:0B19    ADD  A, 2               ; Bump it for command fields
+ROM:0B1B    LD   HL, PERQOBuff      ; Point to the output buffer
+ROM:0B1E    LD  (HL), A             ; And save count in the buffer
+ROM:0B1F    INC  HL                 ; Point to device section
+ROM:0B20    LD  (HL), C             ; and save device code
+ROM:0B21    INC  HL                 ; Point to command
+ROM:0B22    LD  (HL), CmdData       ; This is a data packet
+ROM:0B24    INC  HL                 ; Point to message area
+ROM:0B25    EX   DE, HL             ; Put pointer in DE, get back buffer pointer
+ROM:0B25                            ; Note B still contains byte count
+ROM:0B26    CALL BlockGet           ; Get bytes from circular buffer to message
+ROM:0B29    JP   SendPERQ           ; Send to PERQ, release port and return
+ROM:0B2C PERQDisable:
+ROM:0B2C    LD   A, I.Single | I.PERQI | I.SIMR
+ROM:0B2E    OUT (INTCSR), A         ; Set PERQ input mask register bit
+ROM:0B30    RET
+ROM:0B31 PERQEnable:
+ROM:0B31    IN   A, (PERQ.STS)      ; Get status of FIFOs
+ROM:0B33    BIT  6, A               ; Test if data in input fifo
+ROM:0B35    JR   NZ, FIFOMt         ; Branch if no characters in FIFO
+ROM:0B37    LD   A, I.Single | I.PERQI | I.SIRR
+ROM:0B39    OUT (INTCSR), A         ; Force new interrupt for FIFO
+ROM:0B3B FIFOMt:
+ROM:0B3B    LD   A, I.Single | I.PERQI | I.CIMR
+ROM:0B3D    OUT (INTCSR), A         ; Clear PERQ input mask register bit
+ROM:0B3F    RET
+ROM:0B40 GetBlkData:
+ROM:0B40    PUSH HL                 ; Save address of input semaphore
+ROM:0B41    PUSH AF                 ; Save device code
+ROM:0B42    LD   HL, PERQDMABusy    ; Address of PERQ DMA semaphore
+ROM:0B45    CALL Wait               ; Wait until DMA channel free
+ROM:0B48    LD   HL, PERQO.Cmd      ; Address of PERQ output semaphore
+ROM:0B4B    CALL Wait               ; Wait for port to be available
+ROM:0B4E    CALL FIFOWait           ; Wait until FIFO not full
+ROM:0B51    LD   A, SOM             ; Send SOM to PERQ
+ROM:0B53    OUT (PERQ.Out), A
+ROM:0B55    CALL FIFOWait           ; Wait until FIFO not full
+ROM:0B58    LD   A, 4               ; Length of Reqdata command
+ROM:0B5A    OUT (PERQ.Out), A
+ROM:0B5C    CALL FIFOWait           ; Wait until FIFO not full
+ROM:0B5F    POP  AF                 ; Restore A
+ROM:0B60    OUT (PERQ.Out), A       ; Send device code to PERQ
+ROM:0B62    CALL FIFOWait           ; Wait until FIFO not full
+ROM:0B65    LD   A, CmdReqData      ; Send Request data command
+ROM:0B67    OUT (PERQ.Out), A
+ROM:0B69    CALL FIFOWait           ; Wait until FIFO not full
+ROM:0B6C    LD   A, C               ; Send low order byte of length to PERQ
+ROM:0B6D    OUT (PERQ.Out), A
+ROM:0B6F    CALL FIFOWait           ; Wait until FIFO not full
+ROM:0B72    LD   A, B               ; Send high order byte of length to PERQ
+ROM:0B73    OUT (PERQ.Out), A
+ROM:0B75    PUSH BC                 ; Save data byte count (Signal needs BC)
+ROM:0B76    PUSH DE                 ; Save data buffer address (Signal needs DE)
+ROM:0B77    LD   HL, PERQO.Cmd      ; Address of PERQ output semaphore
+ROM:0B7A    CALL Signal             ; Release PERQ Output Port
+ROM:0B7D    POP  DE                 ; Restore data buffer address
+ROM:0B7E    POP  BC                 ; Restore data byte count
+ROM:0B7F    POP  HL                 ; Recover semaphore to wait on
+ROM:0B80    CALL Wait               ; Wait for command back from PERQ
+ROM:0B83    PUSH DE                 ; Save Buffer address for exit
+ROM:0B84    PUSH HL                 ; Save semaphore again
+ROM:0B85    LD   A, (PI.Command)    ; Get command byte
+ROM:0B88    CP   CmdBlkdata         ; Is it BlkData?
+ROM:0B8A    SCF                     ; Set carry for possible error exit
+ROM:0B8B    JR   NZ, GetBlkExit     ; Branch if not Block data
+ROM:0B8D    LD   HL, PI.Data1       ; Address of first Count byte
+ROM:0B90    LD   C, (HL)            ; Get Lsb of byte count
+ROM:0B91    INC  HL                 ; Increment address
+ROM:0B92    LD   B, (HL)            ; Get Msb of byte count
+ROM:0B93    XOR  A
+ROM:0B94    OUT (PDMADirect), A     ; Set direction to DMA from PERQ
+ROM:0B96    OUT (PDMAFlush), A      ; Flush DMA FIFOs
+ROM:0B98    LD   A, D.PERQ          ; DMA Channel for PERQ
+ROM:0B9A    DI
+ROM:0B9B    CALL DMAtoMem           ; Start DMA from PERQ
+ROM:0B9E    EI
+ROM:0B9F    OUT (PDMAStart), A      ; Force 1st PDMA request
+ROM:0BA1    CALL PERQEnable         ; Re-enable PERQ input interrupts
+ROM:0BA4    LD  HL, DMAPERQ
+ROM:0BA7    CALL Wait               ; Wait for DMA from PERQ to finish
+ROM:0BAA    LD  A, CmdBlkData       ; Set command to blkdata
+ROM:0BAC    OR  A                   ; Clear Carry bit for return
+ROM:0BAD GetBlkExit:
+ROM:0BAD    PUSH AF                 ; Save A and Carry bit for exit
+ROM:0BAE    PUSH BC                 ; Save byte count for exit
+ROM:0BAF    LD   HL, PERQDMABusy
+ROM:0BB2    CALL Signal             ; Release PERQ DMA channel
+ROM:0BB5    POP  BC
+ROM:0BB6    POP  AF
+ROM:0BB7    POP  HL                 ; Restore HL
+ROM:0BB8    POP  DE                 ; Restore DE
+ROM:0BB9    RET
+ROM:0BBA SendBlkData:
+ROM:0BBA    PUSH HL                 ; Save semaphore address
+ROM:0BBB    PUSH AF                 ; Save Device code
+ROM:0BBC    LD   HL, PERQDMABusy
+ROM:0BBF    CALL Wait               ; Wait until PERQ DMA channel not busy
+ROM:0BC2    LD   HL, PERQO.Cmd      ; Address of PERQ output semaphore
+ROM:0BC5    CALL Wait               ; wait for port to be available
+ROM:0BC8    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0BCB    LD   A, SOM             ; Send SOM to PERQ
+ROM:0BCD    OUT (PERQ.Out), A
+ROM:0BCF    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0BD2    LD   A, 4               ; Length of Blkdata command
+ROM:0BD4    OUT (PERQ.Out), A
+ROM:0BD6    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0BD9    POP  AF                 ; Restore device code
+ROM:0BDA    OUT (PERQ.Out), A       ; Send device code to PERQ
+ROM:0BDC    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0BDF    LD   A, CmdBlkData      ; Send Block data command
+ROM:0BE1    OUT (PERQ.Out), A
+ROM:0BE3    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0BE6    LD   A, C               ; Send low order byte of length to PERQ
+ROM:0BE7    OUT (PERQ.Out), A
+ROM:0BE9    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0BEC    LD   A, B               ; Send high order byte of length to PERQ
+ROM:0BED    OUT (PERQ.Out), A
+ROM:0BEF    PUSH BC                 ; Save byte count
+ROM:0BF0    PUSH DE                 ; Save Buffer Address
+ROM:0BF1    LD   HL, PERQO.Cmd      ; Address of PERQ output semaphore
+ROM:0BF4    CALL Signal             ; Release PERQ Output Port
+ROM:0BF7    POP  DE                 ; Restore buffer address
+ROM:0BF8    POP  BC                 ; Restore Byte count
+ROM:0BF9    POP  HL                 ; Get semaphore address
+ROM:0BFA    CALL Wait               ; wait for ACK command
+ROM:0BFD    LD   A, (PERQIbuff+2)   ; Get command
+ROM:0C00    CP   CmdACK             ; Test for ACK
+ROM:0C02    SCF                     ; Set error flag
+ROM:0C03    JR   NZ, SendExit       ; Branch if not ACK command
+ROM:0C05    CALL PERQEnable         ; Re-enable interrupts from PERQ
+ROM:0C08    LD   A, 1               ; 1 = DMA to PERQ
+ROM:0C0A    OUT (PDMADirect), A     ; Set to write to the PERQ
+ROM:0C0C    OUT (PDMAFlush), A      ; Flush FIFOs (Data does not matter)
+ROM:0C0E    LD   A, D.PERQ          ; DMA Device is PERQ
+ROM:0C10    DI
+ROM:0C11    CALL DMAtoDEV           ; Setup to DMA using BC and DE
+ROM:0C14    EI
+ROM:0C15    LD   HL, DMAPERQ
+ROM:0C18    CALL Wait               ; Wait for DMA to finish
+ROM:0C1B    LD   A, C               ; Copy low byte of byte count
+ROM:0C1C    AND  7                  ; Test for multiple of 8 bytes
+ROM:0C1E    JR   Z, SendExit        ; Branch if multiple of 8 bytes
+ROM:0C20    OUT (PDMAStart), A      ; Force out last bytes to PERQ
+ROM:0C22 SendExit:
+ROM:0C22    PUSH AF                 ; Save A and Carry bit for exit
+ROM:0C23    LD   HL, PERQDMABusy
+ROM:0C26    CALL Signal             ; Release PERQ DMA channel
+ROM:0C29    POP  AF                 ; Restore AF
+ROM:0C2A    RET
+ROM:0C2B SendBootData:
+ROM:0C2B    PUSH HL                 ; Save semaphore address
+ROM:0C2C    PUSH AF                 ; Save Device code
+ROM:0C2D    LD   HL, PERQO.Cmd      ; Address of PERQ output semaphore
+ROM:0C30    CALL Wait               ; wait for port to be available
+ROM:0C33    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0C36    LD   A, SOM             ; Send SOM to PERQ
+ROM:0C38    OUT (PERQ.Out), A
+ROM:0C3A    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0C3D    LD   A, 4               ; Length of Blkdata command
+ROM:0C3F    OUT (PERQ.Out), A
+ROM:0C41    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0C44    POP  AF                 ; Restore device code
+ROM:0C45    OUT (PERQ.Out), A       ; Send device code to PERQ
+ROM:0C47    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0C4A    LD   A, CmdBlkData      ; Send Block data command
+ROM:0C4C    OUT (PERQ.Out), A
+ROM:0C4E    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0C51    LD   A, C               ; Send low order byte of length to PERQ
+ROM:0C52    OUT (PERQ.Out), A
+ROM:0C54    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0C57    LD   A, B               ; Send high order byte of length to PERQ
+ROM:0C58    OUT (PERQ.Out), A
+ROM:0C5A    POP  HL                 ; Trash semaphore address
+ROM:0C5B    EX   DE, HL             ; Move address of buffer to HL
+ROM:0C5C    XOR  A
+ROM:0C5D    CP   C                  ; Test for any bytes in page
+ROM:0C5E    LD   D, B               ; Move page count to D
+ROM:0C5F    LD   B, C               ; Set byte count in page
+ROM:0C60    LD   C, PERQ.Out        ; Load C with PERQ output port address
+ROM:0C62    JR   Z, SendPage        ; Branch if no bytes in 1st page
+ROM:0C64 SendWait:
+ROM:0C64    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0C67    OUTI                    ; Send bytes down to multiple of 256 left
+ROM:0C69    JR   NZ, SendWait       ; Repeat while more to send
+ROM:0C6B SendPage:
+ROM:0C6B    LD   A, D               ; Copy for test
+ROM:0C6C    OR   A                  ; Set condition codes for A
+ROM:0C6D    JR   Z, SendDone        ; Branch if no more to send
+ROM:0C6F SendAgain:
+ROM:0C6F    CALL FIFOWait           ; Wait until room in FIFO to PERQ
+ROM:0C72    OUTI                    ; Send 256 bytes to the PERQ
+ROM:0C74    JR   NZ, SendAgain      ; Repeat while more to send
+ROM:0C76    DEC  D                  ; Decrement count of blocks
+ROM:0C77    JR   NZ, SendAgain      ; If more blocks then send again
+ROM:0C79 SendDone:
+ROM:0C79    LD   HL, PERQO.Cmd      ; Address of PERQ output semaphore
+ROM:0C7C    CALL Signal             ; Release PERQ Output Port
+ROM:0C7F    XOR  A                  ; Clear the carry bit
+ROM:0C80    RET
+ROM:0C81 PERQO.ISR:
+ROM:0C81    EXX
+ROM:0C82    EX   AF, AF
+ROM:0C83    LD   A, I.PERQO | I.Single | I.SIMR
+ROM:0C85    OUT (INTCSR), A         ; Set mask bit for PERQ output interrupts
+ROM:0C87    EXX
+ROM:0C88    EX   AF, AF
+ROM:0C89    EI
+ROM:0C8A    RETI
+ROM:0C8C FIFOWait:
+ROM:0C8C    IN  A, (PERQ.Sts)       ; Get PERQ status
+ROM:0C8E    BIT 7, A                ; Test FIFO to PERQ full
+ROM:0C90    RET NZ                  ; Return if not full
+ROM:0C91    JR  FIFOWait            ; Go wait again
+ROM:0C92 ;
+ROM:0C92 ; End PERQ
+ROM:0C93 ;
+ROM:0C93 ; Speech
+ROM:0CC1 ; End Speech
+ROM:0CC2 ;
+ROM:0CC2 ; Task Control
+ROM:0CC2 InitTCBs:
+ROM:0CC2    LD   A, TskDead         ; To fill in the task state
+ROM:0CC4    LD   HL, TCBBase        ; Base of the TCB array
+ROM:0CC7    LD  (CurrTCB), HL       ; Provide pointer into list
+ROM:0CCA    LD   DE, TCBSize        ; For stepping through
+ROM:0CCD    LD   B, NTCBs
+ROM:0CCF TCBLoop:
+ROM:0CCF    PUSH HL
+ROM:0CD0    POP  IX                 ; LD IX,HL
+ROM:0CD2    ADD  HL, DE             ; Point to next TCB
+ROM:0CD3    LD  (IX + TskNxtLo), L
+ROM:0CD6    LD  (IX + TskNxtHi), H
+ROM:0CD9    LD  (IX + TskState), A
+ROM:0CDC    DJNZ TCBLoop
+ROM:0CDC ; The last one now has to be pointed back to the first
+ROM:0CDE    LD   HL, TCBBase
+ROM:0CE1    LD  (IX + TskNxtLo), L
+ROM:0CE4    LD  (IX + TskNxtHi), H
+ROM:0CE7    RET
+ROM:0CE8 Wait:
+ROM:0CE8    DI                      ; Must be Indivisible
+ROM:0CE9    DEC (HL)
+ROM:0CEA    JP   P, Wait1           ; Semaphore was > 0
+ROM:0CEA ; Here we are going to wait, so we set the reason in our TCB
+ROM:0CED    LD   IX, (CurrTCB)
+ROM:0CF1    LD   A, TskWait
+ROM:0CF3    LD  (IX + TskState), A
+ROM:0CF6    LD  (IX + TskSemLo), L
+ROM:0CF9    LD  (IX + TskSemHi), H
+ROM:0CFC    CALL CPUGive            ; Give up the CPU
+ROM:0CFF    JP   Wait               ; Try again when the semaphore is signalled
+ROM:0D02 ;
+ROM:0D02 ; Here the Semaphore was OK, so we carry on...
+ROM:0D02 Wait1:
+ROM:0D02    EI
+ROM:0D03    RET
+ROM:0D04 Signal:
+ROM:0D04    LD  C, 0                ; Using C as a flag, assume interupts off
+ROM:0D06    LD  A, R                ; Reading R will copy IFF2 into Parity flag
+ROM:0D08    JP  PO, DoSignal        ; Branch if interrupts are indeed off
+ROM:0D0B    INC C                   ; Flag interrupts on
+ROM:0D0C    DI                      ; Now turn them off
+ROM:0D0D DoSignal:
+ROM:0D0D    LD   A, (HL)
+ROM:0D0E    OR   A
+ROM:0D0F    JP   P, NoWaiting       ; Semaphore non-negative so no-one is waiting
+ROM:0D12 ; If someone was waiting, then we must wake them up
+ROM:0D12    PUSH IX                 ; Save IX for caller
+ROM:0D14    LD   IX, (CurrTCB)      ; Our TCB is a hook into the TCB list
+ROM:0D18 ; We know that WE are not waiting, so we skip our TCB
+ROM:0D18    LD   B, NTCBs-1         ; The number remaining on the list
+ROM:0D1A SigLoop:
+ROM:0D1A    LD   D, (IX + TskNxtHi) ; Chain down to next TCB
+ROM:0D1D    LD   E, (IX + TskNxtLo)
+ROM:0D20    PUSH DE
+ROM:0D21    POP  IX                 ; DE and IX will always point to the SAME place
+ROM:0D23    LD   A, (DE)            ; First entry in TCB is task state
+ROM:0D24    CP   TskWait            ; Is this one waiting?
+ROM:0D26    JR   NZ, SigNext
+ROM:0D28    LD   A, (IX + TskSemLo) ; Is it waiting on this semaphore?
+ROM:0D2B    CP   L
+ROM:0D2C    JR   NZ, SigNext
+ROM:0D2E    LD   A, (IX + TskSemHi)
+ROM:0D31    CP   H
+ROM:0D32    JR   NZ, SigNext
+ROM:0D34    LD   A, TskRun
+ROM:0D36    LD  (DE), A             ; Wake it up
+ROM:0D37    INC (HL)                ; Counting upwards towards zero
+ROM:0D38    JR   Z, SDone
+ROM:0D3A SIGNext:
+ROM:0D3A    DJNZ SigLoop            ; Any more candidates?
+ROM:0D3C SDone:
+ROM:0D3C    POP  IX                 ; Restore IX for caller
+ROM:0D3E NoWaiting:
+ROM:0D3E    INC (HL)                ; Now actually fix the semaphore
+ROM:0D3F    LD   A,C
+ROM:0D40    OR   A                  ; Were interrupts on?
+ROM:0D41    RET  Z
+ROM:0D42    EI
+ROM:0D43    RET
+ROM:0D44 CPUGive:
+ROM:0D44    DI                      ; Make quite sure!
+ROM:0D45    PUSH IY
+ROM:0D47    PUSH IX
+ROM:0D49    PUSH HL
+ROM:0D4A    PUSH DE
+ROM:0D4B    PUSH BC
+ROM:0D4C    PUSH AF
+ROM:0D4D    LD   HL, 0
+ROM:0D50    ADD  HL, SP
+ROM:0D51    LD   IX, (CurrTCB)
+ROM:0D55    LD  (IX + TskSPLo), L
+ROM:0D58    LD  (IX + TskSPHi), H
+ROM:0D5B Despatch:
+ROM:0D5B    LD   B, NTCBs           ; The total number of TCBs in the system
+ROM:0D5D    LD   C, 0               ; Best priority so far
+ROM:0D5F PriLoop:
+ROM:0D5F    LD   A, (IX + TskState) ; Check each tasks state
+ROM:0D62    CP   TskRun
+ROM:0D64    JR   NZ, DespNxt        ; Branch if not runable
+ROM:0D66    LD   A, (IX + TskPrio)  ; Compare its priority
+ROM:0D69    CP   C
+ROM:0D6A    JR   C, DespNxt         ; Lower than the best
+ROM:0D6C    PUSH IX
+ROM:0D6E    POP  HL                 ; HL points to best
+ROM:0D6F    LD   C, A               ; C picks up its priority
+ROM:0D70 DespNxt:
+ROM:0D70    LD   D, (IX + TskNxtHi) ; Chain to next TCB
+ROM:0D73    LD   E, (IX + TskNxtLo)
+ROM:0D76    PUSH DE
+ROM:0D77    POP  IX
+ROM:0D79    DJNZ PriLoop
+ROM:0D7B ; At this point we should have a non-zero priority in C, and HL
+ROM:0D7B ; should point to the TCB
+ROM:0D7B    LD   A, C
+ROM:0D7C    OR   A
+ROM:0D7D    JR   Z, PANIC           ; Something wrong!
+ROM:0D7F    LD  (CurrTCB), HL
+ROM:0D82    LD   IX, (CurrTCB)      ; Pick up TCB pointer
+ROM:0D86    LD   L, (IX + TskSPLo)
+ROM:0D89    LD   H, (IX + TskSPHi)
+ROM:0D8C    LD   SP, HL
+ROM:0D8D    POP  AF
+ROM:0D8E    POP  BC
+ROM:0D8F    POP  DE
+ROM:0D90    POP  HL
+ROM:0D91    POP  IX
+ROM:0D93    POP  IY
+ROM:0D95    EI
+ROM:0D96    RET
+ROM:0D97 PANIC:
+ROM:0D97    HALT
+ROM:0D98 Snooze:
+ROM:0D98    LD   A, 1               ; To be our new priority
+ROM:0D9A    LD   IX, (CurrTCB)      ; Current TCB is Our TCB!
+ROM:0D9E    LD   B, (IX + TskPrio)  ; Save the old priority
+ROM:0DA1    LD  (IX + TskPrio), A   ; Set the new one
+ROM:0DA4    CALL CPUGive
+ROM:0DA7    LD  (IX + TskPrio), B   ; Set it back again
+ROM:0DAA    RET
+ROM:0DAB NewTask:
+ROM:0DAB    PUSH AF
+ROM:0DAC    PUSH BC                 ; Save them for later
+ROM:0DAD    LD   IX, (CurrTCB)      ; Hook into list
+ROM:0DB1    LD   B, NTCBs           ; Loop Count
+ROM:0DB3 FindFree:
+ROM:0DB3    LD   A, (IX + TskState)
+ROM:0DB6    CP   TskDead
+ROM:0DB8    JR   NZ, FindNxt        ; Branch if not empty task slot
+ROM:0DBA    POP  BC
+ROM:0DBB    POP  AF
+ROM:0DBC    LD  (IX + TskPrio), A
+ROM:0DBF    DEC  HL                 ; "Push" the PC on the new stack
+ROM:0DC0    LD  (HL), B
+ROM:0DC1    DEC  HL
+ROM:0DC2    LD  (HL), C
+ROM:0DC3    LD   BC, 12             ; Offset for register save area
+ROM:0DC6    OR   A                  ; Clear Carry
+ROM:0DC7    SBC  HL, BC
+ROM:0DC9    LD  (IX + TskSPHi), H   ; Set initial stack pointer
+ROM:0DCC    LD  (IX + TskSPLo), L
+ROM:0DCF    LD   A, TskRun
+ROM:0DD1    LD  (IX + TskState), A  ; Make it runnable!
+ROM:0DD4    RET
+ROM:0DD5 FindNxt:
+ROM:0DD5    LD   D, (IX + TskNxtHi) ; Link to next task
+ROM:0DD8    LD   E, (IX + TskNxtLo)
+ROM:0DDB    PUSH DE
+ROM:0DDC    POP  IX
+ROM:0DDE    DJNZ FindFree           ; Loop until scanned every slot
+ROM:0DE0 ; Here we failed to find a task... we boobed somewhere.
+ROM:0DE0 ; Maybe if we just return, and ignore this it will go away?!!
+ROM:0DE0    POP  BC
+ROM:0DE1    POP  AF                 ; Tidy up some...
+ROM:0DE2    RET                     ; and sneak away
+ROM:0DE2 ; End Task Control
+ROM:0DE3 ;
+ROM:0DE3 ; Utility
+ROM:0DE3 BufGet:
+ROM:0DE3    INC  HL                 ; HL Now points to the GET
+ROM:0DE4    LD   C, (HL)            ; Pick up GET
+ROM:0DE5    LD   B, 0               ; 16 bit value
+ROM:0DE7    PUSH HL                 ; Remember for later
+ROM:0DE8 ; Next character is at (HL + Get + 1)
+ROM:0DE8 ; The number GET+1 is a result we want later, so...
+ROM:0DE8    INC  C                  ; It will not overflow into B
+ROM:0DE9    ADD  HL, BC             ; Do the rest of the calculation
+ROM:0DEA    LD   B, (HL)            ; Pick up char
+ROM:0DEB    POP  HL                 ; Restore pointer to GET
+ROM:0DEC    LD   A, C               ; Pick up incremented GET again
+ROM:0DED    AND  MaxBuff            ; Wrap it around
+ROM:0DEF    LD  (HL), A             ; Save it off
+ROM:0DF0    DEC  HL                 ; Point Back to PUT pointer
+ROM:0DF1    LD   A, B               ; Char in A for completeness
+ROM:0DF2    RET
+ROM:0DF3 BufPut:
+ROM:0DF3    LD   C, (HL)            ; Pick up PUT
+ROM:0DF4    LD   B, 0
+ROM:0DF6 ; Next entry is at (HL + PUT + 2)
+ROM:0DF6 ; We need PUT+1, so we grab it for cheapness here
+ROM:0DF6    INC  C
+ROM:0DF7    INC  HL                 ; This gets the other +1, also points to GET
+ROM:0DF8    PUSH HL                 ; Save this pointer to GET for later
+ROM:0DF9    ADD  HL, BC             ; Calculate the address we wanted
+ROM:0DFA    LD  (HL), A             ; Save the char
+ROM:0DFB    POP  HL                 ; HL now points to GET
+ROM:0DFC    LD   A, C               ; Pick up modified PUT
+ROM:0DFD    AND  MaxBuff            ; Wrap around
+ROM:0DFF    CP  (HL)                ; Any Overrun?
+ROM:0E00    DEC  HL                 ; Point to PUT
+ROM:0E01    RET  Z                  ; Then do not save updated PUT
+ROM:0E02    LD  (HL), A             ; Save new version
+ROM:0E03    RET
+ROM:0E04 BufCmp:
+ROM:0E04    LD   A, (HL)
+ROM:0E05    INC  HL
+ROM:0E06    SUB (HL)
+ROM:0E07    DEC  HL                 ; Makes HL back the way it was
+ROM:0E08    AND  MaxBuff
+ROM:0E0A    RET
+ROM:0E0B BlockPut:
+ROM:0E0B    LD   A, B
+ROM:0E0C    OR   A
+ROM:0E0D    RET  Z
+ROM:0E0E BlPutLoop:
+ROM:0E0E    PUSH BC
+ROM:0E0F    LD   A, (DE)
+ROM:0E10    CALL BufPut
+ROM:0E13    INC  DE
+ROM:0E14    POP  BC
+ROM:0E15    DJNZ BLPutLoop
+ROM:0E17    RET
+ROM:0E18 BlockGet:
+ROM:0E18    LD   A, B
+ROM:0E19    OR   A
+ROM:0E1A    RET  Z                  ; In case he said zero bytes?
+ROM:0E1B    INC  HL                 ; Point at the GET value
+ROM:0E1C BlGetLoop:
+ROM:0E1C    PUSH BC                 ; Remember the count
+ROM:0E1D    LD   C,(HL)             ; Pick up GET value
+ROM:0E1E    LD   B,0                ; Extend to 16 bits
+ROM:0E20    INC  C                  ; Bump the GET counter
+ROM:0E21    PUSH HL                 ; Save our buffer pointer
+ROM:0E22    ADD  HL,BC              ; And add GET into the buffer pointer
+ROM:0E23    LD   A,(HL)             ; Pick up the char
+ROM:0E24    LD  (DE),A              ; and store it off
+ROM:0E25    POP  HL                 ; Get back buffer pointer
+ROM:0E26    LD   A, C               ; Pick up incremented GET
+ROM:0E27    AND  MaxBuff            ; Wrap it around
+ROM:0E29    LD  (HL),A              ; and store it back
+ROM:0E2A    INC  DE                 ; Crank up the destination pointer
+ROM:0E2B    POP  BC                 ; Fetch back the counter
+ROM:0E2C    DJNZ BlGetLoop          ; And decrement
+ROM:0E2E    RET
+ROM:0E2F BlockHide:
+ROM:0E2F    DI
+ROM:0E30    LD   C,(HL)             ; Pick up current PUT
+ROM:0E31 HideLp:
+ROM:0E31    PUSH BC                 ; Hide count
+ROM:0E32    LD   A, (DE)
+ROM:0E33    CALL BufPut             ; Put byte away
+ROM:0E36    INC  DE                 ; Step to next
+ROM:0E37    POP  BC                 ; Get back count
+ROM:0E38    DJNZ HideLp
+ROM:0E3A    LD   B, (HL)            ; Pick up new PUT value
+ROM:0E3B    LD  (HL), C             ; Save off old one
+ROM:0E3C    EI
+ROM:0E3D    RET
+ROM:0E3E Case:
+ROM:0E3E    POP  HL                 ; Return address = table address
+ROM:0E3F    LD   B, 0               ; Clear upper byte of offset
+ROM:0E41    ADD  HL, BC             ; Add 2 * BC to HL
+ROM:0E42    ADD  HL, BC
+ROM:0E43    LD   E, (HL)            ; Extract low byte of destination addr
+ROM:0E44    INC  HL
+ROM:0E45    LD   D, (HL)            ; Extract high byte of destination addr
+ROM:0E46    EX   DE, HL             ; Put destination in HL for JP (HL)
+ROM:0E47    JP  (HL)                ; Dispatch
+ROM:0E48 GetDMACount:
+ROM:0E48    OR   A                  ; Clear the carry bit
+ROM:0E49    SBC  HL, BC             ; Subtract from remaining count
+ROM:0E4B    JR   NC, GetDMA1        ; Branch if HL >= 0
+ROM:0E4D    ADD  HL, BC             ; Restore remaining count
+ROM:0E4E    LD   B, H               ; Set BC to remaining count
+ROM:0E4F    LD   C, L
+ROM:0E50    XOR  A
+ROM:0E51    LD   L, A               ; Zero remaining count
+ROM:0E52    LD   H, A
+ROM:0E53 GetDMA1:
+ROM:0E53    RET
+ROM:0E54 Drain:
+ROM:0E54    OR   A                  ; Clears the carry flag
+ROM:0E55    BIT  AwkFlgBit, (HL)    ; Is device idle yet?
+ROM:0E57    RET  Z                  ; Return carry clear if idle
+ROM:0E58    CALL Snooze             ; Not idle, give up CPU for awhile
+ROM:0E5B    JP   Drain
+ROM:0E5E FlushIn:
+ROM:0E5E    LD   B, 3               ; Three SendDatas will flush the buffer
+ROM:0E60 FlushLoop:
+ROM:0E60    CALL  BufCmp            ; See if any bytes in the input buffer
+ROM:0E63    OR    A                 ; Set Z
+ROM:0E64    RET   Z                 ; Leave if no bytes in buffer
+ROM:0E65    PUSH  BC                ; Save counter, device pointer
+ROM:0E66    PUSH  HL                ; Save input buffer pointer
+ROM:0E67    CALL  SendData          ; Send up to 12 bytes to the PERQ
+ROM:0E6A    POP   HL                ; Retrieve input buffer pointer
+ROM:0E6B    CALL  Snooze            ; Let other tasks get in
+ROM:0E6E    POP   BC                ; Retrieve counter, device pointer
+ROM:0E6F    DJNZ  Flushloop         ; Loop again if we aren't finished
+ROM:0E71    RET
+ROM:0E71 ; End Utility
+ROM:0E72 ;
+ROM:0E72 ; Z80
+ROM:0E72 Z80Init:
+ROM:0E72    XOR  A
+ROM:0E73    LD  (Z80.Flg), A        ; Clear Z80 flag byte
+ROM:0E76    RET
+ROM:0E77 XZ80:
+ROM:0E77    LD   HL, Z80.Cmd
+ROM:0E7A    LD   A, (PERQIBuff+2)   ; Get command byte
+ROM:0E7D    CP   CmdSense
+ROM:0E7F    JP   NZ, Signal         ; Signal if not sense command
+ROM:0E82    LD   HL, Z80.Flg        ; Point at flag byte
+ROM:0E85    SET  SRFlgBit, (HL)     ; Cue low volume task to send status
+ROM:0E87    JP   PERQEnable         ; Re-enable PERQ input and return
+ROM:0E8A ZZ80:
+ROM:0E8A    LD   HL, Z80.Flg        ; Check Z80 for ACK/NAK/Status
+ROM:0E8D    LD   A, (HL)
+ROM:0E8E    AND  RespMask           ; Test for any response pending
+ROM:0E90    RET  Z                  ; Return if no responses pending
+ROM:0E91    LD   C, DevZ80          ; Device code
+ROM:0E93    BIT  ACKFlgBit, A
+ROM:0E95    JP   NZ, SendACK        ; If necessary send ACK and return
+ROM:0E98    BIT  NAKFlgBit, A
+ROM:0E9A    JP   NZ, SendNAK        ; If necessary send NAK and return
+ROM:0E9D    BIT  SRFlgBit, A
+ROM:0E9F    RET  Z                  ; Return if no status to send
+ROM:0EA0    RES  SRFlgBit, (HL)     ; Reset request status pending
+ROM:0EA2    LD   HL, PERQO.Cmd
+ROM:0EA5    CALL Wait               ; Wait for output port to be free
+ROM:0EA8    LD   HL, PERQOBuff      ; Address of PERQ output buffer
+ROM:0EAB    LD   A, 4
+ROM:0EAD    LD  (HL), A             ; Length of status
+ROM:0EAE    INC  HL
+ROM:0EAF    LD   A, DevZ80
+ROM:0EB1    LD  (HL), A             ; Insert the device code
+ROM:0EB2    INC  HL
+ROM:0EB3    LD   A, CmdStatus
+ROM:0EB5    LD  (HL), A             ; Set command field to status
+ROM:0EB6    INC  HL
+ROM:0EB7    LD   A, VerMinor
+ROM:0EB9    LD  (HL), A             ; Return minor version
+ROM:0EBA    INC  HL
+ROM:0EBB    LD   A, VerMajor
+ROM:0EBD    LD  (HL), A             ; Return Major version
+ROM:0EBE    JP   SendPERQ           ; Send Status to the PERQ
+ROM:0EC1 Z80Task:
+ROM:0EC1    LD   HL, Z80.Cmd
+ROM:0EC4    CALL Wait               ; Wait for command
+ROM:0EC7 RetryCmd:
+ROM:0EC7    LD   HL, PERQIBuff+2    ; Address of PERQ input command area
+ROM:0ECA    LD   A, (HL)            ; Get command
+ROM:0ECB    CP   CmdHVI
+ROM:0ECD    JR   Z, DoHVI           ; Branch if High Volume Input
+ROM:0ECF    CP   CmdHVO
+ROM:0ED1    JR   Z, DoHVO           ; Branch if High Volume Output
+ROM:0ED3    CP   CmdReg
+ROM:0ED5    JR   Z, DoWriteReg      ; Branch if write register command
+ROM:0ED7 EnbNAK:
+ROM:0ED7    CALL PERQEnable         ; Re-enable PERQ input interrupts
+ROM:0EDA Z80NAK:
+ROM:0EDA    LD   HL, Z80.Flg
+ROM:0EDD    LD   C, DevZ80
+ROM:0EDF    CALL SendNAK            ; Force NAK for other commands
+ROM:0EE2    JP   Z80Task            ; Check again
+ROM:0EE5 EnbACK:
+ROM:0EE5    CALL PERQEnable         ; Re-enable PERQ input interrupts
+ROM:0EE8 Z80ACK:
+ROM:0EE8    LD   HL, Z80.Flg
+ROM:0EEB    LD   C, DevZ80
+ROM:0EED    CALL SendACK            ; Force ACK for command
+ROM:0EF0    JP   Z80Task            ; Check again
+ROM:0EF3 DoHVI:
+ROM:0EF3    LD   DE, (PERQIBuff+3)  ; Get address to dump
+ROM:0EF7    LD   BC, (PERQIBuff+5)  ; Get length to dump
+ROM:0EFB    CALL PERQEnable         ; Re-enable PERQ input interrupts
+ROM:0EFE    LD   A, B               ; Get HI(count)
+ROM:0EFF    OR   C                  ; OR LO(Count)  Set CCs from length
+ROM:0F00    LD   HL, Z80.Cmd        ; Point to command flag
+ROM:0F03    LD   A, DevZ80          ; Device to source data
+ROM:0F05    CALL NZ, SendBlkData    ; If non-zero length send the data
+ROM:0F08    JP   NC, Z80ACK         ; ACK and get next command if no error
+ROM:0F0B ;  We end up here if SendBlkData failed, i.e., we did not get ACK from PERQ
+ROM:0F0B ;  to send data. Instead, we got a new cmd for Z80 - go handle it
+ROM:0F0B    LD   HL, Z80.Flg
+ROM:0F0E    LD   C, DevZ80
+ROM:0F10    CALL SendNAK            ; Force NAK
+ROM:0F13    JP   RetryCmd           ; Go handle the new cmd
+ROM:0F16 DoHVO:
+ROM:0F16    LD   DE, (PERQIBuff+3)  ; Get address to load
+ROM:0F1A    LD   BC, (PERQIBuff+5)  ; Get length to load
+ROM:0F1E    CALL PERQEnable         ; Re-enable PERQ input interrupts
+ROM:0F21    LD   A, B               ; Get HI(count)
+ROM:0F22    OR   C                  ; OR LO(Count)  Set CCs from length
+ROM:0F23    LD   HL, Z80.Cmd        ; Point to command flag
+ROM:0F26    LD   A, DevZ80          ; Device to source data
+ROM:0F28    CALL NZ, GetBlkData     ; If non-zero length Get the data
+ROM:0F2B    JP   NC, Z80ACK         ; ACK and get next command if no error
+ROM:0F2E ;  We end up here if GetBlkData failed, i.e., we did not get a BlkData cmd
+ROM:0F2E ;  from PERQ. Instead, we got a new cmd for Z80 - go handle it
+ROM:0F2E    LD   HL, Z80.Flg
+ROM:0F31    LD   C, DevZ80
+ROM:0F33    CALL SendNAK            ; Force NAK
+ROM:0F36    JP   RetryCmd           ; Go handle the new cmd
+ROM:0F39 DoWriteReg:
+ROM:0F39    LD   HL, (PERQIBuff+3)  ; Get the starting address
+ROM:0F3C    PUSH HL                 ; Save address to call
+ROM:0F3D    CALL PERQEnable         ; Re-enable input interrupts
+ROM:0F40    LD   HL, Z80.Flg
+ROM:0F43    LD   C, DevZ80
+ROM:0F45    CALL SendACK            ; Send ACK for command
+ROM:0F48    POP  HL                 ; Restore address to call
+ROM:0F49    CALL Jump               ; Force return address to stack
+ROM:0F4C    JP   Z80Task            ; Check for another command
+ROM:0F4F Jump:
+ROM:0F4F    JP  (HL)                ; Call address specified in the message
+ROM:0F4F ; End Z80
 ROM:0FFF ; End of ROM
-RAM:4000 ; Start of RAM
+RAM:6800 ;
+RAM:6800 ; Start of Data
+RAM:6800 PERQO.Cmd      ; PERQ output port available
+RAM:6801 RSA.Cmd        ; RSA Command available
+RAM:6802 RSB.Cmd        ; RSB Command available
+RAM:6803 Speech.Cmd     ; Speech Command available
+RAM:6804 Floppy.Cmd     ; Floppy Command available
+RAM:6805 KB.Cmd         ; Keyboard Command available
+RAM:6806 GPIB.Cmd       ; GPIB Command available
+RAM:6807 Clock.Cmd      ; Clock Command available
+RAM:6808 Z80.Cmd        ; Z80 Command available
+RAM:6809 RSA.Flg        ; RSA Flag byte
+RAM:680A RSB.Flg        ; RSB Flag byte
+RAM:680B Speech.Flg     ; Speech Flag byte
+RAM:680C Floppy.Flg     ; Floppy Flag byte
+RAM:680D KB.Flg         ; Keyboard Flag byte
+RAM:680E GPIB.Flg       ; GPIB Flag byte
+RAM:680F Clock.Flg      ; Clock Flag byte
+RAM:6810 Kriz.Flg       ; Pointing device flag byte
+RAM:6811 Z80.Flg        ; Z80 device flag
+RAM:6812 PI.State       ; Current input state
+RAM:6813 PI.Addr        ; Current buffer address
+RAM:6815 PERQOBuff:     ; Buffer for messages to PERQ
+RAM:6824 PERQIBuff:     ; Input buffer (Count + 14 data bytes)
+RAM:6824 PI.Count       ;   Byte containing length of packet
+RAM:6825 PI.Device      ;   Byte containing device code
+RAM:6826 PI.Command     ;   Byte containing command code
+RAM:6827 PI.Byte1       ;   First data byte
+RAM:6827 PI.Data1       ;   First data byte (alias)
+RAM:6828 PI.Byte2       ;   Second data byte
+RAM:6829 PI.Byte3       ;   Third data byte
+RAM:682A PI.Byte4       ;   Fourth data byte
+RAM:682B PI.Byte5       ;   Fifth data byte
+RAM:6833 PI.Remain      ;   Number of data bytes yet to be received
+RAM:6834 Floppy.Rdy     ; Floppy IO done semaphore
+RAM:6835 F.EOT          ; Highest sector number on track
+RAM:6836 F.GPL          ; Encoded Gap length
+RAM:6837 F.DTL          ; Encoded Data length
+RAM:6838 F.Options      ; Contains 3 bits (7/MT, 6/MF, 5/SK)
+RAM:6839 F.Cyl          ; Current Cylinder
+RAM:683A F.Sector       ; Current sector
+RAM:683B F.ByteCnt      ; Count of bytes left to be transfered
+RAM:683D F.Command      ; Parameter byte 0
+RAM:683E F.Parm1        ; Parameter byte 1
+RAM:683F F.Parm2        ; Parameter byte 2
+RAM:6840 F.Parm3        ; Parameter byte 3
+RAM:6841 F.Parm4        ; Parameter byte 4
+RAM:6842 F.Parm5        ; Parameter byte 5
+RAM:6843 F.CmdBuf       ; Buffer for command
+RAM:684C F.Status       ; Type of status and up to 7 status bytes
+RAM:6854 Flop.Ratn      ; Floppy attention reason bit mask
+RAM:6855 DMADone:       ; Done semaphores for DMA to/from PERQ:
+RAM:6855 DMAFloppy      ;   DMADone + D.Floppy
+RAM:6856 DMAGPIB        ;   DMADone + D.GPIB
+RAM:6857 DMASIO         ;   DMADone + D.SIO
+RAM:6858 DMAPERQ        ;   DMADone + D.PERQ
+RAM:6859 SIODMABusy     ; Semaphore to arbitrate use of SIO DMA
+RAM:685A PERQDMABusy    ; Semaphore to arbitrate use of DMA to PERQ
+RAM:685B AdrGPIB        ; Buffer addresses for DMA
+RAM:685F AdrSIO         ; Buffer addresses for DMA
+RAM:6863 AdrFloppy      ; Buffer addresses for DMA
+RAM:6867 DMA.GNBC       ; GPIB Next Byte Cnt (Flags are bits 15,14)
+RAM:6869 DMA.GNAdr      ; GPIB Next Address
+RAM:686B DMA.SNBC       ; SIO Next Byte Cnt (Flags are bits 15,14)
+RAM:686D DMA.SNAdr      ; SIO Next Address
+RAM:686F GPR0Image      ; Image of write register 0
+RAM:6870 GPIB.RegSave   ; GPIB register save area
+RAM:6878 GPIB.Ratn      ; GPIB attention reason bit mask
+RAM:6879 GPIBIBuff      ; Input circular buffer for GPIB
+RAM:689B GPIBOBuff      ; Output circular buffer for GPIB
+RAM:68BD GPIBCmdStatus  ; Flag used for HiVol, DevRead/Write cmds
+RAM:68BE GPIBReadCnt    ; Bytes to read cnt for DevRead cmd
+RAM:68BF RSA.Ratn       ; Rs232 A attention reason bit mask
+RAM:68C0 RSAIBuff       ; Input circular buffer
+RAM:68E2 RSAOBuff       ; Output circular buffer
+RAM:6904 RSA.RR1
+RAM:6905 RSA.RR0
+RAM:6906 RSAHVStatus    ; Non-zero is abnormal high volume
+RAM:6907 RSB.Ratn       ; Rs232 B attention reason bit mask
+RAM:6908 RSB.RR0
+RAM:6909 RSB.RR1
+RAM:690A RSBIBuff:
+RAM:692C RSBOBuff:
+RAM:694E Sp.Ratn        ; Speech attention reason bit mask
+RAM:694F Sp.RR0
+RAM:6950 Sp.RR1
+RAM:6951 SpOBuff:
+RAM:6973 KBIBuff:       ; Input circular buffer for keyboard
+RAM:6995 Kriz.NVal:     ; Buffers next tablet msg to go to PERQ
+RAM:6999 Kriz.CVal:     ; Buffers current msg being received
+RAM:699D KrizState      ; State variable for current msg
+RAM:699E CurrTCB        ; Current Tasks TCB
+RAM:69A0 TCBBase:       ;   NTCBs * TCBSize space for all TCBS
+RAM:6A04 Stack1:        ; Stack area 1
+RAM:6A28 Stack2:        ; Stack area 2
+RAM:6A4C Stack3:        ; Stack area 3
+RAM:6A70 Stack4:        ; Stack area 4
+RAM:6A94 Stack5:        ; Stack area 5
+RAM:6AB8 Stack6:        ; Stack area 6
+RAM:6ADC Stack7:        ; Stack area 7      vvv conflict!?
+RAM:6ADC BufGPIB        ; Buffer for GPIB   ^^^ conflict?!
+RAM:72DC BufSIO:        ; Buffer for SIO
+RAM:7ADC BufFloppy:     ; Buffer for Floppy
+RAM:7CDB ; End of Data
+RAM:7FFF ;
 RAM:7FFF ; End of RAM

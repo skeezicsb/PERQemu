@@ -86,13 +86,12 @@ namespace PERQemu.IO.Z80
             Log.Info(Category.Z80DMA, "i8237 reset");
         }
 
-
         public void AttachChannelDevice(int chan, IDMADevice dev, byte port)
         {
 #if DEBUG
             if (chan < 0 || chan > _channels.Length - 1)
                 throw new ArgumentOutOfRangeException(nameof(chan));
-            
+
             if (_channels[chan].Device != null)
                 throw new InvalidOperationException($"Channel {chan} already assigned to {dev}");
 #endif
@@ -216,7 +215,6 @@ namespace PERQemu.IO.Z80
             return cycles;
         }
 
-
         /// <summary>
         /// Scan for the next device to service, in priority order.  Also does
         /// the AutoInitialization for ports that are at TC and are configured
@@ -235,16 +233,14 @@ namespace PERQemu.IO.Z80
             var start = _command.HasFlag(CommandBits.RotatingPriority) ? _lastServed : 3;
             var next = (start + 1) % 4;
 
-            while (next != start)
+            while (!_channels[next].Requested)
             {
-                if (_channels[next].Requested)
-                {
-                    Log.Info(Category.Z80DMA, "Channel {0} wants service!", next);
-                    return next;
-                }
-                next = (next + 1) % 4;  // Wrap that rascal
+                if (next == start) return -1;   // Nothin' to do
+                next = (next + 1) % 4;          // Wrap that rascal
             }
-            return -1;
+
+            Log.Info(Category.Z80DMA, "Channel {0} wants service!", next);
+            return next;
         }
 
         /// <summary>
@@ -255,22 +251,23 @@ namespace PERQemu.IO.Z80
         {
             var ostatus = _status;
 
-            // Just inline this for simplicity
-            _status = (byte)(_channels[0].Requested ? 0x01 : 0);
-            _status |= (byte)(_channels[0].Terminated ? 0x10 : 0);
-            _status |= (byte)(_channels[1].Requested ? 0x02 : 0);
-            _status |= (byte)(_channels[1].Terminated ? 0x20 : 0);
-            _status |= (byte)(_channels[2].Requested ? 0x04 : 0);
-            _status |= (byte)(_channels[2].Terminated ? 0x40 : 0);
-            _status |= (byte)(_channels[3].Requested ? 0x08 : 0);
-            _status |= (byte)(_channels[3].Terminated ? 0x80 : 0);
+            // The EOP (Terminated) bits are supposed to be "sticky" even after
+            // an auto-reinit -- so these may not have to get updated here? They
+            // are cleared only on a read of the status register.
+            _status = (byte)(_channels[0].Terminated ? 0x01 : 0);
+            _status |= (byte)(_channels[1].Terminated ? 0x02 : 0);
+            _status |= (byte)(_channels[2].Terminated ? 0x04 : 0);
+            _status |= (byte)(_channels[3].Terminated ? 0x08 : 0);
+            _status |= (byte)(_channels[0].Requested ? 0x10 : 0);
+            _status |= (byte)(_channels[1].Requested ? 0x20 : 0);
+            _status |= (byte)(_channels[2].Requested ? 0x40 : 0);
+            _status |= (byte)(_channels[3].Requested ? 0x80 : 0);
 
             if (ostatus != _status)
             {
                 Log.Info(Category.Z80DMA, "Status change: 0x{0:x2}", _status);
             }
         }
-
 
         public byte Read(byte portAddress)
         {
@@ -327,7 +324,6 @@ namespace PERQemu.IO.Z80
             Log.Warn(Category.Z80DMA, "Bad read from port 0x{0:x2} (illegal address)", portAddress);
             return 0;
         }
-
 
         public void Write(byte portAddress, byte value)
         {
@@ -427,6 +423,7 @@ namespace PERQemu.IO.Z80
                     break;
             }
         }
+
 
         // Debugging
         public void DumpStatus()
@@ -539,8 +536,8 @@ namespace PERQemu.IO.Z80
                 // Set the Requested flag if the channel is ready to go
                 // Note: Use |= if software requests/block mode allowed...
                 Requested = (!Masked && !Terminated &&
-                            ((Transfer == TransferMode.Read && Device.WriteDataReady) ||
-                             (Transfer == TransferMode.Write && Device.ReadDataReady)));
+                             (((Transfer == TransferMode.Read) && Device.WriteDataReady) ||
+                              ((Transfer == TransferMode.Write) && Device.ReadDataReady)));
             }
 
             public override string ToString()

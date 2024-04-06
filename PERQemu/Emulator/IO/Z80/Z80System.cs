@@ -55,6 +55,7 @@ namespace PERQemu.IO.Z80
         }
 
         public bool SupportsAsync => true;
+        public bool IsEIO => _system.IOB.IsEIO;
         public bool IsRunning => _running;
         public ulong Clocks => _cpu.TStatesElapsedSinceReset;
         public ulong Wakeup => (ulong)_wakeup;
@@ -67,7 +68,6 @@ namespace PERQemu.IO.Z80
         public NECuPD765A FDC => _fdc;
         public TMS9914A GPIB => _tms9914a;
 
-        public abstract bool IsEIO { get; }
         public abstract Z80SIO SIOA { get; }
         public abstract Z80CTC CTC { get; }
 
@@ -257,7 +257,7 @@ namespace PERQemu.IO.Z80
             Log.Debug(Category.Z80Inst, "{0}", state);
 
             // Write the whole thing
-            Console.WriteLine("{0}\n\t{1}+0x{2:x} : {3}", state, symbol, offset, source);
+            Console.WriteLine("{0}\n    {1}+{2}: {3}", state, symbol, offset, source);
         }
 
         /// <summary>

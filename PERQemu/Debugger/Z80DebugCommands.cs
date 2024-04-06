@@ -18,6 +18,7 @@
 //
 
 using System;
+using System.Text;
 using System.Diagnostics;
 
 namespace PERQemu
@@ -62,22 +63,55 @@ namespace PERQemu
             if (CheckSys()) PERQemu.Sys.IOB.Z80System.ShowZ80State();
         }
 
-        // todo: bare bones right now - just display one byte.  expand this to
-        // allow ranges and output options (radix, ascii, etc?)
-        [Command("debug z80 show memory", "Display contents of a given memory location")]
-        void ShowZ80Memory(ushort addr)
+        [Command("debug z80 show memory", "Show contents of Z80 memory")]
+        void ShowZ80Memory(ushort address, ushort bytes = 64)
         {
-            if (CheckSys())
+            if (!CheckSys()) return;
+
+            // Since the (sparse) Z80 memory maps are different for each IO board,
+            // just take whatever address they give us and catch the exception if
+            // the Z80 says nuh uh
+            try
             {
-                try
+                if (bytes == 1)     // previous behavior
                 {
-                    byte value = PERQemu.Sys.IOB.Z80System.Memory[addr];
-                    Console.WriteLine($"Address: 0x{addr:x4}  Value: 0x{value:x2}");
+                    byte value = PERQemu.Sys.IOB.Z80System.Memory[address];
+                    Console.WriteLine($"Address: 0x{address:x4}  Value: 0x{value:x2}");
+                    return;
                 }
-                catch (Exception e)
+
+                // Show memory in formatted blocks of 16 bytes
+                // (For now, start on even byte to more easily compare with word-
+                // sized PERQ memory display.  May remove this once a particular
+                // debugging scenario is satisfied since it's weirdly specific)
+                var start = (address & 0xfffe);
+                var end = Math.Min(0xffff, start + bytes);
+
+                var line = new StringBuilder();
+                var chars = new StringBuilder();
+
+                for (var i = start; i < end; i += 16)
                 {
-                    Console.WriteLine($"Couldn't read {addr}: {e.Message}");
+                    line.Clear();
+                    line.AppendFormat("{0:x4}: ", i);
+                    chars.Clear();
+
+                    // Bytes in hex (Todo: add output radix support)
+                    for (var j = i; j < i + 16; j++)
+                    {
+                        var b = PERQemu.Sys.IOB.Z80System.Memory[j];
+                        line.AppendFormat("{0:x2} ", b);
+
+                        // ASCII
+                        chars.Append(PERQemu.CLI.IsPrintable((char)b) ? (char)b : '.');
+                    }
+
+                    Console.WriteLine($"{line} {chars}");
                 }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Couldn't read {address}: {e.Message}");
             }
         }
 

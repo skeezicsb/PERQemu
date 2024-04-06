@@ -220,18 +220,6 @@ namespace PERQemu
         }
 
         /// <summary>
-        /// A shortcut for logging debugging output.  Makes a slow Debug process
-        /// that much slower but is compiled out entirely in Release builds.
-        /// </summary>
-        [Conditional("DEBUG")]
-        [Conditional("TRACING_ENABLED")]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Debug(Category c, string fmt, params object[] args)
-        {
-            WriteInternal(Severity.Debug, c, fmt, args);
-        }
-
-        /// <summary>
         /// A shortcut for logging extra detailed debugging output.  Like, stuff
         /// that's reeeally verbose.  Like Debug, adds a ton of overhead but is
         /// compiled out entirely in Release builds.
@@ -241,7 +229,29 @@ namespace PERQemu
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Detail(Category c, string fmt, params object[] args)
         {
-            WriteInternal(Severity.Verbose, c, fmt, args);
+            if (_minLevel > Severity.Verbose) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Verbose, c, fmt, args);
+            }
+        }
+
+        /// <summary>
+        /// A shortcut for logging debugging output.  Makes a slow Debug process
+        /// that much slower but is compiled out entirely in Release builds.
+        /// </summary>
+        [Conditional("DEBUG")]
+        [Conditional("TRACING_ENABLED")]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Debug(Category c, string fmt, params object[] args)
+        {
+            if (_minLevel > Severity.Debug) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Debug, c, fmt, args);
+            }
         }
 
         /// <summary>
@@ -251,27 +261,45 @@ namespace PERQemu
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Info(Category c, string fmt, params object[] args)
         {
-            WriteInternal(Severity.Info, c, fmt, args);
+            if (_minLevel > Severity.Info) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Info, c, fmt, args);
+            }
         }
 
         /// <summary>
         /// Shortcut for debug warnings that should stand out (but are non-fatal
-        /// and can be ignored in Release builds).
+        /// and can be ignored in Release builds).  These are always shown in
+        /// Debug builds.
         /// </summary>
         public static void Warn(Category c, string fmt, params object[] args)
         {
-            WriteInternal(Severity.Warning, c, fmt, args);
+#if !DEBUG
+            if (_minLevel > Severity.Warning) return;
+#endif
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Warning, c, fmt, args);
+            }
         }
 
         /// <summary>
-        /// Shortcut for displaying a serious error.
+        /// Shortcut for displaying a serious error.  Always shown in Debug builds.
         /// </summary>
         /// <remarks>
         /// Gosh, it's a shame Console doesn't support <blink>attributes</blink>.
         /// </remarks>
         public static void Error(Category c, string fmt, params object[] args)
         {
-            WriteInternal(Severity.Error, c, fmt, args);
+#if !DEBUG
+            if (_minLevel > Severity.Error) return;
+#endif
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Error, c, fmt, args);
+            }
         }
 
         /// <summary>
@@ -286,95 +314,97 @@ namespace PERQemu
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Write(Category c, string fmt, params object[] args)
         {
-            WriteInternal(Severity.Normal, c, fmt, args);
+            if (_minLevel > Severity.Normal) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Normal, c, fmt, args);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Write(Severity s, Category c, string fmt, params object[] args)
         {
-            WriteInternal(s, c, fmt, args);
+            if (_minLevel > s) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(s, c, fmt, args);
+            }
         }
 
         static void WriteInternal(Severity s, Category c, string fmt, params object[] args)
         {
-            // Apply filters before we do the work to format the output
-#if DEBUG
-            if ((s >= Severity.Warning) || ((s >= _minLevel) && ((c & _categories) != 0)))
-#else
-            if ((s >= _minLevel) && ((c & _categories) != 0) || (c == Category.All))
-#endif
+            var catfmt = (c == Category.All) ? fmt : c.ToString() + ": " + fmt;
+            var output = (args == null) ? catfmt : string.Format(catfmt, args);
+
+            // Cut down on the noise: things like the processor looping to
+            // check an I/O status byte spews a lot... summarize that (but
+            // not endlessly, to show progress)
+            if (output == _lastOutput && _repeatCount < 256)
             {
-                var catfmt = (c == Category.All) ? fmt : c.ToString() + ": " + fmt;
-                var output = (args == null) ? catfmt : string.Format(catfmt, args);
+                _repeatCount++;
+                return;
+            }
 
-                // Cut down on the noise: things like the processor looping to
-                // check an I/O status byte spews a lot... summarize that (but
-                // not endlessly to show progress)
-                if (output == _lastOutput && _repeatCount < 256)
+            if (_logToConsole && s >= _consLevel)
+            {
+                // Was the last message repeated?
+                if (_repeatCount > 0)
                 {
-                    _repeatCount++;
-                    return;
+                    if (_repeatCount == 1)
+                        Console.WriteLine(_lastOutput);     // one repeat is ok :-)
+                    else
+                        Console.WriteLine($"[Last message repeated {_repeatCount} times]");
                 }
 
-                if (_logToConsole && s >= _consLevel)
+                // Set the text color; in severe cases, override them to standout
+                // Since the Mac Terminal blats the background color across the
+                // entire output line, fudge the output to look a little better...
+                switch (s)
                 {
-                    // Was the last message repeated?
-                    if (_repeatCount > 0)
-                    {
-                        if (_repeatCount == 1)
-                            Console.WriteLine(_lastOutput);     // one repeat is ok :-)
-                        else
-                            Console.WriteLine($"[Last message repeated {_repeatCount} times]");
-                    }
+                    case Severity.Warning:
+                        Console.BackgroundColor = ConsoleColor.Yellow;
+                        Console.ForegroundColor = ConsoleColor.Black;
 
-                    // Set the text color; in severe cases, override them to standout
-                    // Since the Mac Terminal blats the background color across the
-                    // entire output line, fudge the output to look a little better...
-                    switch (s)
-                    {
-                        case Severity.Warning:
-                            Console.BackgroundColor = ConsoleColor.Yellow;
-                            Console.ForegroundColor = ConsoleColor.Black;
+                        Console.Write(output);
+                        Console.BackgroundColor = _defaultBackground;
+                        Console.WriteLine();
+                        break;
 
-                            Console.Write(output);
-                            Console.BackgroundColor = _defaultBackground;
-                            Console.WriteLine();
-                            break;
+                    case Severity.Error:
+                    case Severity.Heresy:
+                        Console.BackgroundColor = ConsoleColor.Red;
+                        Console.ForegroundColor = ConsoleColor.White;
 
-                        case Severity.Error:
-                        case Severity.Heresy:
-                            Console.BackgroundColor = ConsoleColor.Red;
-                            Console.ForegroundColor = ConsoleColor.White;
+                        Console.Write(output);
+                        Console.BackgroundColor = _defaultBackground;
+                        Console.WriteLine();
+                        break;
 
-                            Console.Write(output);
-                            Console.BackgroundColor = _defaultBackground;
-                            Console.WriteLine();
-                            break;
-
-                        default:
-                            Console.ForegroundColor = _colors[c];
-                            Console.WriteLine(output);
-                            break;
-                    }
-
-                    Console.ForegroundColor = _defaultForeground;
-
-                    Thread.Sleep(0);   // Give it a rest why dontcha
+                    default:
+                        Console.ForegroundColor = _colors[c];
+                        Console.WriteLine(output);
+                        break;
                 }
 
-                _lastOutput = output;
-                _repeatCount = 0;
+                Console.ForegroundColor = _defaultForeground;
+
+                Thread.Sleep(0);   // Give it a rest why dontcha
+            }
 
 #if TRACING_ENABLED
-                if (_logToFile && s >= _fileLevel)
-                {
-                    var me = Thread.CurrentThread.ManagedThreadId;
-                    var stamped = $"{DateTime.Now:yyyyMMdd HHmmss.ffff} [{me}]: {_lastOutput}";
+            if (_logToFile && s >= _fileLevel)
+            {
+                var me = Thread.CurrentThread.ManagedThreadId;
+                var stamped = $"{DateTime.Now:yyyyMMdd HHmmss.ffff} [{me}]: {output}";
 
-                    _queue.Enqueue(stamped);
-                }
-#endif
+                _queue.Enqueue(stamped);
             }
+#endif
+
+            _lastOutput = output;
+            _repeatCount = 0;
         }
 
 
@@ -473,19 +503,19 @@ namespace PERQemu
         /// </summary>
         static void FlushQueue(HRTimerElapsedEventArgs a)
         {
-        	if (_log == null) return;
+            if (_log == null) return;
 
-        	string line;
+            string line;
 
-        	while (_queue.TryDequeue(out line))
-        	{
-        		if (_log.BaseStream.Length > _logSize)
-        		{
-        			RotateFile();
-        		}
+            while (_queue.TryDequeue(out line))
+            {
+                if (_log.BaseStream.Length > _logSize)
+                {
+                    RotateFile();
+                }
 
-        		_log.WriteLine(line);
-        	}
+                _log.WriteLine(line);
+            }
         }
 
         /// <summary>

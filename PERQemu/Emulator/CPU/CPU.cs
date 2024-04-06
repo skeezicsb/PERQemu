@@ -720,7 +720,7 @@ namespace PERQemu.Processor
                             {
                                 // This often appears during boot/testing and is harmless in that
                                 // case; turn off these alerts in Release builds to reduce noise
-                                Log.Warn(Category.OpFile, "LoadOp called in wrong cycle?");
+                                Log.Debug(Category.OpFile, "LoadOp called in wrong cycle");
                             }
 #endif
 

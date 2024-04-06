@@ -348,25 +348,27 @@ namespace PERQemu
         // Memory and RasterOp
         //
 
-        [Command("debug show memory", "Dump the PERQ's memory")]
-        void ShowMemory(uint startAddr, uint words = 64)
+        [Command("debug show memory", "Show contents of the PERQ's memory")]
+        void ShowMemory(uint address, uint words = 64)
         {
             if (!CheckSys()) return;
 
-            if (startAddr > PERQemu.Sys.Memory.MemSize - 1)
+            if (address > PERQemu.Sys.Memory.MemSize - 1)
             {
                 Console.WriteLine("Start address must be in range 0..{0}", PERQemu.Sys.Memory.MemSize - 1);
                 return;
             }
 
             // Round down to nearest octoword by masking off low address bits
-            var start = (int)(startAddr & 0xfffffff8);
+            var start = (int)(address & 0xfffffff8);
             var end = (int)Math.Min(PERQemu.Sys.Memory.MemSize, start + words);
+
+            var line = new StringBuilder();
 
             // Format and display 8 words per line
             for (var i = start; i < end; i += 8)
             {
-                var line = new StringBuilder();
+                line.Clear();
                 line.AppendFormat("{0:x6}: ", i);
 
                 // Words in hex (Todo: add output radix support)
@@ -392,11 +394,11 @@ namespace PERQemu
         }
 
         [Command("debug find memory", "Find a specific value in the PERQ's memory [@start, val]")]
-        void FindMemory(uint startAddress, ushort val)
+        void FindMemory(uint address, ushort val)
         {
             if (!CheckSys()) return;
 
-            if (startAddress >= PERQemu.Sys.Memory.MemSize)
+            if (address >= PERQemu.Sys.Memory.MemSize)
             {
                 Console.WriteLine("Start address must be in range 0..{0}", PERQemu.Sys.Memory.MemSize - 1);
                 return;
@@ -404,7 +406,7 @@ namespace PERQemu
 
             ushort[] mem = PERQemu.Sys.Memory.Memory;
 
-            for (uint i = startAddress; i < mem.Length; i++)
+            for (uint i = address; i < mem.Length; i++)
             {
                 if (mem[i] == val) ShowMemory((i & 0xffffc), 4);        // show the quadword
             }
@@ -497,26 +499,26 @@ namespace PERQemu
         }
 
         [Command("debug disassemble microcode", "Disassemble microinstructions (@ [addr])")]
-        void DisassembleMicrocode(ushort startAddress)
+        void DisassembleMicrocode(ushort address)
         {
-            DisassembleMicrocode(startAddress, 16);
+            DisassembleMicrocode(address, 16);
         }
 
         [Command("debug disassemble microcode", "Disassemble microinstructions (@ [addr, len])")]
-        void DisassembleMicrocode(ushort startAddress, ushort length)
+        void DisassembleMicrocode(ushort address, ushort length)
         {
             if (!CheckSys()) return;
 
-            var endAddr = Math.Min(startAddress + length, CPU.WCSSize - 1);
+            var endAddr = Math.Min(address + length, CPU.WCSSize - 1);
 
-            if (startAddress > CPU.WCSSize - 1)
+            if (address > CPU.WCSSize - 1)
             {
                 Console.WriteLine("Address out of range 0..{0}", CPU.WCSSize - 1);
                 return;
             }
 
             // Disassemble microcode
-            for (ushort i = startAddress; i < endAddr; i++)
+            for (ushort i = address; i < endAddr; i++)
             {
                 var line = Disassembler.Disassemble(i, PERQemu.Sys.CPU.GetInstruction(i));
                 Console.WriteLine(line);
@@ -1110,6 +1112,24 @@ namespace PERQemu
         void DumpQcodes()
         {
             QCodeHelper.DumpContents();
+        }
+
+        [Conditional("DEBUG")]
+        [Command("debug unfrob")]
+        void UnfrobTest(int address)
+        {
+            Console.WriteLine($"Address: {address:x8} not: {~address:x8}");
+
+            ExtendedRegister r = new ExtendedRegister(4, 16);   // 20-bit for testing
+            r.Lo = (ushort)(address);
+            r.Hi = ~(address >> 16);
+            Console.WriteLine($"Register encoding: {r}");
+
+            var unfrobbed = r.Hi | (~(0x3ff ^ r.Lo) & 0xffff);
+            Console.WriteLine($"Unfrobbed std: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
+
+            unfrobbed = (~r.Hi & 0x0f0000) | r.Lo;
+            Console.WriteLine($"Unfrobbed EIO: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
         }
 
 #if DEBUG

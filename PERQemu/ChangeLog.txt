@@ -6,8 +6,26 @@ notes moved to ChangeLog-Old.txt.  New entries here will be added at the top, to
 avoid wasting precious time scrolling to the end. :-)
 
 
+April, 2024:
+
+    1. So, so close to initial floppy boot on the PERQ-2/Micropolis.  Tracking
+    down a really obscure condition where the Z80 doesn't properly ack the final
+    floppy block read when loading the Mboot file, so the PERQ times out (still
+    at DDS 158).  To assist with this, took the time to reconstruct and reformat
+    the entire EIO Z80 ROM source code in PERQemu's debugger format.  (CIO will
+    eventually get this treatment too, since it's a much, much more readable
+    code base than the original old/IOB Z80.)  Check out PROM/eioz80.lst if you
+    want to learn more about the cooperative multitasking the Z80 does to run
+    the low-speed I/O devices on the EIO board.
+
+
 March, 2024:
 
+    9. Fixed some subtle Z80 IRQ and DMAC bugs and now PERQ-Z80 memory transfers
+    through the DMA FIFOs are kinda working.  Floppy boot dies at DDS 158 but it
+    is getting closer... made the boot key press more reliable (EIO Z80 takes a
+    bit longer to start up and it was missing the keypress events).
+    
     8. All kids love Log.  Rework the debug file rotation since pushing it too
     hard with a TON of debugging output turnt up kept hard crashing Mono, so I
     had to address the thread crap (AND NO, IT STILL AIN'T RIGHT) but as long as

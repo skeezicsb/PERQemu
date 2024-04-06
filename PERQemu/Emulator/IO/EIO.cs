@@ -38,6 +38,7 @@ namespace PERQemu.IO
         {
             _name = "EIO";
             _desc = "PERQ-2 I/O Board, Z80A, Microp/MFM, Ethernet";
+            _isEIO = true;
 
             _z80CycleTime = 250;    // 4Mhz!
 

@@ -78,6 +78,7 @@ namespace PERQemu.IO
 
         public Z80System Z80System => _z80System;
         public bool SupportsAsync => _z80System.SupportsAsync;
+        public bool IsEIO => _isEIO;
 
         public IStorageController DiskController => _hardDiskController;
         public DMARegisterFile DMARegisters => _dmaRegisters;
@@ -205,6 +206,8 @@ namespace PERQemu.IO
         // Describe the specific board
         protected static string _name;
         protected static string _desc;
+        protected static bool _isEIO;
+
         protected static ulong _z80CycleTime;
         protected static int _z80RamSize;
         protected static int _z80RamAddr;
@@ -324,9 +327,9 @@ namespace PERQemu.IO
 
         /// <summary>
         /// Unfrob a DMA address like the hardware do.  This is common to IOB
-        /// and CIO, and any OIO device that uses DMA.  EIO is similar, but with
-        /// a slight difference in the high header address word to include the
-        /// word count (stored separately here, so it doesn't affect Unfrob).
+        /// and CIO, and any OIO device that uses DMA.  For EIO, the hardware
+        /// doesn't invert the high bits, but it does use one nibble to encode
+        /// the (inverted) word count for header transfers.
         /// </summary>
         /// <remarks>
         ///                                 ! Explained:
@@ -340,10 +343,20 @@ namespace PERQemu.IO
         ///                                 ! header address to channel ctrl.
         ///                                 ! Remember, these bits are inverted.
         /// </remarks>
-        int Unfrob(ExtendedRegister addr)
+        public virtual int Unfrob(ExtendedRegister addr)
         {
-            // Hi returns the upper 4 or 8 bits shifted; Lo needs to be unfrobbed
-            var unfrobbed = addr.Hi | (~(0x3ff ^ addr.Lo) & 0xffff);
+            int unfrobbed;
+
+            if (PERQemu.Sys.IOB.IsEIO)
+            {
+                // For EIO, only the upper bits are inverted
+                unfrobbed = (~addr.Hi & 0x0f0000) | addr.Lo;
+            }
+            else
+            {
+                // Hi returns the upper 4 or 8 bits shifted; Lo needs to be unfrobbed
+                unfrobbed = addr.Hi | (~(0x3ff ^ addr.Lo) & 0xffff);
+            }
             Log.Detail(Category.DMA, "Unfrobbed {0:x} -> {1:x}", addr.Value, unfrobbed);
 
             return unfrobbed;

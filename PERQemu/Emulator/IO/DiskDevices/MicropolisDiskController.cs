@@ -204,12 +204,14 @@ namespace PERQemu.IO.DiskDevices
 
                 case SMCommand.Read:
                 case SMCommand.ReadChk:
+                    _status = SMStatus.Busy;
                     ReadBlock();
                     break;
 
                 case SMCommand.Write:
                 case SMCommand.WriteChk:
-                    _sector = _registerFile[3];
+                    _status = SMStatus.Busy;
+                    WriteBlock();
                     break;
 
                 default:
@@ -241,6 +243,35 @@ namespace PERQemu.IO.DiskDevices
         #region Block Operations
 
         /// <summary>
+        /// Extra sanity checking (for debugging) to make sure the register file,
+        /// DIB and disk are all in sync.  Always returns true in release builds
+        /// since the fake disk always returns the requested cyl/head/sec. :-)
+        /// </summary>
+        bool CheckBlockParameters(ushort cyl, byte head)
+        {
+#if DEBUG
+            if (_dib.SelectedDrive == null)
+                throw new InvalidOperationException($"{_command} but no disk selected");
+
+            // Do this here (until debugged)
+            if (_dib.SelectedDrive.CurHead != _dib.Head || _dib.Head != head)
+            {
+                Log.Warn(Category.HardDisk, "Wrong head selected: disk={0} DIB={1} regs={2}",
+                                            _dib.SelectedDrive.CurHead, _dib.Head, head);
+                return false;
+            }
+
+            if (_dib.SelectedDrive.CurCylinder != _dib.Cylinder || _dib.Cylinder != cyl)
+            {
+                Log.Warn(Category.HardDisk, "Cylinder out of sync: disk={0} DIB={1} regs={2}",
+                                            _dib.SelectedDrive.CurCylinder, _dib.Cylinder, cyl);
+                return false;
+            }
+#endif
+            return true;
+        }
+
+        /// <summary>
         /// Reads a block from the cyl/head/sec specified by the register file
         /// into memory at the address specified by the DMA controller.  Sets
         /// status and schedules the appropriate interrupt(s) to fire based on
@@ -248,8 +279,6 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         void ReadBlock()
         {
-            _status = SMStatus.Busy;
-
             var cyl = (ushort)((_registerFile[8] & 0xf0) << 4 | _registerFile[4]);
             var head = (byte)(_registerFile[8] & 0x0f);
             var sector = _registerFile[3];
@@ -262,29 +291,12 @@ namespace PERQemu.IO.DiskDevices
                                 ComputeRotationalDelay(sector) :    // Accurate
                                 100 * Conversion.UsecToNsec;        // Fast
 
-#if DEBUG
-            if (_dib.SelectedDrive == null)
-                throw new InvalidOperationException($"ReadBlock but no disk selected");
-
-            // Do this here (until debugged)
-            if (_dib.SelectedDrive.CurHead != _dib.Head || _dib.Head != head)
+            // Sanity checks
+            if (!CheckBlockParameters(cyl, head))
             {
-                Log.Warn(Category.HardDisk, "Wrong head selected: disk={0} DIB={1} regs={2}",
-                                            _dib.SelectedDrive.CurHead, _dib.Head, head);
-
                 MidSectorFinish(delay, SMStatus.SMError);
                 return;
             }
-
-            if (_dib.SelectedDrive.CurCylinder != _dib.Cylinder || _dib.Cylinder != cyl)
-            {
-                Log.Warn(Category.HardDisk, "Cylinder out of sync: disk={0} DIB={1} regs={2}",
-                                            _dib.SelectedDrive.CurCylinder, _dib.Cylinder, cyl);
-
-                MidSectorFinish(delay, SMStatus.SMError);
-                return;
-            }
-#endif
 
             // Read the sector from the disk
             var block = _dib.SelectedDrive.GetSector(cyl, head, sector);
@@ -294,13 +306,12 @@ namespace PERQemu.IO.DiskDevices
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
 
 #if DEBUG
+            // This will always be 2?  Unless non-check reads don't xfer the header?  Hmm.
             var quads = _system.IOB.DMARegisters.GetHeaderCount(ChannelName.HardDisk);
 
             if (quads != 2)
                 Log.Warn(Category.HardDisk, "Bad DMA header count {0} on {1}", quads, _command);
 #endif
-
-            // Todo: Do this as a real DMA operation
 
             // Copy the data to the data buffer address
             for (int i = 0; i < block.Data.Length; i += 2)
@@ -350,61 +361,74 @@ namespace PERQemu.IO.DiskDevices
                       cyl, head, sector, data);
 
             // Are we firing the mid-sector interrupt?
-            if (!_flags.HasFlag(SMFlags.MidIntDisable))
+            if (_flags.HasFlag(SMFlags.MidIntDisable))
             {
-                // TODO: IS THAT REALLY A *DISABLE* FLAG ON EIO?  JESUS GUYS
-
+                // Nope, exit through the gift shop
+                FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
+            }
+            else
+            {
+                // Schedule the mid-cycle interrupt (which will then finish)
                 MidSectorFinish(delay, SMStatus.Idle);
             }
-
-            // No mid-cycle interrupt
-            FinishCommand(delay, SMStatus.Idle);
         }
 
         /// <summary>
         /// Does a write to the cyl/head/sec specified by the controller registers.
-        /// Does NOT commit to disk, only in memory copy is affected.
+        /// Same basic steps as Read/ReadCheck, but the other way around.
         /// </summary>
-        void WriteBlock(bool writeHeader)
+        void WriteBlock()
         {
-#if DEBUG
-            //if (_disk.CurCylinder != _dib.Cylinder || _disk.CurHead != _dib.Head)
-            //    Log.Warn(Category.HardDisk,
-            //             "Out of sync with disk: cyl {0}={1}, hd {2}={3}?",
-            //             _disk.CurCylinder, _dib.Cylinder, _disk.CurHead, _dib.Head);
-            // See above re: error handling
-#endif
-            // Todo: Should be a DMA op.  See above.
+            var cyl = (ushort)((_registerFile[8] & 0xf0) << 4 | _registerFile[4]);
+            var head = (byte)(_registerFile[8] & 0x0f);
+            var sector = _registerFile[3];
 
-            var sec = _dib.SelectedDrive.GetSector(_dib.Cylinder, _dib.Head, _sector);
+            var delay = Settings.Performance.HasFlag(RateLimit.DiskSpeed) ?
+                                ComputeRotationalDelay(sector) :    // Accurate
+                                100 * Conversion.UsecToNsec;        // Fast
+
+            if (!CheckBlockParameters(cyl, head))
+            {
+                MidSectorFinish(delay, SMStatus.SMError);
+                return;
+            }
+
+            var block = _dib.SelectedDrive.GetSector(cyl, head, sector);
+
             var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
 
-            for (int i = 0; i < sec.Data.Length; i += 2)
+            for (int i = 0; i < block.Data.Length; i += 2)
             {
                 int word = _system.Memory.FetchWord(data + (i >> 1));
-                sec.Data[i] = (byte)(word & 0xff);
-                sec.Data[i + 1] = (byte)((word & 0xff00) >> 8);
+                block.Data[i] = (byte)(word & 0xff);
+                block.Data[i + 1] = (byte)((word & 0xff00) >> 8);
             }
 
-            if (writeHeader)
+            if (_command == SMCommand.WriteChk)
             {
-                for (int i = 0; i < sec.Header.Length; i += 2)
+                for (int i = 0; i < block.Header.Length; i += 2)
                 {
                     int word = _system.Memory.FetchWord(header + (i >> 1));
-                    sec.Header[i] = (byte)(word & 0xff);
-                    sec.Header[i + 1] = (byte)((word & 0xff00) >> 8);
+                    block.Header[i] = (byte)(word & 0xff);
+                    block.Header[i + 1] = (byte)((word & 0xff00) >> 8);
                 }
             }
 
-            // Write the sector to the disk...
-            _dib.SelectedDrive.SetSector(sec);
+            _dib.SelectedDrive.SetSector(block);
 
             Log.Write(Category.HardDisk,
                       "Micropolis sector write complete to {0}/{1}/{2}, from memory at 0x{3:x6}",
-                      _dib.Cylinder, _dib.Head, _sector, data);
+                      cyl, head, sector, data);
 
-            //SetBusyState(false, true);
+            if (_flags.HasFlag(SMFlags.MidIntDisable))
+            {
+				FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
+            }
+            else
+            {
+				MidSectorFinish(delay, SMStatus.Idle);
+            }
         }
 
         /// <summary>
@@ -413,20 +437,18 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         void FormatBlock()
         {
-
             // TODO FIXME REDO
             // The drive itself does this on micropolis!? but ONLY if the
             // actual 1220 controller board is present, which isn't the case,
-            // goddamned inconsistent or WRONG documentation
 
             // Todo: think about how to support spare sectoring and bad block
             // maps - the PERQ allows rewriting the sector header to effect a
             // block sparing, so... any changes to the underlying storage dev?
             // split the phys/log header fields if they aren't already?
 
-            // some of this stuff comes from the register file, so figure out
+            // some format parameters come from the register file, so figure out
             // how that works
-
+            var _sector = _registerFile[3];
             var sec = new Sector(_dib.Cylinder, _dib.Head, _sector,
                                  _dib.SelectedDrive.Geometry.SectorSize,
                                  _dib.SelectedDrive.Geometry.HeaderSize);
@@ -664,8 +686,6 @@ namespace PERQemu.IO.DiskDevices
         byte[] _registerFile;
         int _regSelect;
 
-        // Cyl & Head are in the DIB (and reg file too)
-        byte _sector;
         bool _interrupting;
 
         // The physical disk and controller
