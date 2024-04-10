@@ -128,6 +128,9 @@ namespace PERQemu.IO
         {
             switch (port)
             {
+                case 0x52:      // E10ERdNetSR: read Ethernet status
+                    return _ethernetController?.ReadStatus() ?? 0xff;
+
                 case 0x53:      // SMStat: read disk status reg
                     return _hardDiskController.ReadStatus();
 
@@ -136,6 +139,10 @@ namespace PERQemu.IO
 
                 case 0x55:      // EioZ80Stat: read Z80 interface status
                     return _z80System.ReadStatus();
+
+                case 0x5a:
+                case 0x5b:
+                    return _ethernetController?.ReadRegister(port) ?? 0xff;
 
                 default:
                     Log.Warn(Category.IO, "Unhandled EIO Read from port {0:x2}", port);
@@ -186,6 +193,9 @@ namespace PERQemu.IO
 
                 // Load Ethernet registers
                 case 0xc2:
+                     _ethernetController?.LoadCommand(value);
+                    break;
+
                 case 0xc3:
                 case 0xc8:
                 case 0xc9:
@@ -201,10 +211,7 @@ namespace PERQemu.IO
                 case 0xdc:
                 case 0xdd:
                 case 0xde:
-                    if (_ethernetController != null)
-                    {
-                        _ethernetController.LoadRegister(port, value);
-                    }
+                    _ethernetController?.LoadRegister(port, value);
                     break;
 
                 default:

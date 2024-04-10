@@ -174,12 +174,14 @@ namespace PERQemu.Processor
                 _stopAsyncThread = true;
                 _system.Halt(e);
             }
+            finally
+            {
+                Log.Debug(Category.Controller, "[CPU thread stopped]");
+                _heartbeat.Enable(false);
 
-            Log.Debug(Category.Controller, "[CPU thread stopped]");
-            _heartbeat.Enable(false);
-
-            // Detach
-            PERQemu.Controller.RunStateChanged -= OnRunStateChange;
+                // Detach
+                PERQemu.Controller.RunStateChanged -= OnRunStateChange;
+            }
         }
 
         /// <summary>

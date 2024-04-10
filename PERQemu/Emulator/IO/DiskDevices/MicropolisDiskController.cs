@@ -239,7 +239,6 @@ namespace PERQemu.IO.DiskDevices
             SetInterrupt(true);
         }
 
-
         #region Block Operations
 
         /// <summary>
@@ -423,11 +422,11 @@ namespace PERQemu.IO.DiskDevices
 
             if (_flags.HasFlag(SMFlags.MidIntDisable))
             {
-				FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
+                FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
             }
             else
             {
-				MidSectorFinish(delay, SMStatus.Idle);
+                MidSectorFinish(delay, SMStatus.Idle);
             }
         }
 
@@ -562,22 +561,28 @@ namespace PERQemu.IO.DiskDevices
 
         /// <summary>
         /// Computes a rotational delay for the start of a sector from the last
-        /// index pulse.  Doesn't have to be terribly accurate, but adds realism. :-)
+        /// index pulse.  Returns nanoseconds so you don't have to scale it for
+        /// scheduling.  Isn't terribly accurate as it doesn't account for sector
+        /// interleaving, but adds some realism. :-)
         /// </summary>
         ulong ComputeRotationalDelay(int sector)
         {
-            // t = one total disk rotation (in ns)
-            // d = space between pulses (in ns) = t / #sectors
-            var t = (long)Conversion.RPMtoNsec(_dib.SelectedDrive.Specs.RPM);
-            var d = (long)(t / _dib.SelectedDrive.Geometry.Sectors);
+            // Todo: move this to HardDisk, or possibly even StorageDevice so
+            // all drive types can use it
 
-            // cur = what sector the heads are over now (time now - last pulse) / d
-            // delay = (desired sector - cur) * d
-            var cur = (long)(_system.Scheduler.CurrentTimeNsec - _dib.SelectedDrive.LastIndexPulse) / d;
-            var delay = (cur - sector) * d;
+            // t = time between pulses (in ns) = rpm / #sectors
+            var t = (long)Conversion.RPMtoNsec(_dib.SelectedDrive.Specs.RPM) /
+                                               _dib.SelectedDrive.Geometry.Sectors;
 
-            Console.WriteLine($"Rot dly from cur={cur} to desired={sector} is {delay}");
-            return (ulong)(delay < 0 ? t - delay : delay);
+            // cur = what sector the heads are over now (time now - last pulse) / t
+            var cur = (long)(_system.Scheduler.CurrentTimeNsec - _dib.SelectedDrive.LastIndexPulse) / t;
+
+            // dist = distance from current to desired sector (linear, no account for interleave)
+            var dist = sector - cur;
+            var delay = (ulong)((dist < 0 ? dist + _dib.SelectedDrive.Geometry.Sectors : dist) * t);
+
+            Console.WriteLine($"Rotational delay from cur={cur} to desired={sector} is {delay}");
+            return delay;
         }
 
         // Debugging
@@ -862,11 +867,8 @@ namespace PERQemu.IO.DiskDevices
             /// </summary>
             void DoRestore()
             {
-                Log.Write(Category.HardDisk, "Starting Restore");
-                _status.OnCylinder = false;
-                _status.SeekError = false;
-                _disk.SeekTo(0);
                 _cylinder = 0;
+                DoSeek();
             }
 
             /// <summary>
@@ -876,22 +878,29 @@ namespace PERQemu.IO.DiskDevices
             {
                 if (_cylinder > _disk.Geometry.Cylinders - 1 || _head > _disk.Geometry.Heads - 1)
                 {
-                    Log.Write(Category.HardDisk, "Bad head or cylinder on seek!");
+                    Log.Warn(Category.HardDisk, "Bad head or cylinder on seek!");
                     _status.SeekError = true;
+                    SeekCompletionCallback(0U, null);
+                    return;
+                }
+
+                // Do the head select
+                if (_head != _disk.CurHead) _disk.HeadSelect(_head);
+
+                // If a seek is required, start it
+                if (_cylinder != _disk.CurCylinder)
+                {
+                    Log.Info(Category.HardDisk, "Seek requested ({0} cyls)", _cylinder - _disk.CurCylinder);
+                    _status.OnCylinder = false;
+                    _status.SeekError = false;
+                    _disk.SeekTo(_cylinder);
                 }
                 else
                 {
-                    // Do the head select
-                    if (_head != _disk.CurHead) _disk.HeadSelect(_head);
-
-                    // If a seek is required, start it
-                    if (_cylinder != _disk.CurCylinder)
-                    {
-                        Log.Write(Category.HardDisk, "Seek requested ({0} cyls)", _cylinder - _disk.CurCylinder);
-                        _status.OnCylinder = false;
-                        _status.SeekError = false;
-                        _disk.SeekTo(_cylinder);
-                    }
+                    // Should probably be a minimal delay here?  Sometimes the
+                    // microcode seems to explicitly check to see if the disk SM
+                    // has gone to busy mode, then back to idle/completion?
+                    SeekCompletionCallback(0U, null);
                 }
             }
 

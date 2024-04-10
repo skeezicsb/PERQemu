@@ -168,7 +168,7 @@ namespace PERQemu.IO.Z80
                     // signal is toggled off again when a different IOA address on
                     // the EIO is accessed.  This is a little bizarre and requires
                     // more study.
-                    _z80IntRaised = false;
+                    _z80IntRaised = _outputReady;
 
                     Log.Debug(Category.FIFO, "Z80 read FIFO status 0x{0:x}", result);
                     return result;

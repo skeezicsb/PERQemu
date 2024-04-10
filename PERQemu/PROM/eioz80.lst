@@ -1,4 +1,4 @@
-﻿ROM:0000 ;
+ROM:0000 ;
 ROM:0000 ; EIO Z80 v100.017
 ROM:0000 ; Copyright (C) 1982, 1983 Three Rivers Computer Corporation
 ROM:0000 ; Assembled/massaged for PERQemu by skeezicsb from original source
@@ -10,10 +10,10 @@ ROM:0000    DI                      ; Disable All interrupts until init done
 ROM:0001    JP  Start               ; Jump to start of initialization
 ROM:0004 ;
 ROM:0004 Version:
-ROM:0004    byte 64h                ; VerMajor
-ROM:0005    byte 11h                ; VerMinor
-ROM:0006    byte 0                  ; Checksum of ROM
-ROM:0007    byte 0                  ; Filler
+ROM:0004    .byte 64h               ; VerMajor
+ROM:0005    .byte 11h               ; VerMinor
+ROM:0006    .byte 0                 ; Checksum of ROM
+ROM:0007    .byte 0                 ; Filler
 ROM:0008 ;
 ROM:0008 ; Clock (Not present in ROM)
 ROM:0008 ClockInit:
@@ -95,38 +95,105 @@ ROM:008E    JP  EIRETI
 ROM:0091 PtrSp.ISR:
 ROM:0091    JP  EIRETI
 ROM:0094 ;
-ROM:0094 ;   0094-00C2  RSA       SECTION BYTE 
-ROM:0094 RSA:
-ROM:00C2 ;   0094-00C2  RSA       SECTION BYTE 
-ROM:00C3 ;   00C3-00F1  RSB       SECTION BYTE 
-ROM:00C3 RSB:
-ROM:00F1 ;   00C3-00F1  RSB       SECTION BYTE 
+ROM:0094 ; RS-232A task (Not present in ROM)
+ROM:0094 RSATx.ISR:
+ROM:0094 RSASt.ISR:
+ROM:0094 RSARx.ISR:
+ROM:0094 RSASP.ISR:
+ROM:0094    JP  EIRETI              ; Dummy interrupt routine
+ROM:0097 RSAInit:
+ROM:0097    XOR  A                  ; Get a zero
+ROM:0098    LD  (RSA.Flg), A        ; Clear all the flags
+ROM:009B    LD   HL, InitTab
+ROM:009E    LD   B, InitTabL        ; Table length
+ROM:00A0    LD   C, RSAControl
+ROM:00A2    OTIR
+ROM:00A4    RET
+ROM:00A5 InitTab:
+ROM:00A5    .byte  00011000B        ; Channel Reset command
+ROM:00A6    .byte         1         ; Finally register 1
+ROM:00A7    .byte  00000000B        ; Disables the interrupts
+ROM:00A7 ; InitTabL equ 3           ; Length of table
+ROM:00A8 XRSA:
+ROM:00A8    LD   HL, RSA.Flg
+ROM:00AB    SET  NAKFlgBit, (HL)    ; Set NAK pending flag
+ROM:00AD    JP   PERQEnable         ; And re-enable interrupts
+ROM:00B0 ZRSA:
+ROM:00B0    LD   C, DevRSA          ; Device code
+ROM:00B2    LD   HL, RSA.Flg        ; Check for ACK/NAK
+ROM:00B5    BIT  NAKFlgBit, (HL)
+ROM:00B7    JP   NZ, SendNAK        ; If necessary send NAK and return
+ROM:00BA    RET
+ROM:00BB RSATask:
+ROM:00BB    LD   HL,RSA.Cmd
+ROM:00BE    CALL Wait               ; Wait for command
+ROM:00C1    JR   RSATask            ; Repeat
+ROM:00C2 ;
+ROM:00C2 ; End of RS-232A
+ROM:00C3 ;
+ROM:00C3 ; RS-232B task (Not present in ROM)
+ROM:00C3 RSBTx.ISR:
+ROM:00C3 RSBSt.ISR:
+ROM:00C3 RSBRx.ISR:
+ROM:00C3 RSBSP.ISR:
+ROM:00C3    JP  EIRETI              ; Dummy interrupt routine
+ROM:00C6 RSBInit:
+ROM:00C6    XOR  A                  ; Get a zero
+ROM:00C7    LD  (RSB.Flg), A        ; Clear all the flags
+ROM:00CA    LD   HL, InitTab
+ROM:00CD    LD   B, InitTabL        ; Table length
+ROM:00CF    LD   C, RSBControl
+ROM:00D1    OTIR
+ROM:00D3    RET
+ROM:00D4 ;
+ROM:00D4 ; Initialisation table for RS232
+ROM:00D4 InitTab:
+ROM:00D4    .byte  00011000B        ; Channel Reset command
+ROM:00D5    .byte         1         ; Finally register 1
+ROM:00D6    .byte  00000000B        ; Disables the interrupts
+ROM:00D6 ; InitTabL equ 3           ; Length of table
+ROM:00D7 XRSB:
+ROM:00D7    LD   HL, RSB.Flg
+ROM:00DA    SET  NAKFlgBit, (HL)    ; Set NAK pending flag
+ROM:00DC    JP   PERQEnable         ; And re-enable interrupts
+ROM:00DF ZRSB:
+ROM:00DF    LD   C, DevRSB          ; Device code
+ROM:00E1    LD   HL, RSB.Flg        ; Check for ACK/NAK
+ROM:00E4    BIT  NAKFlgBit, (HL)
+ROM:00E6    JP   NZ, SendNAK        ; If necessary send NAK and return
+ROM:00E9    RET
+ROM:00EA RSBTask:
+ROM:00EA    LD   HL, RSB.Cmd
+ROM:00ED    CALL Wait               ; Wait for command
+ROM:00F0    JR   RSBTask            ; Repeat
+ROM:00F1 ;
+ROM:00F1 ; End of RS232-B
 ROM:0100 ;
 ROM:0100 ; Vectors (What goes here?)
-ROM:0110    word   020E         ; VecPDMA
-ROM:0112    word   0C81         ; VecPERQO
-ROM:0114    word   09EA         ; VecPERQI
-ROM:0116    word   0655         ; VecFloppy
-ROM:0118    word   0020         ; VecGPIB
-ROM:011A    word   01BE         ; VecZDMA
+ROM:0110    .word  020E     ; VecPDMA
+ROM:0112    .word  0C81     ; VecPERQO
+ROM:0114    .word  09EA     ; VecPERQI
+ROM:0116    .word  0655     ; VecFloppy
+ROM:0118    .word  0020     ; VecGPIB
+ROM:011A    .word  01BE     ; VecZDMA
 ROM:0120 VecRS0:
-ROM:0120    word   0C93         ; SPTx.ISR  Speech transmit buffer empty
-ROM:0122    word   0C93         ; SPSt.ISR  Speech status change
-ROM:0124    word   008E         ; PtrRx.ISR Pointer receive buffer full
-ROM:0126    word   0091         ; PtrSp.ISR Pointer special receive condition
-ROM:0128    word   0094         ; RSATx.ISR Channel A transmit buffer empty
-ROM:012A    word   0094         ; RSASt.ISR Channel A status change
-ROM:012C    word   0094         ; RSARx.ISR Channel A receive buffer full
-ROM:012E    word   0094         ; RSASp.ISR Channel A special receive condition
+ROM:0120    .word  0C93     ; SPTx.ISR  Speech transmit buffer empty
+ROM:0122    .word  0C93     ; SPSt.ISR  Speech status change
+ROM:0124    .word  008E     ; PtrRx.ISR Pointer receive buffer full
+ROM:0126    .word  0091     ; PtrSp.ISR Pointer special receive condition
+ROM:0128    .word  0094     ; RSATx.ISR Channel A transmit buffer empty
+ROM:012A    .word  0094     ; RSASt.ISR Channel A status change
+ROM:012C    .word  0094     ; RSARx.ISR Channel A receive buffer full
+ROM:012E    .word  0094     ; RSASp.ISR Channel A special receive condition
 ROM:0130 VecRS1:
-ROM:0130    word   099D         ; KBTx.ISR Keyboard transmit buffer empty
-ROM:0132    word   09B0         ; KBSt.ISR Keyboard status change
-ROM:0134    word   0972         ; KBRx.ISR Keyboard receive buffer full
-ROM:0136    word   09BB         ; KBSp.ISR Keyboard special receive condition
-ROM:0138    word   00C3         ; RSBTx.ISR Channel A transmit buffer empty
-ROM:013A    word   00C3         ; RSBSt.ISR Channel A status change
-ROM:013C    word   00C3         ; RSBRx.ISR Channel A receive buffer full
-ROM:013E    word   00C3         ; RSBSp.ISR Channel A special receive condition
+ROM:0130    .word  099D     ; KBTx.ISR Keyboard transmit buffer empty
+ROM:0132    .word  09B0     ; KBSt.ISR Keyboard status change
+ROM:0134    .word  0972     ; KBRx.ISR Keyboard receive buffer full
+ROM:0136    .word  09BB     ; KBSp.ISR Keyboard special receive condition
+ROM:0138    .word  00C3     ; RSBTx.ISR Channel A transmit buffer empty
+ROM:013A    .word  00C3     ; RSBSt.ISR Channel A status change
+ROM:013C    .word  00C3     ; RSBRx.ISR Channel A receive buffer full
+ROM:013E    .word  00C3     ; RSBSp.ISR Channel A special receive condition
 ROM:0140 EIRETI:
 ROM:0140    EI
 ROM:0141    RETI
@@ -136,21 +203,21 @@ ROM:0143 ; DMA
 ROM:0143 DMAInit:
 ROM:0143    OUT (DMAMCLR), A        ; Issue master clear
 ROM:0145    IN   A, (DMACSR)        ; Read to clear status register
-ROM:0147    LD   A, 01100000B       ; DACK active low, DREQ active LOW, Extend Writ
-ROM:0149    OUT (DMACSR), A         ; Fixed Prio, Normal timing, enable cotroller
-ROM:014B    LD   A, I.WrRes | I.By1 | I.ZDMA; 1 byte response for Z80 DMA interrupt
+ROM:0147    LD   A, 01100000B       ; DACK active L, DREQ active L, Extend Write
+ROM:0149    OUT (DMACSR), A         ; Fixed Prio, Normal timing, enable cntrller
+ROM:014B    LD   A, I.WrRes | I.By1 | I.ZDMA; 1 byte response for Z80 DMA intr
 ROM:014D    OUT (INTCSR), A         ; Enable writting response memory
 ROM:014F    LD   A, LO(VecZDMA)
 ROM:0151    OUT (INTDATA), A        ; Set PERQ Input interrupt vector
-ROM:0153    LD   A, I.WrRes | I.By1 | I.PDMA; 1 byte response for PERQ DMA interrupt
+ROM:0153    LD   A, I.WrRes | I.By1 | I.PDMA; 1 byte response for PERQ DMA intr
 ROM:0155    OUT (INTCSR), A         ; Enable writting response memory
 ROM:0157    LD   A, LO(VecPDMA)
 ROM:0159    OUT (INTDATA), A        ; Set PERQ Input interrupt vector
 ROM:015B    LD   A, I.CIMRIRR | I.PDMA
 ROM:015D    OUT (INTCSR), A         ; Clear IMR and IRR for PERQ DMA interrupts
 ROM:015F    XOR  A
-ROM:0160    LD  (DMA.GNBC+1), A     ; Clear flag byte for GPIB.
-ROM:0163    LD  (DMA.SNBC+1), A     ; Clear flag byte for SIO.
+ROM:0160    LD  (DMA.GNBC+1), A     ; Clear flag byte for GPIB
+ROM:0163    LD  (DMA.SNBC+1), A     ; Clear flag byte for SIO
 ROM:0166    RET
 ROM:0167 DMAtoMem:
 ROM:0167    LD   L, A               ; Save channel number
@@ -275,7 +342,7 @@ ROM:021D    LD   HL, DMA.GNBC+1     ; Otherwise, point to flag byte for GPIB
 ROM:0220    BIT  7, (HL)            ; Test if next DMA should be started
 ROM:0222    RET  Z                  ; Return if not
 ROM:0223    RES  7, (HL)            ; Clear bit
-ROM:0225    LD   BC, (DMA.GNBC)     ; Get byte count (Bit 15 = zero)
+ROM:0225    LD   BC, (DMA.GNBC)     ; Get byte count (bit 15 = zero)
 ROM:0229    LD   DE, (DMA.GNAdr)    ; Set buffer address
 ROM:022D    JP   DoDMA              ; Go make the setup call
 ROM:0230 TrySIO:
@@ -285,7 +352,7 @@ ROM:0233    LD   HL, DMA.SNBC+1     ; Otherwise, point to flag byte for SIO
 ROM:0236    BIT  7, (HL)            ; Test if next DMA should be started
 ROM:0238    RET  Z                  ; Return if not
 ROM:0239    RES  7, (HL)            ; Clear bit
-ROM:023B    LD   BC, (DMA.SNBC)     ; Get byte count (Bit 15 = zero)
+ROM:023B    LD   BC, (DMA.SNBC)     ; Get byte count (bit 15 = zero)
 ROM:023F    LD   DE, (DMA.SNAdr)    ; Set buffer address
 ROM:0243 DoDMA:
 ROM:0243 ; NB: Reg A still holds the DMA Channel number
@@ -311,7 +378,7 @@ ROM:0266    LD   HL, BufFloppy
 ROM:0269    LD  (AdrFloppy), HL     ; Address of first buffer
 ROM:026C    LD   HL, BufFloppy + BufSFloppy
 ROM:026F    LD  (AdrFloppy+2), HL   ; Address of second buffer
-ROM:0272    LD   A, I.WrRes | I.By1 | I.Floppy; 1 byte response for DMA interrupt
+ROM:0272    LD   A, I.WrRes | I.By1 | I.Floppy; 1 byte response for DMA intr
 ROM:0274    OUT (INTCSR), A         ; Enable writting response memory
 ROM:0276    LD   A, LO(VecFlopppy)  ; Get address of vector
 ROM:0278    OUT (INTDATA), A        ; Set PERQ Input interrupt vector
@@ -339,7 +406,7 @@ ROM:02A1    BIT  ACKFlgBit, A
 ROM:02A3    JP   NZ, SendACK        ; If necessary send ACK and return
 ROM:02A6    BIT  NAKFlgBit, A
 ROM:02A8    JP   NZ, SendNAK        ; If necessary send NAK and return
-ROM:02AB    Bit  SRFlgBit, A
+ROM:02AB    BIT  SRFlgBit, A
 ROM:02AD    RET  Z                  ; Return if no status to send
 ROM:02AE    Res  SRFlgBit, (HL)     ; Reset status request pending
 ROM:02B0    LD   HL, PERQO.Cmd
@@ -926,7 +993,7 @@ ROM:0749    INC  HL
 ROM:074A    LD   A, (F.Parm3)       ; Set Head Load Time from Parameter 2
 ROM:074D    CP   128                ; Is head load time too large?
 ROM:074F    JR   NC, BadSpecify     ; Branch if Parameter too large
-ROM:0751    SLA  A                  ; Position and set to DMA move (Bit 0)
+ROM:0751    SLA  A                  ; Position and set to DMA move (bit 0)
 ROM:0753    LD  (HL), A
 ROM:0754    LD   B, 3               ; Length of command
 ROM:0756    JR   SendCommand        ; Send command to the floppy
@@ -962,7 +1029,7 @@ ROM:077E    LD   A, (HL)            ; Get current character
 ROM:077F    INC  HL
 ROM:0780    OUT (IOAFData), A       ; Write byte to controller
 ROM:0782    DJNZ SendNext           ; Branch if more to send
-ROM:0784    OR   A                  ; Clear Carry Bit
+ROM:0784    OR   A                  ; Clear Carry bit
 ROM:0785    RET
 ROM:0786 SendError:
 ROM:0786    CALL GetResult          ; Get result from floppy
@@ -1123,24 +1190,24 @@ ROM:08BE ; End Initial
 ROM:08BF ;
 ROM:08BF ; Keyboard
 ROM:08BF KBInit:
-ROM:08BF    XOR A
+ROM:08BF    XOR  A
 ROM:08C0    LD  (KBIBuff), A        ; Clear PUT offset of the buffer
 ROM:08C3    LD  (KBIBuff+1), A      ; Clear GET offset of the buffer
-ROM:08C6    LD  HL, KB.Flg          ; Address of flag byte
+ROM:08C6    LD   HL, KB.Flg         ; Address of flag byte
 ROM:08C9    LD  (HL), A             ; Clear flag byte
-ROM:08CA    SET EnbFlgBit,(HL)      ; Enable the keyboard
-ROM:08CC    LD  A, CTC.KBSel | CTC.Both | CTC.M3
+ROM:08CA    SET  EnbFlgBit, (HL)    ; Enable the keyboard
+ROM:08CC    LD   A, CTC.KBSel | CTC.Both | CTC.M3
 ROM:08CE    OUT (CTCB.CSR), A       ; Select counter and mode
-ROM:08D0    LD  A, LO(833)          ; = 4Mhz / (300Baud * 16) = 833
+ROM:08D0    LD   A, LO(833)         ; = 4Mhz / (300Baud * 16) = 833
 ROM:08D2    OUT (CTC.KB), A
-ROM:08D4    LD  A, HI(833)          ; High byte of 833
+ROM:08D4    LD   A, HI(833)         ; High byte of 833
 ROM:08D6    OUT (CTC.KB), A
-ROM:08D8    IN  A,(KBData)          ; Clear any pending character
-ROM:08DA    IN  A,(KBData)          ; Clear any pending character
-ROM:08DC    IN  A,(KBData)          ; Clear any pending character
-ROM:08DE    LD  HL, InitTab         ; Address of initialization 
-ROM:08E1    LD  B, InitTabL         ; Total writes
-ROM:08E3    LD  C, KBControl        ; I/O Address of keyboard control
+ROM:08D8    IN   A, (KBData)        ; Clear any pending character
+ROM:08DA    IN   A, (KBData)        ; Clear any pending character
+ROM:08DC    IN   A, (KBData)        ; Clear any pending character
+ROM:08DE    LD   HL, InitTab        ; Address of initialization 
+ROM:08E1    LD   B, InitTabL        ; Total writes
+ROM:08E3    LD   C, KBControl       ; I/O Address of keyboard control
 ROM:08E5    OTIR
 ROM:08E7    RET
 ROM:08E8 ;
@@ -1150,9 +1217,9 @@ ROM:08E8    .byte  00011000B        ; Channel Reset command
 ROM:08E9    .byte          4        ; Select register 4
 ROM:08EA    .byte  01001000B        ; *16 clock, 1 1/2 stop, no parity
 ROM:08EB    .byte          3        ; Select Register 3
-ROM:08EC    .byte  11100001B        ; 8 Bits, Auto Enable, Rx Enable
+ROM:08EC    .byte  11100001B        ; 8 bits, Auto Enable, Rx Enable
 ROM:08ED    .byte          5        ; Select Register 5
-ROM:08EE    .byte  11100000B        ; DTR, 8 Bits, disable Tx
+ROM:08EE    .byte  11100000B        ; DTR, 8 bits, disable Tx
 ROM:08EF    .byte          1        ; Select register 1
 ROM:08F0    .byte  00011100B        ; Enables reciever interrupts
 ROM:08F1    .byte          2        ; Select Register 2
@@ -1172,7 +1239,7 @@ ROM:0904    JR   NZ, NAKIt          ; Branch if invalid command
 ROM:0906    CALL KBINIT
 ROM:0909    JR   ACKIt
 ROM:090B KBSense:
-ROM:090B    SET  SRFlgBit,(HL)      ; Set the status request bit
+ROM:090B    SET  SRFlgBit, (HL)     ; Set the status request bit
 ROM:090D    JP   PERQEnable
 ROM:0910 KBConfig:
 ROM:0910    LD   A, (PERQIBuff+3)       ; The On/Off byte
@@ -1268,21 +1335,21 @@ ROM:09AD    EI
 ROM:09AE    RETI
 ROM:09B0 KBSt.ISR:
 ROM:09B0    EXX
-ROM:09B1    EX  AF, AF
-ROM:09B2    LD  A, RSRExtInt        ; Reset external interrupt
+ROM:09B1    EX   AF, AF
+ROM:09B2    LD   A, RSRExtInt       ; Reset external interrupt
 ROM:09B4    OUT (KBControl), A
 ROM:09B6    EXX
-ROM:09B7    EX  AF, AF
+ROM:09B7    EX   AF, AF
 ROM:09B8    EI
 ROM:09B9    RETI
 ROM:09BB KBSp.ISR:
 ROM:09BB    EXX
-ROM:09BC    EX  AF, AF
-ROM:09BD    LD  A, RSRError         ; Error reset
+ROM:09BC    EX   AF, AF
+ROM:09BD    LD   A, RSRError        ; Error reset
 ROM:09BF    OUT (KBControl), A
-ROM:09C1    IN  A, (KBData)         ; Discard the char
+ROM:09C1    IN   A, (KBData)        ; Discard the char
 ROM:09C3    EXX
-ROM:09C4    EX  AF, AF
+ROM:09C4    EX   AF, AF
 ROM:09C5    EI
 ROM:09C6    RETI
 ROM:09C7 ;
@@ -1373,7 +1440,7 @@ ROM:0A54    JR   CountOK
 ROM:0A56 ExaminePacket:
 ROM:0A56    LD  A, (PERQIBuff+1)    ; Get device number
 ROM:0A59    CP  DevFloppy           ; Is device floppy?
-ROM:0A5B    JP  Z, XFloppy          ; Yes, have floppy module handle new command
+ROM:0A5B    JP  Z, XFloppy          ; Yes, have Floppy module handle new command
 ROM:0A5E    CP  DevRSA              ; Is device RSA?
 ROM:0A60    JP  Z, XRSA             ; Yes, have RSA module handle new command
 ROM:0A63    CP  DevRSB              ; Is device RSB?
@@ -1604,7 +1671,7 @@ ROM:0C0A    OUT (PDMADirect), A     ; Set to write to the PERQ
 ROM:0C0C    OUT (PDMAFlush), A      ; Flush FIFOs (Data does not matter)
 ROM:0C0E    LD   A, D.PERQ          ; DMA Device is PERQ
 ROM:0C10    DI
-ROM:0C11    CALL DMAtoDEV           ; Setup to DMA using BC and DE
+ROM:0C11    CALL DMAtoDev           ; Setup to DMA using BC and DE
 ROM:0C14    EI
 ROM:0C15    LD   HL, DMAPERQ
 ROM:0C18    CALL Wait               ; Wait for DMA to finish
@@ -1678,14 +1745,46 @@ ROM:0C88    EX   AF, AF
 ROM:0C89    EI
 ROM:0C8A    RETI
 ROM:0C8C FIFOWait:
-ROM:0C8C    IN  A, (PERQ.Sts)       ; Get PERQ status
-ROM:0C8E    BIT 7, A                ; Test FIFO to PERQ full
-ROM:0C90    RET NZ                  ; Return if not full
-ROM:0C91    JR  FIFOWait            ; Go wait again
+ROM:0C8C    IN   A, (PERQ.Sts)      ; Get PERQ status
+ROM:0C8E    BIT  7, A               ; Test FIFO to PERQ full
+ROM:0C90    RET  NZ                 ; Return if not full
+ROM:0C91    JR   FIFOWait           ; Go wait again
 ROM:0C92 ;
 ROM:0C92 ; End PERQ
 ROM:0C93 ;
-ROM:0C93 ; Speech
+ROM:0C93 ; Speech task (Not present in ROM)
+ROM:0C93 SPTx.ISR:
+ROM:0C93 SPSp.ISR:
+ROM:0C93 SPSt.ISR:
+ROM:0C93    JP  EIRETI
+ROM:0C96 SPInit:
+ROM:0C96    XOR  A
+ROM:0C97    LD  (Speech.Flg), A     ; Clear the flag
+ROM:0C9A    LD   HL, InitTab        ; Initialization table
+ROM:0C9D    LD   B, InitTabL        ; Length of table
+ROM:0C9F    LD   C, SPControl       ; Initialise Channel B of SIO
+ROM:0CA1    OTIR
+ROM:0CA3    RET
+ROM:0CA4 InitTab:
+ROM:0CA4    .byte  00011000B        ; Reset Channel
+ROM:0CA5    .byte          1
+ROM:0CA6    .byte  00000000B        ; Disable all interrupts
+ROM:0CA6 ; InitTabL equ 3           ; Length of table
+ROM:0CA7 XSpeech:
+ROM:0CA7    LD   HL, Speech.Flg
+ROM:0CAA    SET  NAKFlgBit, (HL)    ; Cue low volume to send NAK
+ROM:0CAC    JP   PERQEnable         ; Enable PERQ and return
+ROM:0CAF ZSpeech:
+ROM:0CAF    LD   C, DevSpeech       ; Device code
+ROM:0CB1    LD   HL, Speech.Flg     ; Check Speech for ACK/NAK
+ROM:0CB4    BIT  NAKFlgBit, (HL)
+ROM:0CB6    JP   NZ, SendNAK        ; If necessary send NAK and return
+ROM:0CB9    RET
+ROM:0CBA SPTask:
+ROM:0CBA    LD   HL, Speech.Cmd
+ROM:0CBD    CALL Wait               ; Wait for command
+ROM:0CC0    JR   SPTask             ; Go look for another command
+ROM:0CC1 ;
 ROM:0CC1 ; End Speech
 ROM:0CC2 ;
 ROM:0CC2 ; Task Control
@@ -1758,7 +1857,7 @@ ROM:0D34    LD   A, TskRun
 ROM:0D36    LD  (DE), A             ; Wake it up
 ROM:0D37    INC (HL)                ; Counting upwards towards zero
 ROM:0D38    JR   Z, SDone
-ROM:0D3A SIGNext:
+ROM:0D3A SigNext:
 ROM:0D3A    DJNZ SigLoop            ; Any more candidates?
 ROM:0D3C SDone:
 ROM:0D3C    POP  IX                 ; Restore IX for caller
@@ -1928,24 +2027,24 @@ ROM:0E1A    RET  Z                  ; In case he said zero bytes?
 ROM:0E1B    INC  HL                 ; Point at the GET value
 ROM:0E1C BlGetLoop:
 ROM:0E1C    PUSH BC                 ; Remember the count
-ROM:0E1D    LD   C,(HL)             ; Pick up GET value
-ROM:0E1E    LD   B,0                ; Extend to 16 bits
+ROM:0E1D    LD   C, (HL)            ; Pick up GET value
+ROM:0E1E    LD   B, 0               ; Extend to 16 bits
 ROM:0E20    INC  C                  ; Bump the GET counter
 ROM:0E21    PUSH HL                 ; Save our buffer pointer
 ROM:0E22    ADD  HL,BC              ; And add GET into the buffer pointer
-ROM:0E23    LD   A,(HL)             ; Pick up the char
-ROM:0E24    LD  (DE),A              ; and store it off
+ROM:0E23    LD   A, (HL)            ; Pick up the char
+ROM:0E24    LD  (DE), A             ; and store it off
 ROM:0E25    POP  HL                 ; Get back buffer pointer
 ROM:0E26    LD   A, C               ; Pick up incremented GET
 ROM:0E27    AND  MaxBuff            ; Wrap it around
-ROM:0E29    LD  (HL),A              ; and store it back
+ROM:0E29    LD  (HL), A             ; and store it back
 ROM:0E2A    INC  DE                 ; Crank up the destination pointer
 ROM:0E2B    POP  BC                 ; Fetch back the counter
 ROM:0E2C    DJNZ BlGetLoop          ; And decrement
 ROM:0E2E    RET
 ROM:0E2F BlockHide:
 ROM:0E2F    DI
-ROM:0E30    LD   C,(HL)             ; Pick up current PUT
+ROM:0E30    LD   C, (HL)            ; Pick up current PUT
 ROM:0E31 HideLp:
 ROM:0E31    PUSH BC                 ; Hide count
 ROM:0E32    LD   A, (DE)
@@ -2097,8 +2196,8 @@ ROM:0F23    LD   HL, Z80.Cmd        ; Point to command flag
 ROM:0F26    LD   A, DevZ80          ; Device to source data
 ROM:0F28    CALL NZ, GetBlkData     ; If non-zero length Get the data
 ROM:0F2B    JP   NC, Z80ACK         ; ACK and get next command if no error
-ROM:0F2E ;  We end up here if GetBlkData failed, i.e., we did not get a BlkData cmd
-ROM:0F2E ;  from PERQ. Instead, we got a new cmd for Z80 - go handle it
+ROM:0F2E ; We end up here if GetBlkData failed, i.e., we did not get a BlkData
+ROM:0F2E ; cmd from PERQ.  Instead, we got a new cmd for Z80 - go handle it
 ROM:0F2E    LD   HL, Z80.Flg
 ROM:0F31    LD   C, DevZ80
 ROM:0F33    CALL SendNAK            ; Force NAK

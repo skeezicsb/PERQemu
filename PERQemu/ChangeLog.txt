@@ -8,6 +8,14 @@ avoid wasting precious time scrolling to the end. :-)
 
 April, 2024:
 
+    2. Added rudimentary Z80 breakpoint support (instruction or memory address
+    monitoring).  Used it to find the elusive/undocumented behavior of the DMA
+    chip (and diagnosed a bug/weakness in the Z80 semaphore wait/signal code),
+    and updated the Ethernet drivers (Ether10Mbit and NullEther) to handle the
+    EIO port assignments.  Now the floppy boot gets to DDS 416 and clears the
+    screen but hangs in GPIB intialization; likely the TMS9914 implementation
+    needs a few tweaks for EIO (plus support for DMA "HiVol" operation!).
+
     1. So, so close to initial floppy boot on the PERQ-2/Micropolis.  Tracking
     down a really obscure condition where the Z80 doesn't properly ack the final
     floppy block read when loading the Mboot file, so the PERQ times out (still
@@ -285,4 +293,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Mon Mar 25 21:02:55 PDT 2024
+Last update: skeezics    Tue Apr  9 21:53:59 PDT 2024

@@ -64,6 +64,7 @@ namespace PERQemu.IO.Z80
         public Z80Processor CPU => _cpu;
         public Z80MemoryBus Memory => _memory;
         public Scheduler Scheduler => _scheduler;
+        public Z80Debugger Debugger => _z80Debugger;
 
         public NECuPD765A FDC => _fdc;
         public TMS9914A GPIB => _tms9914a;
@@ -172,11 +173,13 @@ namespace PERQemu.IO.Z80
                 _stopAsyncThread = true;
                 _system.Halt(e);
             }
+            finally
+            {
+                Log.Debug(Category.Controller, "[Z80 thread stopped]");
 
-            Log.Debug(Category.Controller, "[Z80 thread stopped]");
-
-            // Detach
-            PERQemu.Controller.RunStateChanged -= OnRunStateChange;
+                // Detach
+                PERQemu.Controller.RunStateChanged -= OnRunStateChange;
+            }
         }
 
         /// <summary>
@@ -247,17 +250,18 @@ namespace PERQemu.IO.Z80
             IZ80Registers regs = _cpu.Registers;
 
             // TODO: should display shadow regs?
-            var state = string.Format("Z80 PC=${0:x4} SP=${1:x4} AF=${2:x4} BC=${3:x4} DE=${4:x4} HL=${5:x4} IX=${6:x4} IY=${7:x4}",
+            var state = string.Format("PC=${0:x4} SP=${1:x4} AF=${2:x4} BC=${3:x4} DE=${4:x4} HL=${5:x4} IX=${6:x4} IY=${7:x4}",
                                          regs.PC, regs.SP, regs.AF, regs.BC, regs.DE, regs.HL, regs.IX, regs.IY);
-            ushort offset = 0;
-            var symbol = _z80Debugger.GetSymbolForAddress(regs.PC, out offset);
-            var source = _z80Debugger.GetSourceLineForAddress(regs.PC);
 
             // Log the state
             Log.Debug(Category.Z80Inst, "{0}", state);
 
-            // Write the whole thing
-            Console.WriteLine("{0}\n    {1}+{2}: {3}", state, symbol, offset, source);
+            // Show the state AND source info (console only)
+            ushort offset = 0;
+            var symbol = _z80Debugger.GetSymbolForAddress(regs.PC, out offset);
+            var source = _z80Debugger.GetSourceLineForAddress(regs.PC);
+            
+            Console.WriteLine("Z80 {0}\n    {1}+{2}: {3}", state, symbol, offset, source);
         }
 
         /// <summary>

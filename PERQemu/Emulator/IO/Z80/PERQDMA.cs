@@ -46,8 +46,8 @@ namespace PERQemu.IO.Z80
         public string Name => "PERQ-Z80 DMA";
         public byte[] Ports => _ports;
 
-        public bool IntLineIsActive => _z80IntRaised;   // Hmm.  Problematic?
-        public byte? ValueOnDataBus => null;            // Supplied by the Am9519
+        public bool IntLineIsActive => false; // _z80IntRaised;   // Hmm.  Problematic?
+        public byte? ValueOnDataBus => null; // AckNull;         // Supplied by the Am9519
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
 
@@ -58,11 +58,17 @@ namespace PERQemu.IO.Z80
         public bool ReadDataReady => _readReady;
         public bool WriteDataReady => _writeReady;
 
+        public byte? AckNull
+        {
+            get { _z80IntRaised = false; return null; }
+        }
+
         public void DMATerminate()
         {
             _readReady = false;
             _writeReady = false;
-            //_z80IntRaised = true;
+            _z80IntRaised = true;
+
             Log.Info(Category.DMA, "PDMA operation terminated");
         }
 
@@ -161,9 +167,8 @@ namespace PERQemu.IO.Z80
                     _toPerq.Clear();
 
                     _highByte = true;
-                    _z80IntRaised = false;
-                    _z80IntRaised = true;
                     _writeReady = _dmaToPerq;
+                    _z80IntRaised = false;
 
                     Log.Info(Category.DMA, "PDMA FIFOs flushed");
                     break;
@@ -180,6 +185,7 @@ namespace PERQemu.IO.Z80
                         //
                         while (Dequeue(true)) { }
 
+                        _z80IntRaised = true;
                         Log.Write("Z80 to PERQ operation complete");
                     }
                     else
@@ -256,7 +262,6 @@ namespace PERQemu.IO.Z80
             {
                 var value = _system.Memory.FetchWord(_address++);
 
-                // Todo: which order?
                 _toZ80.Enqueue((byte)((value >> 8) & 0xff));
                 _toZ80.Enqueue((byte)value);
             }

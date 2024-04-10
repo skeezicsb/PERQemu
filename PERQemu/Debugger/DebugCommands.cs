@@ -604,18 +604,22 @@ namespace PERQemu
                 return;
             }
 
-            var list = GetBreakpoints(type)[0];
+            _bpList = GetBreakpoints(type)[0];
+            SetBPInternal(type, watch);
+        }
 
-            if (watch < 0 || watch > list.Range)
+        private void SetBPInternal(BreakpointType type, int watch)
+        {
+            if (watch < 0 || watch > _bpList.Range)
             {
-                Console.WriteLine($"{watch} is out of range 0..{list.Range}");
+                Console.WriteLine($"{watch} is out of range 0..{_bpList.Range}");
                 return;
             }
 
             var action = GetDefaultActionFor(type);
-            list.Watch(watch, action);
+            _bpList.Watch(watch, action);
 
-            Console.WriteLine($"Breakpoint set for {list.Name} {watch}");
+            Console.WriteLine($"Breakpoint set for {_bpList.Name} {watch}");
 
             // For now, breakpoints must be explicitly enabled, because reasons.
             if (!PERQemu.Sys.Debugger.BreakpointsEnabled)
@@ -633,15 +637,19 @@ namespace PERQemu
                 return;
             }
 
-            var list = GetBreakpoints(type)[0];
+            _bpList = GetBreakpoints(type)[0];
+            ClearBPInternal(type, watch);
+        }
 
-            if (!list.IsWatched(watch))
+        void ClearBPInternal(BreakpointType type, int watch)
+        {
+            if (!_bpList.IsWatched(watch))
             {
                 Console.WriteLine($"No {type} breakpoint at {watch}.");
                 return;
             }
 
-            list.Unwatch(watch);
+            _bpList.Unwatch(watch);
 
             Console.WriteLine($"{type} breakpoint at {watch} cleared.");
         }
@@ -684,16 +692,24 @@ namespace PERQemu
                 return;
             }
 
-            var list = GetBreakpoints(type)[0];
+            _bpList = GetBreakpoints(type)[0];
 
-            if (!list.IsWatched(watch))
+            if (EditBPInternal(type, watch))
+            {
+                PERQemu.CLI.SetPrefix("debug edit breakpoint");
+            }
+        }
+
+        bool EditBPInternal(BreakpointType type, int watch)
+        {
+            if (!_bpList.IsWatched(watch))
             {
                 Console.WriteLine($"No {type} breakpoint at {watch}.");
-                return;
+                return false;
             }
 
             // Make a copy of the breakpoint for editing
-            var orig = list.GetActionFor(watch);
+            var orig = _bpList.GetActionFor(watch);
 
             _bp = new BreakpointEventArgs(type, watch, orig);     // CHEESE!
             _bpAction = new BreakpointAction();
@@ -706,16 +722,18 @@ namespace PERQemu
             _bpAction.Script = orig.Script;
             _bpAction.Callback = orig.Callback;
 
-            PERQemu.CLI.SetPrefix("debug edit breakpoint");
+            return true;
         }
 
         [Command("debug edit breakpoint commands", "Show breakpoint edit commands")]
+        [Command("debug z80 edit breakpoint commands", "Show breakpoint edit commands")]
         public void ShowEditCommands()
         {
             PERQemu.CLI.ShowCommands("debug edit breakpoint");
         }
 
         [Command("debug edit breakpoint enable", "Enable or disable the breakpoint")]
+        [Command("debug z80 edit breakpoint enable", "Enable or disable the breakpoint")]
         public void EditEnable(bool enabled)
         {
             if (_bpAction.Enabled != enabled)
@@ -726,6 +744,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint pause emulation", "Set/clear flag to pause emulation when triggered")]
+        [Command("debug z80 edit breakpoint pause emulation", "Set/clear flag to pause emulation when triggered")]
         public void EditPause(bool pause)
         {
             if (_bpAction.PauseEmulation != pause)
@@ -736,6 +755,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint retriggerable", "Set the breakpoint as one-shot or retriggerable")]
+        [Command("debug z80 edit breakpoint retriggerable", "Set the breakpoint as one-shot or retriggerable")]
         public void EditRetrigger(bool oneshot)
         {
             if (_bpAction.Retriggerable != oneshot)
@@ -746,6 +766,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint reset count", "Reset the breakpoint counter")]
+        [Command("debug z80 edit breakpoint reset count", "Reset the breakpoint counter")]
         public void EditCount()
         {
             if (_bpAction.Count > 0)
@@ -756,6 +777,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint script", "Run a script when the breakpoint triggers")]
+        [Command("debug z80 edit breakpoint script", "Run a script when the breakpoint triggers")]
         public void EditScript(string script)
         {
             // todo: validate/mangle the path, look it up using the Scripts/ dir, .scr suffix?
@@ -767,6 +789,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint no script", "Do not run a script when triggered")]
+        [Command("debug z80 edit breakpoint no script", "Do not run a script when triggered")]
         public void EditNoScript()
         {
             if (_bpAction.Script != "")
@@ -777,6 +800,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint show", "Show the current breakpoint")]
+        [Command("debug z80 edit breakpoint show", "Show the current breakpoint")]
         public void EditShow()
         {
             const string fmt = "{0,10}  {1,-20} {2,-20}";
@@ -807,8 +831,7 @@ namespace PERQemu
         public void EditDone()
         {
             // Save/apply the current temporary action
-            var list = GetBreakpoints(_bp.Type)[0];
-            list.Watch(_bp.Value, _bpAction);
+            _bpList.Watch(_bp.Value, _bpAction);
 
             Console.WriteLine("Saved.");
             SetDebugPrefix();
@@ -831,8 +854,12 @@ namespace PERQemu
                 return;
             }
 
+            ShowBPInternal(GetBreakpoints(type));
+        }
+
+        void ShowBPInternal(List<BreakpointList> breakpoints)
+        {
             int total = 0;
-            var breakpoints = GetBreakpoints(type);
 
             foreach (var list in breakpoints)
             {
@@ -874,9 +901,9 @@ namespace PERQemu
                     break;
 
                 case BreakpointType.All:
+                    selected.Add(PERQemu.Sys.Debugger.WatchedIOPorts);
                     selected.Add(PERQemu.Sys.Debugger.WatchedInterrupts);
                     selected.Add(PERQemu.Sys.Debugger.WatchedMicroaddress);
-                    selected.Add(PERQemu.Sys.Debugger.WatchedIOPorts);
                     selected.Add(PERQemu.Sys.Debugger.WatchedMemoryAddress);
                     break;
             }
@@ -1136,6 +1163,7 @@ namespace PERQemu
         // A temporary working copy for editing breakpoints
         BreakpointEventArgs _bp;
         BreakpointAction _bpAction;
+        BreakpointList _bpList;
 #endif
     }
 }

@@ -314,7 +314,8 @@ The following hardware has been implemented in the emulator:
     - New register-level interface written to support Z80 DMA, CTC, SIO, FDC
       and GPIB controller chips;
     - Z80 Debugger support includes single stepping and source code display
-      (for the current v8.7 ROMs; v10.17 source disassembly in progress).
+      (for the current v8.7 ROMs; v100.017 source disassembly for EIO is now
+      complete, CIO in progress).
 
   Keyboard:
     - Now uses the SDL2 interface so no more horrible hacks required for MacOS;
@@ -579,7 +580,7 @@ v0.1 - First public release.
 
 Update history:
 
-3/25/2024 - skeezicsb - v0.5.6 (experiments)
+4/10/2024 - skeezicsb - v0.5.6 (experiments)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0
 1/17/2023 - skeezicsb - v0.4.9 (main)

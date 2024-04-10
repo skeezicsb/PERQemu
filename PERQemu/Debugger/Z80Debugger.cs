@@ -33,7 +33,15 @@ namespace PERQemu.Debugger
         public Z80Debugger(string listing)
         {
             LoadZ80Source(Paths.BuildPROMPath(listing));
+            InitBreakpoints();
         }
+
+#if DEBUG
+        public BreakpointList WatchedIRQs => _irqWatchList;
+        public BreakpointList WatchedIOPorts => _ioWatchList;
+        public BreakpointList WatchedMemoryAddr => _memWatchList;
+        public BreakpointList WatchedInstructionAddr => _instWatchList;
+#endif
 
         public string GetSourceLineForAddress(ushort address)
         {
@@ -129,8 +137,16 @@ namespace PERQemu.Debugger
 
                     Log.Detail(Category.Z80Inst, "Loaded Z80 addr {0}, line '{1}'", address, source);
 
-                    // Index the source
-                    _sourceMap[address] = source;
+                    // Index the source: if already mapped, append this line to
+                    // the existing, so any significant comments are preserved
+                    if (_sourceMap.ContainsKey(address))
+                    {
+                        _sourceMap[address] += "\n" + source;
+                    }
+                    else
+                    {
+                        _sourceMap[address] = source;
+                    }
 
                     // See if this line begins with a symbol and if so index it.
                     var tokens = source.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
@@ -149,7 +165,30 @@ namespace PERQemu.Debugger
                     }
                 }
             }
+            Log.Info(Category.Debugger, "Loaded Z80 source listing from {0} ({1} addresses)",
+                                        sourceFile, _sourceMap.Keys.Count);
         }
+
+#if DEBUG
+        /// <summary>
+        /// Set up separate watch lists for Z80 breakpoints.  This lets clients subscribe
+        /// to just the ones they want.
+        /// </summary>
+        public void InitBreakpoints()
+        {
+            _ioWatchList = new BreakpointList(BreakpointType.IOPort, "IO Port", 255);
+            _irqWatchList = new BreakpointList(BreakpointType.Interrupt, "IRQ Vector", 255);
+            _memWatchList = new BreakpointList(BreakpointType.MemoryLoc, "Memory Address", 65535);
+            _instWatchList = new BreakpointList(BreakpointType.uAddress, "Instruction Address", 65535);
+        }
+
+        BreakpointList _irqWatchList;
+        BreakpointList _ioWatchList;
+        BreakpointList _memWatchList;
+        BreakpointList _instWatchList;
+#else
+        public void InitBreakpoints() { }
+#endif
 
         Dictionary<string, ushort> _symbolToAddressMap;
         Dictionary<ushort, string> _addressToSymbolMap;

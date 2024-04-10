@@ -278,8 +278,12 @@ namespace PERQemu.IO.Z80
                 byte save = _status;
                 Log.Info(Category.Z80DMA, "Read 0x{0:x2} from status register", save);
 
-                // Reading status clears the EOP bits (S3..S0)!
+                // Reading status clears the EOP bits (S3..S0)!  AND the TC bits!?
                 _status &= 0xf0;
+                _channels[0].Terminated = false;
+                _channels[1].Terminated = false;
+                _channels[2].Terminated = false;
+                _channels[3].Terminated = false;
                 _interruptEnabled = false;
 
                 return save;

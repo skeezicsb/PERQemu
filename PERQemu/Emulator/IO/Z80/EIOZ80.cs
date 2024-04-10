@@ -225,6 +225,24 @@ namespace PERQemu.IO.Z80
                 return;
             }
 
+#if DEBUG
+            var brk = false;
+
+            // Breakpoint set at this address?
+            if (_z80Debugger.WatchedInstructionAddr.IsWatched(_cpu.Registers.PC))
+            {
+                brk = _z80Debugger.WatchedInstructionAddr.BreakpointReached(_cpu.Registers.PC);
+            }
+            // Todo: if we break/return here before execution, we'll loop indefinitely
+            // on the next call unless the breakpoint doesn't auto-reset (not good);
+            // but if we execute the IRQ select, run the instruction, clock a DMA cycle
+            // AND run the scheduler before stopping, then the PC might be well beyond
+            // the state we wanted to catch.  The annoying Z80dotNet way of doing things
+            // does at least let you specifiy before or after execution... sigh.  Think
+            // on this and figure out if "return _break" (or just setting _break and
+            // having the caller check it?) works well enough
+#endif
+
             // No WAIT line INIR/OTIR shenanigans on the EIO!  However, slightly
             // more sophisticated interrupt handling is required: we look for the
             // RETI instruction and let the Am9519 acknowledge completion of the
@@ -277,8 +295,6 @@ namespace PERQemu.IO.Z80
         /// </summary>
         public override void WriteStatus(int status)
         {
-            bool prevState = _running;
-
             //
             // Check the Reset bit first
             //
@@ -286,15 +302,12 @@ namespace PERQemu.IO.Z80
             {
                 Log.Debug(Category.Z80, "Shut down by write to Status register");
                 _running = false;
+                _system.MachineStateChange(WhatChanged.Z80RunState, _running);
             }
             else if (!_running && ((status & 0x04) != 0))
             {
                 Log.Debug(Category.Z80, "Started by write to Status register");
                 Reset(true);
-            }
-
-            if (_running != prevState)
-            {
                 _system.MachineStateChange(WhatChanged.Z80RunState, _running);
             }
 

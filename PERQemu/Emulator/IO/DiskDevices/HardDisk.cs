@@ -247,9 +247,9 @@ namespace PERQemu.IO.DiskDevices
             // if no head movement takes place?
 
             var steps = Math.Abs(_cyl - cyl);
-            var delay = (Specs.MinimumSeek);
+            var delay = Specs.MinimumSeek;
 
-            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
+            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed) && steps > 0)
             {
                 delay = Math.Min(steps * Specs.MinimumSeek, Specs.MaximumSeek);
             }
