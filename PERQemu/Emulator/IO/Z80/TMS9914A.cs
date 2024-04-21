@@ -97,6 +97,9 @@ namespace PERQemu.IO.Z80
             _bus.Reset();
             _busFifo.Clear();
 
+            _dmaReadReady = false;
+            _dmaWriteReady = false;
+
             Log.Debug(Category.GPIB, "Controller reset");
         }
 
@@ -114,25 +117,13 @@ namespace PERQemu.IO.Z80
         // IDMADevice Interface
         //
 
-        public bool ReadDataReady
-        {
-            get
-            {
-                throw new NotImplementedException("TMS9914A DMA read");
-            }
-        }
-
-        public bool WriteDataReady
-        {
-            get
-            {
-                throw new NotImplementedException("TMS9914A DMA write");
-            }
-        }
+        public bool ReadDataReady => _dmaReadReady;
+        public bool WriteDataReady => _dmaWriteReady;
 
         public void DMATerminate()
         {
-            throw new NotImplementedException("TMS9914A DMA terminate");
+            // If we do single byte xfers, this is probably extraneous
+            Log.Info(Category.GPIB, "TMS9914A DMA terminate received");
         }
 
         //
@@ -159,6 +150,11 @@ namespace PERQemu.IO.Z80
 
             if (_interruptActive != oldIntr)
                 Log.Debug(Category.GPIB, "Interrupt {0}", _interruptActive ? "asserted" : "cleared");
+
+            // EIO actually supports/uses the DMA interface, so set the read/write
+            // flags according to the FIFO status (and/or BI/BO state?)
+            _dmaReadReady = _busFifo.Count > 0;
+            _dmaWriteReady = _busFifo.Count == 0;
         }
 
         public byte Read(byte portAddress)
@@ -421,7 +417,7 @@ namespace PERQemu.IO.Z80
 
         void ResetGPIB()
         {
-            // todo: determine if this is anywhere close to correct :-/
+            // Todo: determine if this is anywhere close to correct :-/
             _iListen = false;
             _iTalk = false;
             _listener = 0x1f;   // nobody
@@ -432,6 +428,9 @@ namespace PERQemu.IO.Z80
             // _interruptsEnabled flag like dai (which is unused anyway?) does
             _rdRegisters[(int)ReadRegister.IntStatus0] &= (byte)~InterruptStatus0.Int0;
             _rdRegisters[(int)ReadRegister.IntStatus0] &= (byte)~InterruptStatus0.Int1;
+
+            _dmaReadReady = false;
+            _dmaWriteReady = false;
         }
 
         /// <summary>
@@ -763,6 +762,10 @@ namespace PERQemu.IO.Z80
         // Interrupts
         bool _interruptsEnabled;
         bool _interruptActive;
+
+        // DMA support
+        bool _dmaReadReady;
+        bool _dmaWriteReady;
 
         // Registers
         byte _baseAddress;

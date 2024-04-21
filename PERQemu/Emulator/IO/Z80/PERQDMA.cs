@@ -46,8 +46,8 @@ namespace PERQemu.IO.Z80
         public string Name => "PERQ-Z80 DMA";
         public byte[] Ports => _ports;
 
-        public bool IntLineIsActive => false; // _z80IntRaised;   // Hmm.  Problematic?
-        public byte? ValueOnDataBus => null; // AckNull;         // Supplied by the Am9519
+        public bool IntLineIsActive => _z80IntRaised;   // Hmm.  Problematic?
+        public byte? ValueOnDataBus => AckNull;         // Supplied by the Am9519
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
 
@@ -170,7 +170,7 @@ namespace PERQemu.IO.Z80
                     _writeReady = _dmaToPerq;
                     _z80IntRaised = false;
 
-                    Log.Info(Category.DMA, "PDMA FIFOs flushed");
+                    Log.Debug(Category.DMA, "PDMA FIFOs flushed");
                     break;
 
                 // Start (or finish!) a DMA transaction
@@ -186,11 +186,11 @@ namespace PERQemu.IO.Z80
                         while (Dequeue(true)) { }
 
                         _z80IntRaised = true;
-                        Log.Write("Z80 to PERQ operation complete");
+                        Log.Debug(Category.DMA, "Z80 to PERQ operation complete");
                     }
                     else
                     {
-                        Log.Write("PERQ to Z80 operation starting");
+                        Log.Debug(Category.DMA, "PERQ to Z80 operation starting");
 
                         // Prime the _toZ80 FIFO with the first quad word
                         Enqueue();

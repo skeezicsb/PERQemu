@@ -311,6 +311,12 @@ namespace PERQemu.IO.Z80
                 _system.MachineStateChange(WhatChanged.Z80RunState, _running);
             }
 
+            // Note: if bit 3 set, DMA address generation is disabled for the
+            // ExtA channel, which then drives the MADR lines directly.  So far
+            // none of the known optional I/O devices use that functionality.
+            // Audre?  MLO?  It seems very unlikely that emulating this feature
+            // will ever be needed.
+
             // Set the enable bits
             _perqToZ80Fifo.InterruptEnabled = ((status & 0x02) != 0);
             _z80ToPerqFifo.InterruptEnabled = ((status & 0x01) != 0);

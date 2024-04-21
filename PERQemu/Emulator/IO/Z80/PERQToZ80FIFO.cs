@@ -42,6 +42,7 @@ namespace PERQemu.IO.Z80
             _lock = new object();
             _fifo = new Queue<byte>();
             _interruptEnabled = false;
+            _perqIntRaised = false;
         }
 
         public void Reset()
@@ -49,9 +50,8 @@ namespace PERQemu.IO.Z80
             // Clear the decks
             _fifo.Clear();
 
-            // Assume this resets as well
-            _interruptEnabled = false;
-            _perqIntRaised = false;
+            // Reset interrupts too
+            InterruptEnabled = false;
             _z80IntRaised = false;
 
             Log.Debug(Category.FIFO, "{0} reset", Name);
@@ -80,10 +80,15 @@ namespace PERQemu.IO.Z80
                 _interruptEnabled = value;
 
                 // Disabling dismisses the interrupt regardless of FIFO state?
-                if (!_interruptEnabled)
+                if (!_interruptEnabled && _perqIntRaised)
                 {
                     _system.CPU.ClearInterrupt(InterruptSource.Z80DataIn);
                     _perqIntRaised = false;
+                }
+                else if (_interruptEnabled && !_perqIntRaised && IsReady)
+                {
+                    _system.CPU.RaiseInterrupt(InterruptSource.Z80DataIn);
+                    _perqIntRaised = true;
                 }
             }
         }

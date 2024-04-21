@@ -47,13 +47,16 @@ namespace PERQemu.IO
             // 16Kx1 SRAMs (2167s), but the EIO sources have very strange values
             // for the base address and length.  It must be that they reserve
             // around 10K for loading from the Zboot file at startup, and only
-            // use 6K for data?  Why not use 16K ROM and avoid that whole mess?
+            // use 6K for data?  The MEM4 decoder PAL shows that the 16K range
+            // from 0x4000:0x7fff is mapped to RAM select.  Hmm.
             // 
-            // Similarly, there's an 8Kx8 ROM (2764) chip on the board but the
-            // ROM that's built seems to limit the Z80 assembler's view to 4K
-            // and several other docs show that only 4K is used.  Since we're
-            // loading from actual ROM dumps, the ROM loader wants to match the
-            // RomSize to the length of the actual file.
+            // Similarly, there's an 8Kx8 ROM (2764) chip on the schematic but the
+            // actual chip used is a 4Kx8 (2732) -- another spectacular own goal,
+            // Three Creeks.  The 4K chip is just small enough that several device
+            // handlers are left out and must be loaded using the "ZBoot" file and
+            // executed out of RAM.  This complicates everything.  For now we load
+            // the actual ROM dump, so the ROM loader wants to match the RomSize
+            // to the length of the actual file.
             //
             _z80RamSize = 0x1800;   // 6K (of 16K) RAM
             _z80RamAddr = 0x6800;
@@ -128,18 +131,23 @@ namespace PERQemu.IO
         {
             switch (port)
             {
-                case 0x52:      // E10ERdNetSR: read Ethernet status
+                //  Ethernet status register
+                case 0x52:
                     return _ethernetController?.ReadStatus() ?? 0xff;
 
-                case 0x53:      // SMStat: read disk status reg
+                // Hard disk status
+                case 0x53:
                     return _hardDiskController.ReadStatus();
 
-                case 0x54:      // EioZ80In: dismiss Z80 interrupt
+                // Z80 data port
+                case 0x54:
                     return _z80System.ReadData();
 
-                case 0x55:      // EioZ80Stat: read Z80 interface status
+                // Z80 status port
+                case 0x55:
                     return _z80System.ReadStatus();
 
+                // Ethernet bit counter (lo, hi bytes)
                 case 0x5a:
                 case 0x5b:
                     return _ethernetController?.ReadRegister(port) ?? 0xff;
@@ -164,10 +172,6 @@ namespace PERQemu.IO
 
                 // Z80 control register
                 case 0xc5:
-                    // Note: if bit 3 set, DMA address generation is disabled for
-                    // the ExtA channel.  So far none of the known optional I/O
-                    // devices use that functionality.  Audre?  MLO?  It seems very
-                    // unlikely that emulation of this feature will ever be needed.
                     _z80System.WriteStatus(value);
                     break;
 
@@ -193,7 +197,7 @@ namespace PERQemu.IO
 
                 // Load Ethernet registers
                 case 0xc2:
-                     _ethernetController?.LoadCommand(value);
+                    _ethernetController?.LoadCommand(value);
                     break;
 
                 case 0xc3:
@@ -231,7 +235,7 @@ namespace PERQemu.IO
                 _ethernetController.Shutdown();
             }
 
-            // todo: Save the RTC offset? :-)
+            // Todo: Save the RTC offset? :-)
 
             base.Shutdown();
         }

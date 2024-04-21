@@ -8,6 +8,15 @@ avoid wasting precious time scrolling to the end. :-)
 
 April, 2024:
 
+    3. Floppy boot on PERQ-2/Microp/EIO config reaches 970!  FIFO/interrupt/Z80
+    protocol handling is finicky and making sure the Z80 and PERQ see the right
+    interrupts in only the right situations is still slightly elusive.  The POS
+    init code doesn't seem to handle the floppy boot case very intelligently,
+    since it gets very unhappy when there's no ZBoot file on the boot partition
+    (as is the case booting from single density floppies - not enough room).
+    Sloppy, guys.  Workaround needed for PNX to get around a genuine bug in the
+    VFY MakeVictim test on the PNX2 and PNX3 boot floppies.
+
     2. Added rudimentary Z80 breakpoint support (instruction or memory address
     monitoring).  Used it to find the elusive/undocumented behavior of the DMA
     chip (and diagnosed a bug/weakness in the Z80 semaphore wait/signal code),
@@ -293,4 +302,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Tue Apr  9 21:53:59 PDT 2024
+Last update: skeezics    Sat Apr 20 04:00:19 PDT 2024

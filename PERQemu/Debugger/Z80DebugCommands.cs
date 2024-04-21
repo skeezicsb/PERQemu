@@ -262,6 +262,13 @@ namespace PERQemu
         #endregion
 
         //[Conditional("DEBUG")]
+        [Command("debug z80 poke")]
+        void PokeZ80Mem(ushort addr = 0x6800, byte val = 0)
+        {
+            PERQemu.Sys.IOB.Z80System.Memory[addr] = val;
+        }
+
+        //[Conditional("DEBUG")]
         [Command("debug dump fifos")]
         [Command("debug z80 dump fifos")]
         void DumpFifos()

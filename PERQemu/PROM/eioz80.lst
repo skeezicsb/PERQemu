@@ -2216,6 +2216,9 @@ ROM:0F4F Jump:
 ROM:0F4F    JP  (HL)                ; Call address specified in the message
 ROM:0F4F ; End Z80
 ROM:0FFF ; End of ROM
+RAM:4000 ;
+RAM:4000 ; Start of RAM
+RAM:4000 RAM:
 RAM:6800 ;
 RAM:6800 ; Start of Data
 RAM:6800 PERQO.Cmd      ; PERQ output port available

@@ -41,6 +41,7 @@ namespace PERQemu.IO.Z80
             _lock = new object();
             _fifo = new Queue<byte>();
             _interruptEnabled = false;
+            _perqIntRaised = false;
             _outputReady = false;
         }
 
@@ -51,8 +52,7 @@ namespace PERQemu.IO.Z80
             _outputReady = false;
 
             // Dismiss the interrupts
-            _interruptEnabled = false;
-            _perqIntRaised = false;
+            InterruptEnabled = false;
             _z80IntRaised = false;
 
             Log.Debug(Category.FIFO, "{0} reset", Name);
@@ -195,6 +195,9 @@ namespace PERQemu.IO.Z80
                     // Control port: set or clear the output ready bit
                     _outputReady = ((value & 0x1) != 0);
                     Log.Debug(Category.FIFO, "Z80 output ready now {0}", _outputReady);
+
+                    // After a reset?
+                    _z80IntRaised = _outputReady;
 
                     // Fall through to fire the CPU interrupt if necessary
                 }

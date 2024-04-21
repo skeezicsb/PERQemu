@@ -66,7 +66,8 @@ namespace PERQemu.IO.Z80
         byte ReadByte(int address)
         {
 #if DEBUG
-            if (PERQemu.Sys.IOB.Z80System.Debugger.WatchedMemoryAddr.IsWatched(address))
+            if (PERQemu.Sys.IOB.Z80System.Debugger.WatchedMemoryAddr.IsWatched(address) &&
+                PERQemu.Sys.IOB.Z80System.IsRunning)
             {
                 byte val = (address < ROM_SIZE) ? _rom[address] : _ram[address - RAM_ADDRESS];
                 Console.WriteLine($"Z80 mem read: {address:x4} = {val:x2}");
@@ -90,7 +91,8 @@ namespace PERQemu.IO.Z80
         void WriteByte(int address, byte value)
         {
 #if DEBUG
-            if (PERQemu.Sys.IOB.Z80System.Debugger.WatchedMemoryAddr.IsWatched(address))
+            if (PERQemu.Sys.IOB.Z80System.Debugger.WatchedMemoryAddr.IsWatched(address) &&
+                PERQemu.Sys.IOB.Z80System.IsRunning)
             {
                 Console.WriteLine($"Z80 mem write: {address:x4} = {value:x2}");
                 PERQemu.Sys.IOB.Z80System.Debugger.WatchedMemoryAddr.BreakpointReached(address);
