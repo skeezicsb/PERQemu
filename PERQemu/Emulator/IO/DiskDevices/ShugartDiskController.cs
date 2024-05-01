@@ -34,7 +34,6 @@ namespace PERQemu.IO.DiskDevices
         {
             _system = system;
             _disk = null;
-            _busyEvent = null;
 
             // This is assembled from separate register writes, so let
             // ExtendedRegister do the work to combine 'em!
@@ -46,10 +45,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         public void Reset()
         {
-            if (_disk != null)
-            {
-                _disk.Reset();
-            }
+            _disk?.Reset();
 
             _cylinder = 0;
             _head = 0;
@@ -496,7 +492,7 @@ namespace PERQemu.IO.DiskDevices
             // if we're NOT doing a seek -- because reasons okay
             if (_command != Command.Seek)
             {
-                _busyEvent = _system.Scheduler.Schedule(delay, (skew, context) =>
+                _system.Scheduler.Schedule(delay, (skew, context) =>
                 {
                     ClearBusyState(true);
                 });
@@ -624,8 +620,6 @@ namespace PERQemu.IO.DiskDevices
         // fiddle with this to make it more realistic.
         readonly ulong BlockDelayNsec = 585 * Conversion.UsecToNsec;
 
-        SchedulerEvent _busyEvent;
-
-        PERQSystem _system;
+        readonly PERQSystem _system;
     }
 }

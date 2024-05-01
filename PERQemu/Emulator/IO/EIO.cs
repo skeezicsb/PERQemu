@@ -58,8 +58,8 @@ namespace PERQemu.IO
             // the actual ROM dump, so the ROM loader wants to match the RomSize
             // to the length of the actual file.
             //
-            _z80RamSize = 0x1800;   // 6K (of 16K) RAM
-            _z80RamAddr = 0x6800;
+            _z80RamSize = 0x4000;   // 16K RAM
+            _z80RamAddr = 0x4000;
             _z80RomSize = 0x1000;   // 4K (of 8K) ROM
             _z80RomAddr = 0x0;
         }

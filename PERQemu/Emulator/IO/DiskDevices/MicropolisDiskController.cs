@@ -70,6 +70,7 @@ namespace PERQemu.IO.DiskDevices
             // Figure out what stuff gets reset, but assume everything?
             if (_busyEvent != null)
             {
+                Console.WriteLine("Microp controller reset while busy!?");
                 _system.Scheduler.Cancel(_busyEvent);
                 _busyEvent = null;
             }
@@ -88,6 +89,8 @@ namespace PERQemu.IO.DiskDevices
         {
             _dib.AttachDrive(unit, dev);
         }
+
+        #region Registers and Status
 
         /// <summary>
         /// Reads the hard disk state machine status register.
@@ -238,6 +241,8 @@ namespace PERQemu.IO.DiskDevices
             Log.Debug(Category.HardDisk, "DIB signaled status change!");
             SetInterrupt(true);
         }
+
+        #endregion
 
         #region Block Operations
 
@@ -867,6 +872,9 @@ namespace PERQemu.IO.DiskDevices
             /// </summary>
             void DoRestore()
             {
+                Console.WriteLine("Restore requested");
+                // cheat!  this should be in the state machine somehow
+                _control._status = SMStatus.Busy;
                 _cylinder = 0;
                 DoSeek();
             }
@@ -897,10 +905,12 @@ namespace PERQemu.IO.DiskDevices
                 }
                 else
                 {
-                    // Should probably be a minimal delay here?  Sometimes the
-                    // microcode seems to explicitly check to see if the disk SM
-                    // has gone to busy mode, then back to idle/completion?
-                    SeekCompletionCallback(0U, null);
+                    // Insert a minimal 1usec delay here.  Sometimes the microcode
+                    // seems to explicitly check to see if the disk SM has gone to
+                    // busy mode, then back to idle/completion.  This also accounts
+                    // for head select time (which is fast).
+                    Console.WriteLine($"Already at cyl {_cylinder}, completion in 1usec");
+                    _control._system.Scheduler.Schedule(Conversion.UsecToNsec, SeekCompletionCallback);
                 }
             }
 
@@ -912,6 +922,9 @@ namespace PERQemu.IO.DiskDevices
                 // Update hardware status
                 _status.OnCylinder = (_disk.CurCylinder == _cylinder);
                 _status.SeekError = !_status.OnCylinder;
+
+                // cheat!!  this is WRONG
+                _control._status = SMStatus.Idle;
 
                 // Report OnCylinder change / seek completion
                 UpdateStatus();
