@@ -884,6 +884,10 @@ namespace PERQemu
 
             switch (bp)
             {
+                case BreakpointType.OpCode:
+                    selected.Add(PERQemu.Sys.Debugger.WatchedOpCodes);
+                    break;
+
                 case BreakpointType.IOPort:
                     selected.Add(PERQemu.Sys.Debugger.WatchedIOPorts);
                     break;
@@ -901,6 +905,7 @@ namespace PERQemu
                     break;
 
                 case BreakpointType.All:
+                    selected.Add(PERQemu.Sys.Debugger.WatchedOpCodes);
                     selected.Add(PERQemu.Sys.Debugger.WatchedIOPorts);
                     selected.Add(PERQemu.Sys.Debugger.WatchedInterrupts);
                     selected.Add(PERQemu.Sys.Debugger.WatchedMicroaddress);
@@ -925,6 +930,7 @@ namespace PERQemu
                     action.Callback = OnInterrupt;
                     break;
 
+                case BreakpointType.OpCode:
                 case BreakpointType.IOPort:
                 case BreakpointType.MemoryLoc:
                     action.Callback = OnBreakpoint;

@@ -105,24 +105,21 @@ namespace PERQemu.IO.Z80
             if (portAddress == 0x75)
             {
                 // Fetch another quad?
-                if (_toZ80.Count % 8 == 0) Enqueue();
+                if (_toZ80.Count == 0) Enqueue();
 
                 // If there's data it must be good :-)
-                if (_toZ80.Count > 1)
+                if (_toZ80.Count > 0)
                 {
                     byte val = _toZ80.Dequeue();
                     Log.Info(Category.DMA, "Read 0x{0:x2} from PDMA FIFO", val);
                     return val;
                 }
-#if DEBUG
-                // This can't happen... shut it down... 
-                if (_toZ80.Count == 0)
-                {
-                    Console.WriteLine("Read from empty FIFO!?");
-                    _readReady = false;
-                    return 0;
-                }
-#endif
+                //#if DEBUG
+                // This shouldn't happen; shut it down...
+                Log.Warn(Category.DMA, "Z80 read from empty FIFO!?");
+                _readReady = false;
+                return 0;
+                //#endif
             }
 
             Log.Warn(Category.DMA, "Unhandled read from port 0x{0:x2}", portAddress);
@@ -163,14 +160,25 @@ namespace PERQemu.IO.Z80
                     // initial _writeReady condition or the DMAC won't start things
                     // rolling when the channel mask is reset.
                     //
-                    _toZ80.Clear();
-                    _toPerq.Clear();
+                    if (_toZ80.Count > 0)
+                    {
+                        Console.WriteLine($"--> Flushing {_toZ80.Count} residual bytes from Z80 queue!");
+                        DumpFIFOs();
+                        _toZ80.Clear();
+                    }
+
+                    if (_toPerq.Count > 0)
+                    {
+                        Console.WriteLine($"--> Flushing {_toPerq.Count} residual bytes from PERQ queue!");
+                        DumpFIFOs();
+                        _toPerq.Clear();
+                    }
 
                     _highByte = true;
                     _writeReady = _dmaToPerq;
                     _z80IntRaised = false;
 
-                    Log.Debug(Category.DMA, "PDMA FIFOs flushed");
+                    Log.Info(Category.DMA, "PDMA FIFOs flushed");
                     break;
 
                 // Start (or finish!) a DMA transaction
@@ -186,17 +194,17 @@ namespace PERQemu.IO.Z80
                         while (Dequeue(true)) { }
 
                         _z80IntRaised = true;
-                        Log.Debug(Category.DMA, "Z80 to PERQ operation complete");
+                        Log.Info(Category.DMA, "Z80 to PERQ operation complete");
                     }
                     else
                     {
-                        Log.Debug(Category.DMA, "PERQ to Z80 operation starting");
+                        Log.Info(Category.DMA, "PERQ to Z80 operation starting");
 
                         // Prime the _toZ80 FIFO with the first quad word
                         Enqueue();
 
                         // Tell the i8237 that we're ready to go
-                        _readReady = true;
+                        _readReady = (_toZ80.Count > 0);
                     }
                     break;
 
@@ -215,7 +223,7 @@ namespace PERQemu.IO.Z80
                         var word = (ushort)((value << 8) | _holding);
                         _toPerq.Enqueue(word);
 
-                        Log.Debug(Category.DMA, "Enqueued word 0x{0:x4} to PDMA FIFO (count {1})",
+                        Log.Info(Category.DMA, "Enqueued word 0x{0:x4} to PDMA FIFO (count {1})",
                                                 word, _toPerq.Count);
                     }
 
@@ -225,6 +233,9 @@ namespace PERQemu.IO.Z80
                     // Tell the PERQ to dequeue if we have at least one quad's
                     // worth (safe to call more frequently, but wasted overhead)
                     if (_toPerq.Count >= 4) Dequeue();
+
+                    // Update the write flag based on queue availability
+                    _writeReady = (_toPerq.Count < 16);
                     break;
 
                 default:
@@ -255,7 +266,7 @@ namespace PERQemu.IO.Z80
             }
 
             // Just log the start (and assume it's properly aligned)
-            Log.Debug(Category.DMA, "Write 4 words to Z80 FIFO from addr 0x{0:x6}", _address);
+            Log.Info(Category.DMA, "Write 4 words to Z80 FIFO from addr 0x{0:x6}", _address);
 
             // Queue up four more words for the Z80
             for (int i = 0; i < 4; i++)
@@ -297,7 +308,7 @@ namespace PERQemu.IO.Z80
             if (count == 0) return false;
             if (count < 4 && !flush) return true;
 
-            Log.Debug(Category.DMA, "Read {0} words from PERQ FIFO to addr 0x{1:x6}", count, _address);
+            Log.Info(Category.DMA, "Read {0} words from PERQ FIFO to addr 0x{1:x6}", count, _address);
 
             // Read and store a quad's worth from the Z80-to-PERQ queue
             for (int i = 0; i < count; i++)

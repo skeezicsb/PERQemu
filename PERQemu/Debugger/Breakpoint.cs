@@ -273,6 +273,7 @@ namespace PERQemu.Debugger
         /// </summary>
         public void InitBreakpoints()
         {
+            _opWatchList = new BreakpointList(BreakpointType.OpCode, "QCode", 255);
             _ioWatchList = new BreakpointList(BreakpointType.IOPort, "IO Port", 255);
             _irqWatchList = new BreakpointList(BreakpointType.Interrupt, "CPU Interrupt", 8);
             _memWatchList = new BreakpointList(BreakpointType.MemoryLoc, "Memory Address", PERQemu.Config.Current.MemorySizeInBytes / 2);
@@ -283,8 +284,9 @@ namespace PERQemu.Debugger
 
         public bool BreakpointsEnabled => _masterEnable;
 
-        public BreakpointList WatchedInterrupts => _irqWatchList;
+        public BreakpointList WatchedOpCodes => _opWatchList;
         public BreakpointList WatchedIOPorts => _ioWatchList;
+        public BreakpointList WatchedInterrupts => _irqWatchList;
         public BreakpointList WatchedMemoryAddress => _memWatchList;
         public BreakpointList WatchedMicroaddress => _uinstWatchList;
 
@@ -331,8 +333,9 @@ namespace PERQemu.Debugger
 
         bool _masterEnable;
 
-        BreakpointList _irqWatchList;
+        BreakpointList _opWatchList;
         BreakpointList _ioWatchList;
+        BreakpointList _irqWatchList;
         BreakpointList _memWatchList;
         BreakpointList _uinstWatchList;
 

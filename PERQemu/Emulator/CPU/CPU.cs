@@ -536,6 +536,13 @@ namespace PERQemu.Processor
                     _incrementBPC = true;           // Increment BPC at start of next cycle
 
                     Log.Debug(Category.OpFile, "NextOp read from BPC[{0:x1}]={1:x2}", BPC, amux);
+#if DEBUG
+                    // Watched Qcode?
+                    if (_system.Debugger.WatchedOpCodes.IsWatched(amux))
+                    {
+                        _break = _system.Debugger.WatchedOpCodes.BreakpointReached(amux);
+                    }
+#endif
                     break;
 
                 case AField.IOD:

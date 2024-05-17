@@ -19,6 +19,7 @@
 
 using System;
 using System.IO;
+using System.Text;
 using System.Diagnostics;
 
 using PERQmedia;
@@ -664,6 +665,29 @@ namespace PERQemu.UI
 
             Console.Write("Formatting new drive... ");
             newDrive.Format();
+
+            // New hard drives that are all zeros can confuse the boot code -- reading
+            // all zeros fools the simple checksum and makes the PERQ attempt to load a
+            // completely blank boot track into the WCS, and hilarity ensues.  Write a
+            // few bytes into sector 0/0/0 to force the use of MakeBoot/BindBoot to
+            // make the drive bootable.  This is a hack. :-)  We could get fancy and
+            // instantiate an appropriate controller and fake up a device-specific format
+            // but what's the fun in that?
+            if (newDrive.Info.Type == DeviceType.Disk8Inch)
+            {
+                Console.Write("injecting bad cookie... ");
+
+                var sec = newDrive.Read(0, 0, 0);
+                var badCookie = "UNFORMATTED!";
+                var badBytes = Encoding.UTF8.GetBytes(badCookie);
+
+                for (var i = 0; i < badBytes.Length; i++)
+                {
+                    sec.WriteByte((uint)i, badBytes[i]);
+                }
+                newDrive.Write(sec);
+            }
+
             Console.WriteLine("done!");
 
             Console.WriteLine("Saving the image... ");

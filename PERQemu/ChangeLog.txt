@@ -6,6 +6,17 @@ notes moved to ChangeLog-Old.txt.  New entries here will be added at the top, to
 avoid wasting precious time scrolling to the end. :-)
 
 
+May, 2024:
+
+    1. PERQ-2/Microp/EIO floppy boot for POS G.6 now reaches 999 and gets to the
+    shell prompt!  Weeks of beating my head on single stepping disassembed Qcode
+    yielded the "aha!" moment that write-protecting the boot floppy fixes the
+    annoying crash that had stalled the process at LoadZ80 (a red herring).
+    Fixes to the Micropolis driver and additional debugging info.  PNX 3 will
+    require its own video workaround (or modification of the PNX 1/PNX 2 hacks)
+    because they did it _another_ different, non-standard way, hoorah!  Sigh.
+
+
 April, 2024:
 
     3. Floppy boot on PERQ-2/Microp/EIO config reaches 970!  FIFO/interrupt/Z80
@@ -302,4 +313,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Sat Apr 20 04:00:19 PDT 2024
+Last update: skeezics    Fri May 17 12:20:25 PDT 2024

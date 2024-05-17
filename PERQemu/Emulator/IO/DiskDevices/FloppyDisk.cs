@@ -49,9 +49,6 @@ namespace PERQemu.IO.DiskDevices
             _isSingleSided = true;
             _isDoubleDensity = false;
 
-            _cylinder = 1;      // Force a Step Out to find track 0 on startup
-            _head = 0;
-
             _loadDelayEvent = null;
             _seekDelayEvent = null;
         }
@@ -68,7 +65,9 @@ namespace PERQemu.IO.DiskDevices
                 _seekDelayEvent = null;
             }
 
-            // Anything else?
+            _head = 0;          // Reselect head 0 on reset
+            _cylinder = 1;      // Force a Step Out to find track 0 on startup
+
             Log.Debug(Category.FloppyDisk, "Drive reset");
         }
 

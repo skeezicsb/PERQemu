@@ -467,7 +467,7 @@ namespace PERQemu.IO.Z80
                 Log.Warn(Category.FloppyDisk, "Cylinder {0} is out of range!", cylinder);
 
                 _seekEnd = true;
-                _pcn[_unitSelect] = (byte)SelectedUnit.Geometry.Cylinders; // - 1?
+                _pcn[_unitSelect] = (byte)(SelectedUnit.Geometry.Cylinders - 1);
                 FinishCommand(true);
                 return;
             }
@@ -485,7 +485,6 @@ namespace PERQemu.IO.Z80
             SelectedUnit.SeekTo(cylinder, SeekCompleteCallback);
 
             PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, true);
-
         }
 
         void SeekCompleteCallback(ulong skewNsec, object context)
