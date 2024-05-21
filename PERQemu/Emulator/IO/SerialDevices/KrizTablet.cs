@@ -37,14 +37,14 @@ namespace PERQemu.IO.SerialDevices
             _scheduler = scheduler;
             _system = system;
             _sendEvent = null;
-
-            // CIO and EIO use different sync characters!
-            _sync = (byte)(_system.Config.Chassis == Config.ChassisType.PERQ1 ? 0x81 : 0x7e);
-            
         }
 
         public void Reset()
         {
+            // CIO and EIO use different sync characters!  Set this up
+            // once we know _system is fully initialized
+            _sync = (byte)(_system.IOB.IsEIO ? 0x7e : 0x81);
+            
             // Schedule the first data event, which runs once every 1/60th of
             // a second, forever.  But don't re-register it again and again...
             if (_sendEvent != null)
@@ -78,7 +78,8 @@ namespace PERQemu.IO.SerialDevices
             // Should never receive data... but it does!?  PERQdebugger (aka
             // PERQman :-) in the POS G demo sends data to the tablet for some
             // unknown reason.  Ignore it to avoid halting the emulator, for
-            // now; maybe figure out if it's supposed to be handled?
+            // now; maybe figure out if it's supposed to be handled?  It might
+            // actually be audio, which uses the transmit side of the SIO channel?!
             Log.Debug(Category.Tablet, "Kriz received byte 0x{0:x2} (ignored)", value);
         }
 
@@ -93,25 +94,25 @@ namespace PERQemu.IO.SerialDevices
             int tabX = _system.Mouse.MouseX + 64;
             int tabY = _system.VideoController.DisplayHeight - _system.Mouse.MouseY + 64;
 
-            // Format 'em and invert (data is active low)
-            var tab1 = (byte)~(((tabX >> 8) & 0x0f) |
+            // Format 'em
+            var tab1 = (byte)(((tabX >> 8) & 0x0f) |
                                (_system.Mouse.MouseOffTablet ? 0x40 : 0) |
                                (_system.Config.Display == Config.DisplayType.Landscape ? 0x20 : 0));
-            var tab2 = (byte)~(tabX & 0xff);
-            var tab3 = (byte)~(((tabY >> 8) & 0x0f) | (_system.Mouse.MouseButton << 5));
-            var tab4 = (byte)~(tabY & 0xff);
+            var tab2 = (byte)(tabX & 0xff);
+            var tab3 = (byte)(((tabY >> 8) & 0x0f) | (_system.Mouse.MouseButton << 5));
+            var tab4 = (byte)(tabY & 0xff);
 
-            // Send the data off to the SIO
-            _rxDelegate(_sync);     // sync
-            _rxDelegate(tab1);      // high bits of X + flags
-            _rxDelegate(tab2);      // low X
-            _rxDelegate(tab3);      // high bits of Y + switch bits
-            _rxDelegate(tab4);      // low Y
-            _rxDelegate(0);         // junk bytes
-            _rxDelegate(0);         // (see below)
+            // Send the data to the SIO - invert (active low data) if NOT EIO
+            _rxDelegate(_sync);
+            _rxDelegate(_system.IOB.IsEIO ? tab1 : (byte)~tab1);
+            _rxDelegate(_system.IOB.IsEIO ? tab2 : (byte)~tab2);
+            _rxDelegate(_system.IOB.IsEIO ? tab3 : (byte)~tab3);
+            _rxDelegate(_system.IOB.IsEIO ? tab4 : (byte)~tab4);
+            _rxDelegate(0);
+            _rxDelegate(0);
 
             // Log the Tablet update
-            Log.Debug(Category.Tablet, "Kriz sampled: x={0} y={1} button={2}",
+            Log.Info(Category.Tablet, "Kriz sampled: x={0} y={1} button={2}",
                       tabX, tabY, (tab3 >> 5));
 
             // Wait 1/60th of a second and do it again
@@ -164,13 +165,16 @@ namespace PERQemu.IO.SerialDevices
         ;   Byte4<7:0> = low Y
     
     The Z80 then reformats that into a different format to send to the PERQ.
+    This is corroborated by Pointer.{CIO,EIO} from the new Z80 sources.
     
     Also from v87.v80:
     
         ; Note: Tablet data is active low.
 
-    This is useful information as it turns out, as are the "fudge factors" for
-    applying cursor offsets (io_private.pas):
+    This is useful information as it turns out, although it is NOT the case for
+    EIO!
+
+    The "fudge factors" for applying cursor offsets (io_private.pas):
 
     { Fudge factors for Kriz Tablet. }
     KrizXfudge = 64;        { actual range of X is 0..895 }

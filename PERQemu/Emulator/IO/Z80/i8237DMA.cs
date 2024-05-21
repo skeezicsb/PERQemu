@@ -142,7 +142,7 @@ namespace PERQemu.IO.Z80
                         if (!_channels[_active].Device.ReadDataReady)
                         {
                             // Bug out, _state unchanged
-                            Log.Info(Category.Z80DMA, "Device {0} not ready on read!", _active);
+                            Log.Warn(Category.Z80DMA, "Device {0} not ready on read!", _active);
                             return 0;
                         }
 
@@ -171,7 +171,7 @@ namespace PERQemu.IO.Z80
                     {
                         if (!_channels[_active].Device.WriteDataReady)
                         {
-                            Log.Info(Category.Z80DMA, "Device {0} not ready on write!", _active);
+                            Log.Warn(Category.Z80DMA, "Device {0} not ready on write!", _active);
                             return 0;
                         }
 
@@ -191,7 +191,7 @@ namespace PERQemu.IO.Z80
                     // Bump the counters and test for TC
                     if (_channels[_active].CountComplete())
                     {
-                        Log.Info(Category.Z80DMA, "Channel {0} transfer complete!", _active);
+                        Log.Debug(Category.Z80DMA, "Channel {0} transfer complete!", _active);
 
                         // Whack the device
                         _channels[_active].Device.DMATerminate();
@@ -239,7 +239,7 @@ namespace PERQemu.IO.Z80
                 next = (next + 1) % 4;          // Wrap that rascal
             }
 
-            Log.Info(Category.Z80DMA, "Channel {0} wants service!", next);
+            Log.Detail(Category.Z80DMA, "Channel {0} wants service!", next);
             return next;
         }
 
@@ -265,7 +265,7 @@ namespace PERQemu.IO.Z80
 
             if (ostatus != _status)
             {
-                Log.Info(Category.Z80DMA, "Status change: 0x{0:x2}", _status);
+                Log.Debug(Category.Z80DMA, "Status change: 0x{0:x2}", _status);
             }
         }
 
@@ -276,7 +276,7 @@ namespace PERQemu.IO.Z80
                 UpdateStatus();
 
                 byte save = _status;
-                Log.Info(Category.Z80DMA, "Read 0x{0:x2} from status register", save);
+                Log.Debug(Category.Z80DMA, "Read 0x{0:x2} from status register", save);
 
                 // Reading status clears the EOP bits (S3..S0)!  AND the TC bits!?
                 _status &= 0xf0;
@@ -291,7 +291,7 @@ namespace PERQemu.IO.Z80
 
             if (portAddress == _controlBase + 5)
             {
-                Log.Info(Category.Z80DMA, "Read 0x{0:x2} from temporary reg", _temporary);
+                Log.Debug(Category.Z80DMA, "Read 0x{0:x2} from temporary reg", _temporary);
                 return _temporary;
             }
 
@@ -315,7 +315,7 @@ namespace PERQemu.IO.Z80
                     half = (_channels[chan].LowByte ? (byte)val : (byte)(val >> 8));
                 }
 
-                Log.Info(Category.Z80DMA, "Read 0x{0:x2} from channel {1} current {2} ({3} byte)",
+                Log.Debug(Category.Z80DMA, "Read 0x{0:x2} from channel {1} current {2} ({3} byte)",
                                             half, chan,
                                            (addr ? "address" : "word count"),
                                            (_channels[chan].LowByte ? "low" : "high"));
@@ -359,11 +359,11 @@ namespace PERQemu.IO.Z80
                     else
                         _channels[chan].WordCount += (ushort)(value << 8);
 
-                    _channels[chan].CurrentCount = _channels[chan].WordCount;
+                    _channels[chan].CurrentCount = (ushort)(_channels[chan].WordCount + 1);
                     _channels[chan].Terminated = false;
                 }
 
-                Log.Info(Category.Z80DMA, "Write 0x{0:x2} to channel {1} {2} ({3} byte)",
+                Log.Debug(Category.Z80DMA, "Write 0x{0:x2} to channel {1} {2} ({3} byte)",
                                             value, chan,
                                            (addr ? "base address" : "word count"),
                                            (_channels[chan].LowByte ? "low" : "high"));
@@ -381,22 +381,22 @@ namespace PERQemu.IO.Z80
             {
                 case 0x0:   // Write command register
                     _command = (CommandBits)value;
-                    Log.Info(Category.Z80DMA, "Write 0x{0:x2} ({1}) to command register", value, _command);
+                    Log.Debug(Category.Z80DMA, "Write 0x{0:x2} ({1}) to command register", value, _command);
                     break;
 
                 case 0x1:   // Write request bit
                     if (_channels[chan].Mode != ChannelMode.Block)
                     {
-                        Log.Info(Category.Z80DMA, "Channel {0} Request write ignored (not in Block mode)", chan);
+                        Log.Warn(Category.Z80DMA, "Channel {0} Request write ignored (not in Block mode)", chan);
                         break;
                     }
                     _channels[chan].Requested = (value & 0x04) > 0;
-                    Log.Info(Category.Z80DMA, "Channel {0} Requested is {1}", chan, _channels[chan].Requested);
+                    Log.Debug(Category.Z80DMA, "Channel {0} Requested is {1}", chan, _channels[chan].Requested);
                     break;
 
                 case 0x2:   // Write single mask bit
                     _channels[chan].Masked = (value & 0x04) > 0;
-                    Log.Info(Category.Z80DMA, "Channel {0} Masked is {1}", chan, _channels[chan].Masked);
+                    Log.Debug(Category.Z80DMA, "Channel {0} Masked is {1}", chan, _channels[chan].Masked);
                     break;
 
                 case 0x3:   // Write mode register
@@ -404,7 +404,7 @@ namespace PERQemu.IO.Z80
                     _channels[chan].AutoInit = ((value & 0x10) != 0);
                     _channels[chan].AddrDecrement = ((value & 0x20) != 0);
                     _channels[chan].Mode = (ChannelMode)((value & 0xc0) >> 6);
-                    Log.Info(Category.Z80DMA, "Write 0x{0:x2} to channel {1} mode reg", value, chan);
+                    Log.Debug(Category.Z80DMA, "Write 0x{0:x2} to channel {1} mode reg", value, chan);
                     break;
 
                 case 0x4:   // Clear byte pointer flip flop
@@ -528,9 +528,9 @@ namespace PERQemu.IO.Z80
                 if (AutoInit)
                 {
                     CurrentAddress = BaseAddress;
-                    CurrentCount = WordCount;
+                    CurrentCount = (ushort)(WordCount + 1);
                     Terminated = false;
-                    Log.Info(Category.Z80DMA, "{0} channel autoinitialized", Device);
+                    Log.Debug(Category.Z80DMA, "{0} channel autoinitialized", Device);
                 }
                 else Masked = true;
             }

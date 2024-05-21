@@ -84,14 +84,12 @@ namespace PERQemu.IO.Z80
             // Attach the configured tablet(s)
             if (_system.Config.Tablet.HasFlag(TabletType.BitPad))
             {
-                var tablet = new BitPadOne(_scheduler, _system);
-                _tms9914a.Bus.AddDevice(tablet);
+                _tms9914a.Bus.AddDevice(new BitPadOne(_scheduler, _system));
             }
 
             if (_system.Config.Tablet.HasFlag(TabletType.Kriz))
             {
-                var tablet = new KrizTablet(_scheduler, _system);
-                _z80sio.AttachDevice(1, tablet);
+                _z80sio.AttachDevice(1, new KrizTablet(_scheduler, _system));
             }
 
             // If enabled and configured, attach device to RS232

@@ -8,6 +8,21 @@ avoid wasting precious time scrolling to the end. :-)
 
 May, 2024:
 
+    3. Applied a patch to allow PNX to boot on the 16K CPU without manually
+    hacking around the Vfy microcode bug.  The emulator now patches the Victim
+    test automatically so PNX 2 (and 3) boot without intervention.  Also fixed
+    the Kriz tablet, which on EIO apparently does not invert the data (as it
+    does on IOB/CIO).  Investigating GPIB/BitPadOne problem on EIO and looking
+    at Accent S6 network initialization hanging when the Null Ethernet driver
+    is in use.
+
+    2. Bump to v0.5.8 to celebrate a successful installation of Accent S6 (needs
+    Amendment floppies loaded) and PNX 2 -- both OSes are able to load Z80 code
+    at boot time and execute from RAM.  PNX 2 even sets the clock using the RTC?
+    Still plenty of debugging to do and lots of cleanups and loose ends, but the
+    PERQ-2 support is finally happening!  This paves the way for a ton of fun
+    future projects.
+
     1. PERQ-2/Microp/EIO floppy boot for POS G.6 now reaches 999 and gets to the
     shell prompt!  Weeks of beating my head on single stepping disassembed Qcode
     yielded the "aha!" moment that write-protecting the boot floppy fixes the
@@ -313,4 +328,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Fri May 17 12:20:25 PDT 2024
+Last update: skeezics    Mon May 20 15:44:47 PDT 2024

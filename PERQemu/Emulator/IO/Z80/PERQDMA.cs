@@ -69,7 +69,7 @@ namespace PERQemu.IO.Z80
             _writeReady = false;
             _z80IntRaised = true;
 
-            Log.Info(Category.DMA, "PDMA operation terminated");
+            Log.Debug(Category.DMA, "PDMA operation terminated");
         }
 
         //
@@ -111,15 +111,15 @@ namespace PERQemu.IO.Z80
                 if (_toZ80.Count > 0)
                 {
                     byte val = _toZ80.Dequeue();
-                    Log.Info(Category.DMA, "Read 0x{0:x2} from PDMA FIFO", val);
+                    Log.Detail(Category.DMA, "Read 0x{0:x2} from PDMA FIFO", val);
                     return val;
                 }
-                //#if DEBUG
+#if DEBUG
                 // This shouldn't happen; shut it down...
                 Log.Warn(Category.DMA, "Z80 read from empty FIFO!?");
                 _readReady = false;
                 return 0;
-                //#endif
+#endif
             }
 
             Log.Warn(Category.DMA, "Unhandled read from port 0x{0:x2}", portAddress);
@@ -149,7 +149,7 @@ namespace PERQemu.IO.Z80
                     _start = true;
                     _z80IntRaised = false;
 
-                    Log.Info(Category.DMA, "PDMA direction set to {0} ({1})", _dmaToPerq, value);
+                    Log.Debug(Category.DMA, "PDMA direction set to {0} ({1})", _dmaToPerq, value);
                     break;
 
                 // Flush both FIFOs
@@ -162,15 +162,13 @@ namespace PERQemu.IO.Z80
                     //
                     if (_toZ80.Count > 0)
                     {
-                        Console.WriteLine($"--> Flushing {_toZ80.Count} residual bytes from Z80 queue!");
-                        DumpFIFOs();
+                        Log.Debug(Category.DMA, "Flushing {0} residual bytes from Z80 queue!", _toZ80.Count);
                         _toZ80.Clear();
                     }
 
                     if (_toPerq.Count > 0)
                     {
-                        Console.WriteLine($"--> Flushing {_toPerq.Count} residual bytes from PERQ queue!");
-                        DumpFIFOs();
+                        Log.Debug(Category.DMA, "Flushing {0} residual bytes from PERQ queue!", _toPerq.Count);
                         _toPerq.Clear();
                     }
 
@@ -178,7 +176,7 @@ namespace PERQemu.IO.Z80
                     _writeReady = _dmaToPerq;
                     _z80IntRaised = false;
 
-                    Log.Info(Category.DMA, "PDMA FIFOs flushed");
+                    Log.Debug(Category.DMA, "PDMA FIFOs flushed");
                     break;
 
                 // Start (or finish!) a DMA transaction
@@ -194,11 +192,11 @@ namespace PERQemu.IO.Z80
                         while (Dequeue(true)) { }
 
                         _z80IntRaised = true;
-                        Log.Info(Category.DMA, "Z80 to PERQ operation complete");
+                        Log.Debug(Category.DMA, "Z80 to PERQ operation complete");
                     }
                     else
                     {
-                        Log.Info(Category.DMA, "PERQ to Z80 operation starting");
+                        Log.Debug(Category.DMA, "PERQ to Z80 operation starting");
 
                         // Prime the _toZ80 FIFO with the first quad word
                         Enqueue();
@@ -223,8 +221,8 @@ namespace PERQemu.IO.Z80
                         var word = (ushort)((value << 8) | _holding);
                         _toPerq.Enqueue(word);
 
-                        Log.Info(Category.DMA, "Enqueued word 0x{0:x4} to PDMA FIFO (count {1})",
-                                                word, _toPerq.Count);
+                        Log.Detail(Category.DMA, "Enqueued word 0x{0:x4} to PDMA FIFO (count {1})",
+                                                  word, _toPerq.Count);
                     }
 
                     // Toggle our flipflop
@@ -266,15 +264,15 @@ namespace PERQemu.IO.Z80
             }
 
             // Just log the start (and assume it's properly aligned)
-            Log.Info(Category.DMA, "Write 4 words to Z80 FIFO from addr 0x{0:x6}", _address);
+            Log.Debug(Category.DMA, "Write 4 words to Z80 FIFO from addr 0x{0:x6}", _address);
 
             // Queue up four more words for the Z80
             for (int i = 0; i < 4; i++)
             {
                 var value = _system.Memory.FetchWord(_address++);
 
-                _toZ80.Enqueue((byte)((value >> 8) & 0xff));
                 _toZ80.Enqueue((byte)value);
+                _toZ80.Enqueue((byte)(value >> 8));
             }
         }
 
@@ -308,7 +306,7 @@ namespace PERQemu.IO.Z80
             if (count == 0) return false;
             if (count < 4 && !flush) return true;
 
-            Log.Info(Category.DMA, "Read {0} words from PERQ FIFO to addr 0x{1:x6}", count, _address);
+            Log.Debug(Category.DMA, "Read {0} words from PERQ FIFO to addr 0x{1:x6}", count, _address);
 
             // Read and store a quad's worth from the Z80-to-PERQ queue
             for (int i = 0; i < count; i++)

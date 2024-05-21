@@ -234,7 +234,7 @@ namespace PERQemu.IO.DiskDevices
                 delay = Math.Min(_stepCount * Specs.MinimumSeek, Specs.MaximumSeek);
             }
 
-            Log.Info(Category.HardDisk, "Drive seek to cyl {0} from {1}, {2} steps in {3:n}ms",
+            Log.Debug(Category.HardDisk, "Drive seek to cyl {0} from {1}, {2} steps in {3:n}ms",
                                           cyl, _cyl, _stepCount, delay);
             _cyl = cyl;
 
@@ -263,19 +263,19 @@ namespace PERQemu.IO.DiskDevices
                 {
                     settle = (ulong)Specs.HeadSettling * Conversion.MsecToNsec;
 
-                    Log.Info(Category.HardDisk, "Seek complete [settling callback in {0:n}ms]",
+                    Log.Detail(Category.HardDisk, "Seek complete [settling callback in {0:n}ms]",
                                                   settle * Conversion.NsecToMsec);
                 }
                 else
                 {
-                    Log.Info(Category.HardDisk, "Seek complete [callback in 1us]");
+                    Log.Detail(Category.HardDisk, "Seek complete [callback in 1us]");
                 }
 
                 _scheduler.Schedule(settle, _seekCallback);
             }
             else
             {
-                Log.Info(Category.HardDisk, "Seek complete");
+                Log.Detail(Category.HardDisk, "Seek complete");
             }
         }
 

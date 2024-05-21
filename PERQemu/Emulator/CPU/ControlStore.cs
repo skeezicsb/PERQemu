@@ -128,6 +128,21 @@ namespace PERQemu.Processor
                     }
 
                     _microcodeCache[addr] = new Instruction(word, addr);
+
+                    // 
+                    // PNX VFY Bug patch
+                    //      Look for the very specific signature of the 16K CPU
+                    //      Victim test bug and apply the simple fix.
+                    //
+                    if (addr == 0x807 && word == 0x0000c0357083)
+                    {
+                        if (_microcode[0x806] == 0x1241d380080e)
+                        {
+                            Log.Info(Category.Emulator, "** PNX VFY Microcode bug detected, applying workaround **");
+                            _microcodeCache[addr].CND = Condition.True;
+                            _microcodeCache[addr].JMP = JumpOperation.Next;
+                        }
+                    }
                 }
 
                 return _microcodeCache[addr];

@@ -69,12 +69,20 @@ While the v0.5.0 release is a major leap in functionality and the available
 software base has expanded greatly, it still only emulates PERQ-1 configurations.
 Work on the experimental branch now shifts to expanded emulation options, adding
 new peripheral support (Ethernet, laser printer) and bug fixes, plus some new UI
-features along the way.  PERQ-2 support will then follow; see the (tentative)
-roadmap below.  Please check back often for updates!
+features along the way.
 
 PERQemu v0.5.5 rolls up new Canon printer support and expanded (but still highly
 experimental!) Ethernet support.  It is an interim release to skeezicsb/main and
 won't be submitted for a merge into the master at this time.
+
+PERQemu v0.5.8 introduces the first milestone in PERQ-2/EIO support, adding a
+Micropolis 8" disk driver and enough of the EIO/Z80 components to allow POS G,
+Accent S6 and PNX 2 and 3 to boot.  There are still a number of rough edges and
+missing pieces that this interim development snapshot is not yet reliable enough
+for daily use.
+
+Full PERQ-2 and 2/Tx support is underway; see the (tentative) roadmap below.
+Please check back often for updates!
 
 
 1.3 System Requirements
@@ -95,7 +103,8 @@ the display window updates every few seconds to report the frame rate ("fps")
 and the average cycle time of the PERQ and Z80 processors.  At full speed the
 PERQ will display 60fps, with the CPU executing at 170ns and the Z80 at 407ns.
 
-Performance tuning is an ongoing concern.
+Please consult the User's Guide for more information about system requirements
+and performance (rate limiting) options.
 
 
 2.0 Getting Started
@@ -161,13 +170,14 @@ There are several subdirectories:
 
     Output/
         When logging debug output to disk is enabled, log files go here by
-        default.  Screenshots and Canon laser printer output is directed
-        here as well.  (Output directory is a settable preference.)
+        default.  Unnamed files copied to the RSX: device, screenshots and
+        Canon laser printer output is directed here as well.  (The output
+        directory path is a settable preference.)
 
     PROM/
     Resources/
-        These directories contain dumps of PERQ ROMs and other files
-        necessary for operation.
+        These directories contain dumps of PERQ ROMs, Z80 source code and
+        other files necessary for operation.
 
 
 To start the emulator, just run PERQemu.exe:
@@ -255,9 +265,10 @@ Fixed in v0.5.3:
   - A workaround for PNX 2 video support is included (disk image TBA).
   - Accent S7 (Release III, unreleased) also verified as well.
 
-NOTE: PNX 1 drops into its microcode debugger (i.e., crashes) after booting if
-2MB of memory is configured; it runs fine with 1MB.  PNX 2, POS, MPOS and Accent
-have no trouble with a full megaword (2MB) of memory.
+
+NOTE: PNX 1 only supports 1MB of memory and will crash if configured with more.
+PNX 2, PNX 3, POS, MPOS and Accent have no trouble with a full megaword (2MB)
+of memory.
 
 Accent mouse tracking takes a little getting used to since it runs in relative
 mode.  To simulate mouse "swipes" you have to use the Alt key (Option key on
@@ -265,8 +276,8 @@ Mac) to tell PERQemu the mouse is "off tablet", reposition, then release the
 key to start tracking again.  It's a little clumsy at first.
 
 
-If anyone has any other software that ran on the PERQ-1 and does not run
-successfully under PERQemu, send us a copy and we'll find out why!
+If you have any other PERQ software that does not run successfully under
+PERQemu, send us a copy and we'll find out why!
 
 
 3.0 What's Implemented
@@ -284,12 +295,11 @@ The following hardware has been implemented in the emulator:
     - Only tested for operation with the 20-bit processors (max 2MB / 1MW).
 
   Hard disk:
-    - All of the disk support has been completely rewritten to prepare for
-      the addition of PERQ-2 emulation.  Currently only the original PERQ-1
-      14" Shugart SA4000-series drives and controllers are tested to work with
-      the new Z80 implementation;
-    - All of the 8" Micropolis and 5.25" MFM drives will be available as PERQ-2
-      support is introduced.
+    - The original PERQ-1 14" Shugart SA4000-series drives and controllers are
+      tested to work with IOB (old Z80) and CIO (new Z80) implementations;
+    - The PERQ-2 8" Micropolis 1200-series controller and Disk Interface Board
+      is now emulated for use with the PERQ-2/EIO configuration (one drive only);
+    - 5.25" MFM drives will be available as PERQ-2/Tx support is introduced.
       
   Floppy disk:
     - Rewritten to work with the new Z80 and floppy disk controller;
@@ -346,15 +356,15 @@ The following hardware has been implemented in the emulator:
       useful on POS F.1 and later (no support in D.6, F.0, PNX 1, or Accent S4);
     - The simulated Summagraphics BitPadOne works with the new GPIB; it is
       supported on all PERQ OSes;
-    - The BitPad/GPIB requires a ton of processing due to protocol overhead;
-      the Kriz is a far more efficient tablet and is generally preferred on
-      any OS that supports it!
+    - PERQ-2/EIO configuration support: Kriz tablet is working, GPIB BitPad is
+      the GPIB BitPad is still non-functional
 
   Ethernet:
     - A "null" bare-bones interface is now available when the "Ether" option for
       the OIO option board is configured.  This allows Accent to initialize its
       NetMsgServer so other peripheral server processes (floppy, serial, etc)
       can start up.  Consult the User Guide for more details!
+    - The EIO version of the interface is being tested for use with PERQ-2;
     - Implementation of a real host Ethernet interface is available for testing,
       but with caveats.  Check the User Guide for details.
 
@@ -432,6 +442,40 @@ C#/Mono System.IO.Ports.SerialPort implementation that will require a reworking
 of the emulator's port handling.
 
 
+PERQ-2/EIO support is still highly experimental, but if you want to try it out
+there are some known quirks/bugs to be aware of:
+
+
+4. PNX 2 (and PNX 3) boot failure at DDS 142.
+
+Symptoms:  Attempting to boot from the PNX 2 or PNX 3 installation floppies
+causes the DDS to stop at 142 and the process to hang.
+
+Workaround:  The version of the VFY microcode included on the available floppies
+contains a bug -- or relies on a quirk of the hardware -- that causes the Victim
+test to fail when a 16K CPU is configured.  When the DDS stops at 142, type
+"debug jump $808" to resume execution, bypassing the failed test.  Note that the
+DDS status will be off for the remainder of the session, and will not stop at
+255 when PNX has completed booting.  A patch to detect and fix this has been
+developed and is available in PERQemu v0.5.8 and beyond.
+
+
+5. PNX video glitches.
+
+Symptoms: The PNX 2 window manager paints its stippled background with a strange
+striped pattern; PNX 3 does not seem to display anything after the VFY memory
+test, even though the DDS seems to indicate the system has booted.
+
+Workaround:  Under PNX 2, the strange background pattern is visually distracting
+but does not appear to cause any issues running the OS.  Sometimes dragging a
+window around will cause it to repaint properly.  When attempting to boot PNX 3,
+the LineCounter interrupt does not appear to fire and thus the screen does not
+repaint properly once PNX takes over control of the video display list.  If you
+can type "debug raise interrupt linecounter" on the console 60 times a second
+the display is properly refreshed.  (Yet Another PNX video patch will be added
+in a future snapshot as PNX 3 seems to add significant functionality!)
+
+
 5.0 Version History and Roadmap
 ===============================
 
@@ -443,19 +487,26 @@ v1.0 - TBD
 
 v0.9 - TBD
   Fill in the final pieces:
-  - Expand available media library
   - Full-featured Ethernet
   - 24-bit "T4" model with larger memory
+  - See if CIO Micropolis has any real software support?
+  - Multibus and SMD disks?
 
 v0.7 - TBD
   Leverage the new architecture to roll out new models, new peripherals and
   open up the full range of available operating systems!
+  - Add more bundled configurations and hard disk images
   - PERQ-2 EIO emulation support: expanded IO Board with faster Z80, second
     serial port, RTC chip, support for two hard disks
   - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
 
-v0.5.6 - Experimental branch (ongoing)
-  - Progress toward EIO/PERQ-2
+v0.5.8 - Experimental branch (ongoing)
+  - Micropolis 8" disk (high-level operation works!; low-level formatting
+    support is incomplete/untested)
+  - EIO Z80 ROM source code formatted for use with the debugger
+  - EIO Z80 peripherals added:  RTC chip, VT100-style keyboard, Am9519 IRQ
+    control and i8237 DMAC
+  - Kriz tablet patched for EIO; PNX Vfy bug workaround devised
 
 v0.5.5 - Main branch (v0.7.0 pre-release)
   - Ethernet running (but requires root/admin access)
@@ -580,7 +631,7 @@ v0.1 - First public release.
 
 Update history:
 
-4/10/2024 - skeezicsb - v0.5.6 (experiments)
+5/20/2024 - skeezicsb - v0.5.8 (experiments)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0
 1/17/2023 - skeezicsb - v0.4.9 (main)

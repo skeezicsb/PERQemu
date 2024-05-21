@@ -114,7 +114,7 @@ namespace PERQemu.IO.DiskDevices
             // Reading clears interrupts
             SetInterrupt(false);
 
-            Log.Write(Category.HardDisk, "Micropolis status: 0x{0:x3}", status);
+            Log.Debug(Category.HardDisk, "Micropolis status: 0x{0:x3}", status);
             return status;
         }
 
@@ -130,7 +130,7 @@ namespace PERQemu.IO.DiskDevices
                     // Selects the address of next data register to load.
                     //
                     _regSelect = (value & 0xf);
-                    Log.Info(Category.HardDisk, "Micropolis register file pointer now {0}", _regSelect);
+                    Log.Detail(Category.HardDisk, "Micropolis register file pointer now {0}", _regSelect);
                     break;
 
                 case 0xd1:      // LD DF DATA L
@@ -144,8 +144,8 @@ namespace PERQemu.IO.DiskDevices
                         _regSelect = 0;
                     }
 
-                    Log.Debug(Category.HardDisk, "Micropolis register file[{0}]=0x{1:x2}",
-                                                 _regSelect, (byte)~value);
+                    Log.Detail(Category.HardDisk, "Micropolis register file[{0}]=0x{1:x2}",
+                                                  _regSelect, (byte)~value);
                     _registerFile[_regSelect++] = (byte)~value;
                     break;
 
@@ -182,7 +182,7 @@ namespace PERQemu.IO.DiskDevices
             _command = (SMCommand)(data & 0x07);
             _dib.BusEnable = (_flags.HasFlag(SMFlags.BusEnable));
 
-            Log.Info(Category.HardDisk,
+            Log.Detail(Category.HardDisk,
                       "Micropolis state control: 0x{0:x2} (command {1}, flags {2})",
                       data, _command, _flags);
 
@@ -190,7 +190,7 @@ namespace PERQemu.IO.DiskDevices
             // to see if we should reset (assuming that clears up any issues)
             if (!_flags.HasFlag(SMFlags.Enable))
             {
-                Log.Info(Category.HardDisk, "Controller disabled!"); // debug
+                Log.Debug(Category.HardDisk, "Controller disabled!"); // debug
 
                 // Assume we just bail out here?
                 ResetFlags();
@@ -201,7 +201,7 @@ namespace PERQemu.IO.DiskDevices
             if (_command != SMCommand.Idle && (_status > SMStatus.Busy && _status < SMStatus.SMInt))
             {
                 // Todo: clearing SMCTL<4> is supposed to reset this too?
-                Log.Info(Category.HardDisk, "Command {0} ignored while in state {1}", _command, _status);
+                Log.Debug(Category.HardDisk, "Command {0} ignored while in state {1}", _command, _status);
                 return;
             }
 
@@ -247,7 +247,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         void SetBusy()
         {
-            Log.Write(Category.HardDisk, "DIB signaled seek/restore in progress");
+            Log.Detail(Category.HardDisk, "DIB signaled seek/restore in progress");
             _status = SMStatus.Busy;
         }
 
@@ -256,7 +256,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         void StatusChange()
         {
-            Log.Info(Category.HardDisk, "DIB signaled status change!");
+            Log.Detail(Category.HardDisk, "DIB signaled status change!");
             SetInterrupt(true);
         }
 
@@ -271,7 +271,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         bool CheckBlockParameters(ushort cyl, byte head)
         {
-            //#if DEBUG
+#if DEBUG
             if (_dib.SelectedDrive == null)
                 throw new InvalidOperationException($"{_command} but no disk selected");
 
@@ -289,7 +289,7 @@ namespace PERQemu.IO.DiskDevices
                                             _dib.SelectedDrive.CurCylinder, _dib.Cylinder, cyl);
                 return false;
             }
-            //#endif
+#endif
             return true;
         }
 
@@ -298,10 +298,11 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         bool CheckLogicalHeaderBytes(byte[] LH)
         {
-            //#if DEBUG
+#if DEBUG
             // Check the header bytes against the register file values!  If
             // there are any discrepancies, report the error and abort due to
-            // a logical header mismatch.  Realism baybeeee!!!
+            // a logical header mismatch.  Realism baybeeee!!!  ALSO, this is
+            // only an error condition if the T2 bit isn't set, right? :-)
             if ((LH[0] != _registerFile[5]) ||
                 (LH[1] != _registerFile[11]) ||
                 (LH[2] != _registerFile[6]) ||
@@ -322,7 +323,7 @@ namespace PERQemu.IO.DiskDevices
                 Console.WriteLine();
                 return false;
             }
-            //#endif
+#endif
             return true;
         }
 
@@ -360,13 +361,15 @@ namespace PERQemu.IO.DiskDevices
             var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
 
-            //#if DEBUG
+#if DEBUG
             // This will always be 2?  Unless non-check reads don't xfer the header?  Hmm.
             var quads = _system.IOB.DMARegisters.GetHeaderCount(ChannelName.HardDisk);
 
             if (quads != 2)
+            {
                 Log.Warn(Category.HardDisk, "Bad DMA header count {0} on {1}", quads, _command);
-            //#endif
+            }
+#endif
 
             // Copy the header to the header address
             for (int i = 0; i < block.Header.Length; i += 2)
@@ -396,7 +399,7 @@ namespace PERQemu.IO.DiskDevices
                 _system.Memory.StoreWord(data + (i >> 1), (ushort)word);
             }
 
-            Log.Write(Category.HardDisk,
+            Log.Debug(Category.HardDisk,
                       "Micropolis sector read from {0}/{1}/{2}, to memory at 0x{3:x6}",
                       cyl, head, sector, data);
 
@@ -454,7 +457,7 @@ namespace PERQemu.IO.DiskDevices
 
             _dib.SelectedDrive.SetSector(block);
 
-            Log.Write(Category.HardDisk,
+            Log.Debug(Category.HardDisk,
                       "Micropolis sector write complete to {0}/{1}/{2}, from memory at 0x{3:x6}",
                       cyl, head, sector, data);
 
@@ -530,11 +533,11 @@ namespace PERQemu.IO.DiskDevices
                 Log.Error(Category.HardDisk, "MidSectorFinish called while already busy");
             // but proceed anyway?
 #endif
-            Log.Write(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
+            Log.Debug(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
 
             _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
             {
-                Log.Write(Category.HardDisk, "Mid-sector interrupt firing, code={0}", exitCode);
+                Log.Debug(Category.HardDisk, "Mid-sector interrupt firing, code={0}", exitCode);
 
                 if (exitCode == SMStatus.Idle)
                 {
@@ -562,7 +565,7 @@ namespace PERQemu.IO.DiskDevices
         {
             _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
             {
-                Log.Write(Category.HardDisk, "Command completion: {0}", exitCode);
+                Log.Debug(Category.HardDisk, "Command completion: {0}", exitCode);
                 _status = exitCode;
                 _busyEvent = null;
 
@@ -629,7 +632,7 @@ namespace PERQemu.IO.DiskDevices
             var dist = sector - cur;
             var delay = (ulong)((dist < 0 ? dist + _dib.SelectedDrive.Geometry.Sectors : dist) * t);
 
-            Log.Write(Category.HardDisk, "Rotational delay from cur={0} to desired={1} is {2}", cur, sector, delay);
+            Log.Detail(Category.HardDisk, "Rotational delay from cur={0} to desired={1} is {2}", cur, sector, delay);
             return delay;
         }
 
@@ -828,14 +831,14 @@ namespace PERQemu.IO.DiskDevices
                 _regSelect = (RegSelect)(val & 0x30);
                 var B = (byte)(val & 0x0f);
 
-                Log.Info(Category.HardDisk,
+                Log.Debug(Category.HardDisk,
                           "Micropolis disk control: 0x{0:x2} (unit {1}, reg {2}, nib 0x{3:x})",
                           val, _driveSelect, _regSelect, B);
 
                 if (_regSelect == RegSelect.Latch)
                 {
                     _latchedNibble = B;
-                    Log.Debug(Category.HardDisk, "DIB: Latched nibble 0x{0:x}", B);
+                    Log.Detail(Category.HardDisk, "DIB: Latched nibble 0x{0:x}", B);
                 }
 
                 // Signal Ready change if the selected drive changed
@@ -862,7 +865,7 @@ namespace PERQemu.IO.DiskDevices
                         {
                             // Assign the low byte as Cyl<7:0>
                             _cylinder = _latchedData;
-                            Log.Info(Category.HardDisk, "DIB: Cylinder (lo) = {0}", _cylinder);
+                            Log.Debug(Category.HardDisk, "DIB: Cylinder (lo) = {0}", _cylinder);
                         }
                         break;
 
@@ -874,7 +877,7 @@ namespace PERQemu.IO.DiskDevices
 
                             // Set the head and initiate a seek (and/or head select)
                             _head = (byte)(_latchedData & 0x0f);
-                            Log.Info(Category.HardDisk, "DIB: Cylinder = {0}, Head = {1}", _cylinder, _head);
+                            Log.Debug(Category.HardDisk, "DIB: Cylinder = {0}, Head = {1}", _cylinder, _head);
 
 							// Start the seek!
 							DoSeek();
@@ -887,7 +890,7 @@ namespace PERQemu.IO.DiskDevices
                             _command = (M1200Command)_latchedData;
                             if (_command != M1200Command.None)
                             {
-                                Log.Info(Category.HardDisk, "DIB: Command is {0}", _command);
+                                Log.Debug(Category.HardDisk, "DIB: Command is {0}", _command);
                             }
 
                             // Only two command bits are significant; it's not clear if
@@ -961,7 +964,7 @@ namespace PERQemu.IO.DiskDevices
 
                 // Do the seek, even if the distance is zero cyls -- let the hard
                 // disk fire the completion (with min delay) normally to reset OnCyl
-                Log.Info(Category.HardDisk, "DIB initiating seek ({0} cyls)", _cylinder - _disk.CurCylinder);
+                Log.Debug(Category.HardDisk, "DIB initiating seek ({0} cyls)", _cylinder - _disk.CurCylinder);
                 _disk.SeekTo(_cylinder);
             }
 
@@ -989,8 +992,8 @@ namespace PERQemu.IO.DiskDevices
                 _status.Index = _disk.Index;
                 _status.DriveFault = _disk.Fault;
 
-                Log.Info(Category.HardDisk, "DIB status change: 0x{0:x3}", _status.Current);
-                Log.Info(Category.HardDisk, "DIB {0}", _status);  // hardware status string (debug)
+                Log.Debug(Category.HardDisk, "DIB status change: 0x{0:x3}", _status.Current);
+                Log.Detail(Category.HardDisk, "DIB {0}", _status);      // HW status string
 
                 // Ready changes, faults, or OnCylinder asserted trigger an interrupt
                 _control.StatusChange();
