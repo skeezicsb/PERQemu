@@ -8,6 +8,14 @@ avoid wasting precious time scrolling to the end. :-)
 
 May, 2024:
 
+    4. Ethernet and GPIB fixes for EIO.  Bitpad tracking now works, and the Null
+    and 10Mbit Ethernet drivers are properly returning the MAC address bytes,
+    updated and "simplified" for both OIO and EIO.  But do not attempt to reason
+    with the Ethernet logic or understand how and why the low octets of the MAC
+    are scattered about like the Elemental Stones.  Ethernet is crying out for
+    a refactoring to eliminate some duplicated code, and there is still a ton
+    of work to do here.
+
     3. Applied a patch to allow PNX to boot on the 16K CPU without manually
     hacking around the Vfy microcode bug.  The emulator now patches the Victim
     test automatically so PNX 2 (and 3) boot without intervention.  Also fixed
@@ -328,4 +336,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Mon May 20 15:44:47 PDT 2024
+Last update: skeezics    Thu May 23 16:00:09 PDT 2024

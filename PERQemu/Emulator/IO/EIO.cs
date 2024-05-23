@@ -124,6 +124,13 @@ namespace PERQemu.IO
 
         public INetworkController Ether => _ethernetController;
 
+        public override void Reset()
+        {
+            _ethernetController?.Reset();
+
+            base.Reset();
+        }
+
         /// <summary>
         /// Reads a word from the given I/O port.
         /// </summary>

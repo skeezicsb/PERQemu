@@ -356,8 +356,7 @@ The following hardware has been implemented in the emulator:
       useful on POS F.1 and later (no support in D.6, F.0, PNX 1, or Accent S4);
     - The simulated Summagraphics BitPadOne works with the new GPIB; it is
       supported on all PERQ OSes;
-    - PERQ-2/EIO configuration support: Kriz tablet is working, GPIB BitPad is
-      the GPIB BitPad is still non-functional
+    - PERQ-2/EIO configuration support: Kriz tablet and GPIB BitPad are working.
 
   Ethernet:
     - A "null" bare-bones interface is now available when the "Ether" option for
@@ -457,7 +456,7 @@ test to fail when a 16K CPU is configured.  When the DDS stops at 142, type
 "debug jump $808" to resume execution, bypassing the failed test.  Note that the
 DDS status will be off for the remainder of the session, and will not stop at
 255 when PNX has completed booting.  A patch to detect and fix this has been
-developed and is available in PERQemu v0.5.8 and beyond.
+developed and is included in PERQemu v0.5.8 and beyond.
 
 
 5. PNX video glitches.
@@ -506,7 +505,8 @@ v0.5.8 - Experimental branch (ongoing)
   - EIO Z80 ROM source code formatted for use with the debugger
   - EIO Z80 peripherals added:  RTC chip, VT100-style keyboard, Am9519 IRQ
     control and i8237 DMAC
-  - Kriz tablet patched for EIO; PNX Vfy bug workaround devised
+  - Kriz tablet and GPIB updated for EIO; PNX Vfy bug workaround devised
+  - Ethernet drivers updated for EIO (no new functionality, yet)
 
 v0.5.5 - Main branch (v0.7.0 pre-release)
   - Ethernet running (but requires root/admin access)
@@ -631,7 +631,7 @@ v0.1 - First public release.
 
 Update history:
 
-5/20/2024 - skeezicsb - v0.5.8 (experiments)
+5/23/2024 - skeezicsb - v0.5.8 (experiments)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0
 1/17/2023 - skeezicsb - v0.4.9 (main)

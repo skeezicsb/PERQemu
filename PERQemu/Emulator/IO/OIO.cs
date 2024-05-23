@@ -97,9 +97,9 @@ namespace PERQemu.IO
         {
             _link.Reset();
 
-            if (_ethernet != null) _ethernet.Reset();
-            if (_streamer != null) _streamer.Reset();
-            if (_canon != null) _canon.Reset();
+            _ethernet?.Reset();
+            _streamer?.Reset();
+            _canon?.Reset();
 
             base.Reset();
         }

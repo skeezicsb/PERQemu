@@ -189,22 +189,26 @@ namespace PERQemu.IO.Network
                     break;
 
                 //
-                // Receive address
+                // Receive Address setup
                 //
-                case 0x90:      // OIO Low word of MAC address
-                    // Have to byte swap this, because reasons
-                    _recvAddr.Low = (ushort)(value << 8 | (value & 0xff00) >> 8);
-                    Log.Debug(Category.Ethernet, "Wrote 0x{0:x4} to low address register 0x{1:x2}", value, address);
+                // Note: the microcode writes these byte swapped but expects them
+                // back in the correct order!  The OIO provides a swapped word,
+                // while the EIO programs each byte individually (inverted).  Sigh.
+                //
+                case 0x90:  // OIO Low word of MAC address - swap the bytes
+                    _recvAddr.LowFifth = (byte)(value & 0xff);
+                    _recvAddr.LowSixth = (byte)(value >> 8);
+                    Log.Info(Category.Ethernet, "Wrote 0x{0:x4} to low address register 0x{1:x2}", value, address);
                     break;
 
-                case 0xc9:      // EIO Low word of MAC address (5th octet)
-                    _recvAddr.Low = (ushort)((value << 8) | (_recvAddr.Low & 0xff));
-                    Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to low address register (octet 5)", value);
+                case 0xc9:  // EIO Low word (byte 5) of MAC address - swap with 6th
+                    _recvAddr.LowSixth = (byte)(~value & 0xff);
+                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to MAC address byte 5", value);
                     break;
 
-                case 0xc8:      // EIO Low word of MAC address (6th octet)
-                    _recvAddr.Low = (ushort)((_recvAddr.Low & 0xff00) | (value & 0xff));
-                    Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to low address register (octet 6)", value);
+                case 0xc8:  // EIO Low word (byte 6) of MAC address - swap with 5th
+                    _recvAddr.LowFifth = (byte)(~value & 0xff);
+                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to MAC address byte 6", value);
                     break;
 
                 //
@@ -228,7 +232,7 @@ namespace PERQemu.IO.Network
                 case 0xce:      // EIO Multicast group 4
                 case 0xcf:      // EIO Multicast group 5
                     var mcgb = address - 0xca;
-                    _mcastGroups[mcgb] = (byte)(value & 0xff);
+                    _mcastGroups[mcgb] = (byte)(~value & 0xff);
                     Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to multicast register {1} (0x{2:x2})", value, mcgb, address);
                     break;
 
@@ -368,21 +372,24 @@ namespace PERQemu.IO.Network
             return retVal;
         }
 
-
+        /// <summary>
+        /// Fetch the hardware's MAC address from the DMA header in response to
+        /// the "special receive".  Store it in memory where the microcode will
+        /// transform it into the canonical 48-bit format we know and love.
+        /// </summary>
         void GetAddress(ulong nSkew, object context)
         {
             // Get the header address from DMA
             var addr = _system.IOB.DMARegisters.GetHeaderAddress(_dmaRx);
+            var words = _physAddr.Unscrambled(_system.IOB.IsEIO);
 
             Log.Debug(Category.Ethernet, "Writing machine address to 0x{0:x6}", addr);
 
-            // DMA the address bytes into the header buffer
-            _system.Memory.StoreWord(addr++, _physAddr.High);
-            _system.Memory.StoreWord(addr++, _physAddr.Mid);
-
-            // The low word's four nibbles are spread out like this:
-            _system.Memory.StoreWord(addr++, (ushort)((_physAddr.Hn << 12) | (_physAddr.MHn << 4)));
-            _system.Memory.StoreWord(addr, (ushort)((_physAddr.MLn << 12) | (_physAddr.Ln << 4)));
+            // DMA the unscrambled address bytes into the header buffer
+            for (var i = 0; i < words.Length; i++)
+            {
+                _system.Memory.StoreWord(addr++, words[i]);
+            }
 
             FinishCommand();
         }

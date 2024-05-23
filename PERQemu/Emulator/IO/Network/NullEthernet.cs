@@ -20,6 +20,8 @@
 using System;
 using System.Net.NetworkInformation;
 
+using PERQemu.Processor;
+
 namespace PERQemu.IO.Network
 {
     /// <summary>
@@ -44,6 +46,21 @@ namespace PERQemu.IO.Network
             _recvAddr.Low = _physAddr.Low;
 
             _mcastGroups = new byte[6];
+
+            // Set interrupt vector, DMA channel based on board type
+            if (_system.Config.IOBoard == Config.IOBoardType.EIO)
+            {
+                _irq = InterruptSource.Network;
+                _dmaTx = ChannelName.NetXmit;
+                _dmaRx = ChannelName.NetRecv;
+            }
+            else
+            {
+                // OIO interface
+                _irq = InterruptSource.X;
+                _dmaTx = ChannelName.ExtA;
+                _dmaRx = ChannelName.ExtA;
+            }
 
             Log.Debug(Category.Ethernet, "Interface created {0}", _physAddr);
         }
@@ -71,7 +88,7 @@ namespace PERQemu.IO.Network
 
             if (_clockInterrupt || _netInterrupt)
             {
-                _system.CPU.ClearInterrupt(Processor.InterruptSource.X);
+                _system.CPU.ClearInterrupt(_irq);
             }
             _clockInterrupt = false;
             _netInterrupt = false;
@@ -143,25 +160,35 @@ namespace PERQemu.IO.Network
                     Log.Detail(Category.Ethernet, "Wrote 0x{0:x2} to bit counter (low)", value);
                     break;
 
-                case 0x90:  // OIO Low word of MAC address
-                    _recvAddr.Low = (ushort)value;
+                //
+                // Receive Address setup
+                //
+                // Note: the microcode writes these byte swapped but expects them
+                // back in the correct order!  The OIO provides a swapped word,
+                // while the EIO programs each byte individually (inverted).  Sigh.
+                //
+                case 0x90:  // OIO Low word of MAC address - swap the bytes
+                    _recvAddr.LowFifth = (byte)(value & 0xff);
+                    _recvAddr.LowSixth = (byte)(value >> 8);
                     Log.Detail(Category.Ethernet, "Wrote 0x{0:x4} to low address register 0x{1:x2}", value, address);
                     break;
 
-                case 0xc9:  // EIO byte 5 of MAC address
-                    _recvAddr.Low = (ushort)((value << 8) | (_recvAddr.Low & 0xff));
+                case 0xc9:  // EIO Low word (byte 5) of MAC address - swap with 6th
+                    _recvAddr.LowSixth = (byte)(~value & 0xff);
                     Log.Detail(Category.Ethernet, "Wrote 0x{0:x2} to MAC address byte 5", value);
                     break;
 
-                case 0xc8:  // EIO byte 6 of MAC address
-                    _recvAddr.Low = (ushort)((_recvAddr.Low & 0xff00) | (value & 0xff));
+                case 0xc8:  // EIO Low word (byte 6) of MAC address - swap with 5th
+                    _recvAddr.LowFifth = (byte)(~value & 0xff);
                     Log.Detail(Category.Ethernet, "Wrote 0x{0:x2} to MAC address byte 6", value);
                     break;
 
                 //
-                // Multicast group bytes setup - On EIO, each byte is written
-                // individually; on OIO, three 16-bit values are written and
-                // distributed to the MCB and group bytes (command + 5 groups)
+                // Multicast group bytes setup
+                //
+                // More minor differences: OIO writes three 16-bit words and the
+                // hardware provides byte access;  the EIO writes six individual
+                // bytes.  The Null device as a stand-in handles either approach.
                 //
                 case 0x91:  // Multicast Grp1|Cmd
                 case 0x92:  // Multicast Grp3|Grp2
@@ -172,17 +199,18 @@ namespace PERQemu.IO.Network
                     Log.Detail(Category.Ethernet, "Wrote 0x{0:x4} to multicast register 0x{1:x2}", value, address);
                     break;
 
-                case 0xca:  // EIO Multicast Cmd byte
-                case 0xcb:  // EIO Multicast Grp1 .. Grp 5 bytes
-                case 0xcc:
-                case 0xcd:
-                case 0xce:
-                case 0xcf:
+                case 0xca:  // Cmd byte
+                case 0xcb:  // Grp1
+                case 0xcc:  // Grp2
+                case 0xcd:  // Grp3
+                case 0xce:  // Grp4
+                case 0xcf:  // Grp5
                     offset = address - 0xca;
-                    _mcastGroups[offset] = (byte)(value & 0xff);
-                    Log.Detail(Category.Ethernet, "Wrote 0x{0:x2} to multicast register {1} (0x{2:x2})", value, offset, address);
+                    _mcastGroups[offset] = (byte)(~value & 0xff);
+                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to multicast register {1} (0x{2:x2})", value, offset, address);
                     break;
 
+                // Interrupt enable register
                 case 0xc3:
                     Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
                     break;
@@ -197,9 +225,6 @@ namespace PERQemu.IO.Network
         /// </summary>
         public void LoadCommand(int value)
         {
-            // Todo: For now, assume OIO (port 0x99) although I think the EIO
-            // (port 0xc2) programming model at this level is identical?
-
             _control = (Control)value;
             Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to control register ({1})", value, _control);
 
@@ -241,7 +266,7 @@ namespace PERQemu.IO.Network
                     _bitCount = (ushort)(0 - _bitCount);
 
                     // The microcode isn't supposed to start a new transmit if the
-                    // receiver is active; let's do some sanity checks anyway...
+                    // receiver is active; let's do some sanity checks anyway... 
                     if (_bitCount < 480 || _bitCount > 12144 || _state != State.Idle)
                     {
                         Log.Debug(Category.Ethernet, "Transmit requested while {0} or bad bit count: {1}", _state, _bitCount);
@@ -338,8 +363,8 @@ namespace PERQemu.IO.Network
 
             // Assume that reading the status register clears the interrupt
             // regardless of whether the net or timer raised it -- or both!?
-            _system.CPU.ClearInterrupt(Processor.InterruptSource.X);
-            Log.Debug(Category.Ethernet, "Read status: X interrupt cleared, returning {0}", retVal);
+            _system.CPU.ClearInterrupt(_irq);
+            Log.Debug(Category.Ethernet, "Read status: interrupt cleared, returning {0}", retVal);
             return retVal;
         }
 
@@ -355,7 +380,7 @@ namespace PERQemu.IO.Network
             {
                 // Update our status and raise the interrupt
                 _status |= Status.Overflow;
-                _system.CPU.RaiseInterrupt(Processor.InterruptSource.X);
+                _system.CPU.RaiseInterrupt(_irq);
                 _timer = null;
             }
         }
@@ -370,17 +395,16 @@ namespace PERQemu.IO.Network
 
         void GetAddress(ulong nSkew, object context)
         {
-            var addr = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.ExtA);
+            var addr = _system.IOB.DMARegisters.GetHeaderAddress(_dmaRx);
+            var words = _physAddr.Unscrambled(_system.IOB.IsEIO);
 
-            Log.Debug(Category.Ethernet, "Writing machine address to 0x{0:x6}", addr);
+            Log.Info(Category.Ethernet, "Writing machine address to 0x{0:x6}", addr);
 
-            // DMA the address bytes into the header buffer
-            _system.Memory.StoreWord(addr++, _physAddr.High);
-            _system.Memory.StoreWord(addr++, _physAddr.Mid);
-
-            // The low word's four nibbles are spread out like this:
-            _system.Memory.StoreWord(addr++, (ushort)((_physAddr.Hn << 12) | (_physAddr.MHn << 4)));
-            _system.Memory.StoreWord(addr, (ushort)((_physAddr.MLn << 12) | (_physAddr.Ln << 4)));
+            // DMA the unscrambled address bytes into the header buffer
+            for (var i = 0; i < words.Length; i++)
+            {
+                _system.Memory.StoreWord(addr++, words[i]);
+            }
 
             FinishCommand();
         }
@@ -391,7 +415,7 @@ namespace PERQemu.IO.Network
             _state = State.Complete;
             _status &= ~Status.Busy;
             _netInterrupt = true;
-            _system.CPU.RaiseInterrupt(Processor.InterruptSource.X);
+            _system.CPU.RaiseInterrupt(_irq);
         }
 
         public bool WantReceive(PhysicalAddress dest)
@@ -416,7 +440,15 @@ namespace PERQemu.IO.Network
             Console.WriteLine($"  Status register:   {(int)_status:x} ({_status})");
             Console.WriteLine("  Controller state:  {0}, scheduler callback {1} pending", _state,
                               (_response != null ? "IS" : "is NOT"));
-            Console.WriteLine($"  DMA addresses:     Header: 0x{header:x6}  Buffer: 0x{buffer:x6}");
+
+            Console.WriteLine($"  DMA addresses:     Header: 0x{header:x6}  Buffer: 0x{buffer:x6} ({_dmaRx})");
+            if (_dmaRx != _dmaTx)
+            {
+                header = _system.IOB.DMARegisters.GetHeaderAddress(_dmaTx);
+                buffer = _system.IOB.DMARegisters.GetDataAddress(_dmaTx);
+
+                Console.WriteLine($"  DMA addresses:     Header: 0x{header:x6}  Buffer: 0x{buffer:x6} ({_dmaTx})");
+            }
 
             Console.WriteLine("\n  Microsecond clock: {0} enabled, interrupt {1} enabled, {2} ticks",
                               (_control.HasFlag(Control.ClockEnable) ? "IS" : "Is NOT"),
@@ -485,6 +517,10 @@ namespace PERQemu.IO.Network
 
         bool _netInterrupt;
         bool _clockInterrupt;
+
+        InterruptSource _irq;
+        ChannelName _dmaTx;
+        ChannelName _dmaRx;
 
         ushort _bitCount;
         ushort _usecClock;
