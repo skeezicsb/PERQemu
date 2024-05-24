@@ -122,8 +122,7 @@ namespace PERQemu.IO.Z80
 #endif
             }
 
-            Log.Warn(Category.DMA, "Unhandled read from port 0x{0:x2}", portAddress);
-            return 0;
+            throw new UnhandledIORequestException(portAddress);
         }
 
         /// <summary>
@@ -237,8 +236,7 @@ namespace PERQemu.IO.Z80
                     break;
 
                 default:
-                    Log.Warn(Category.DMA, "Unhandled write 0x{0:x2} to port 0x{1:x2}", value, portAddress);
-                    break;
+                    throw new UnhandledIORequestException(portAddress, value);
             }
         }
 

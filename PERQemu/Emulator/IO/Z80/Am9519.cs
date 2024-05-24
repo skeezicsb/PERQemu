@@ -290,8 +290,7 @@ namespace PERQemu.IO.Z80
             }
 
             // Shouldn't get here...
-            Log.Warn(Category.Z80IRQ, "Unhandled read from 0x{0:x2}, returning 0", portAddress);
-            return 0;
+            throw new UnhandledIORequestException(portAddress);
         }
 
 
@@ -441,10 +440,11 @@ namespace PERQemu.IO.Z80
                         throw new InvalidOperationException($"Bad command byte 0x{value:x2}");
                 }
 
+                // Normal completion
                 return;
             }
 
-            throw new InvalidOperationException($"Bad register write 0x{portAddress:x2}");
+            throw new UnhandledIORequestException(portAddress);
         }
 
         //

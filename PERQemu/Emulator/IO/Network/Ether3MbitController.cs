@@ -47,7 +47,7 @@ namespace PERQemu.IO.Network
 
         public void LoadRegister(byte address, int value)
         {
-            throw new InvalidOperationException($"Unhandled write to port 0x{address:x}");
+            throw new UnhandledIORequestException(address, value);
         }
 
         public void LoadCommand(int value)
@@ -57,7 +57,7 @@ namespace PERQemu.IO.Network
 
         public int ReadRegister(byte address)
         {
-            throw new InvalidOperationException($"Unhandled read from port 0x{address:x}");
+            throw new UnhandledIORequestException(address);
         }
 
         public int ReadStatus()

@@ -18,40 +18,22 @@
 //
 
 using System;
-using System.Collections.Generic;
 
 using PERQmedia;
 using PERQemu.Config;
 using PERQemu.IO.Z80;
 using PERQemu.IO.DiskDevices;
-using PERQemu.Processor;
 
 namespace PERQemu.IO
 {
     /// <summary>
-    /// A superset of the DMA channel descriptions for IOB and EIO.
-    /// </summary>
-    public enum ChannelName
-    {
-        Unused = 0,
-        uProc = 1,
-        HardDisk = 2,
-        Network = 3,
-        NetXmit = 3,
-        ExtA = 4,
-        ExtB = 5,
-        NetRecv = 6,
-        Idle = 7
-    }
-
-    /// <summary>
     /// A base class for the PERQ's I/O boards.
     /// </summary>
     /// <remarks>
-    /// Each PERQ requires one IO board which contains (at minimum) a Z80
-    /// subsystem and hard disk controller.  The EIO board introduced with
-    /// the PERQ-2 series adds an on-board Ethernet controller, and additional
-    /// Z80 peripherals like a second serial port and real-time clock chip.
+    /// Each PERQ requires one IO board which contains (at minimum) a Z80 sub-
+    /// system and hard disk controller.  The EIO board introduced with the PERQ-2
+    /// series adds an on-board Ethernet controller and possibly an i8087 floating
+    /// point chip (which never made it into production and is not emulated).
     /// </remarks>
     public abstract class IOBoard : IIODevice
     {
@@ -69,6 +51,7 @@ namespace PERQemu.IO
 
         public static string Name => _name;
         public static string Description => _desc;
+
         public static ulong Z80CycleTime => _z80CycleTime;
 
         public static int Z80_RAM_SIZE => _z80RamSize;
@@ -77,11 +60,11 @@ namespace PERQemu.IO
         public static int Z80_ROM_ADDRESS => _z80RomAddr;
 
         public Z80System Z80System => _z80System;
-        public bool SupportsAsync => _z80System.SupportsAsync;
-        public bool IsEIO => _isEIO;
-
         public IStorageController DiskController => _hardDiskController;
         public DMARegisterFile DMARegisters => _dmaRegisters;
+
+        public bool SupportsAsync => _z80System.SupportsAsync;
+        public bool IsEIO => _isEIO;
 
         public bool HandlesPort(byte port)
         {
@@ -136,8 +119,10 @@ namespace PERQemu.IO
             _z80System = null;
             _hardDiskController = null;
 
-            for (var p = 1; p < _portsHandled.Length; p++)
+            for (var p = 0; p < _portsHandled.Length; p++)
+            {
                 _portsHandled[p] = false;
+            }
 
             Log.Detail(Category.Emulator, "IOBoard shutdown.");
         }
@@ -226,185 +211,5 @@ namespace PERQemu.IO
 
         // I/O port map for this board
         static bool[] _portsHandled = new bool[256];
-    }
-
-
-    public delegate void LoadRegisterDelegate(ChannelName chan, int value);
-
-    public class DMARegisterFile
-    {
-        public DMARegisterFile()
-        {
-            _portToChannelAction = new Dictionary<byte, LoadRegisterDelegate>();
-
-            _channels = new DMAChannel[] {
-                new DMAChannel(ChannelName.Unused),
-                new DMAChannel(ChannelName.uProc),
-                new DMAChannel(ChannelName.HardDisk),
-                new DMAChannel(ChannelName.NetXmit),
-                new DMAChannel(ChannelName.ExtA),
-                new DMAChannel(ChannelName.ExtB),
-                new DMAChannel(ChannelName.NetRecv),
-                new DMAChannel(ChannelName.Idle)
-            };
-        }
-
-        public void Clear()
-        {
-            for (var i = 0; i < _channels.Length; i++)
-            {
-                _channels[i].DataAddr.Value = 0;
-                _channels[i].HeaderAddr.Value = 0;
-            }
-        }
-
-        public void Assign(byte dataHi, byte dataLo, byte hdrHi, byte hdrLo)
-        {
-            // Four actions for every address pair
-            _portToChannelAction.Add(dataHi, LoadDataHigh);
-            _portToChannelAction.Add(dataLo, LoadDataLow);
-            _portToChannelAction.Add(hdrHi, LoadHeaderHigh);
-            _portToChannelAction.Add(hdrLo, LoadHeaderLow);
-
-            Log.Info(Category.DMA, "DMA mapping assigned for ports {0:x}, {1:x}, {2:x}, {3:x}",
-                                    dataHi, dataLo, hdrHi, hdrLo);
-        }
-
-        public void LoadRegister(ChannelName chan, byte port, int value)
-        {
-            LoadRegisterDelegate doit;
-
-            if (_portToChannelAction.TryGetValue(port, out doit))
-            {
-                doit(chan, value);
-                return;
-            }
-
-            Log.Warn(Category.DMA, "Could not load DMA register 0x{0:2x}, delegate not found!", port);
-        }
-
-        public void LoadDataHigh(ChannelName chan, int value)
-        {
-            _channels[(int)chan].DataAddr.Hi = ~value;
-            Log.Debug(Category.DMA, "{0} data buffer addr (high) set to {1:x}", chan, value);
-        }
-
-        public void LoadDataLow(ChannelName chan, int value)
-        {
-            _channels[(int)chan].DataAddr.Lo = (ushort)value;
-            Log.Debug(Category.DMA, "{0} data buffer addr (low) set to {1:x4}", chan, value);
-        }
-
-        public void LoadHeaderHigh(ChannelName chan, int value)
-        {
-            _channels[(int)chan].HeaderAddr.Hi = ~value;
-            Log.Debug(Category.DMA, "{0} header buffer addr (high) set to {1:x}", chan, value);
-
-            // If EIO header count is bits <7:4> of this word (irrelevant for IOB)
-            _channels[(int)chan].HeaderCount = (byte)(~(value >> 4) & 0x0f);
-        }
-
-        public void LoadHeaderLow(ChannelName chan, int value)
-        {
-            _channels[(int)chan].HeaderAddr.Lo = (ushort)value;
-            Log.Debug(Category.DMA, "{0} header buffer addr (low) set to {1:x4}", chan, value);
-        }
-
-        public int GetDataAddress(ChannelName chan)
-        {
-            return Unfrob(_channels[(int)chan].DataAddr);
-        }
-
-        public int GetHeaderAddress(ChannelName chan)
-        {
-            return Unfrob(_channels[(int)chan].HeaderAddr);
-        }
-
-        public byte GetHeaderCount(ChannelName chan)
-        {
-            return _channels[(int)chan].HeaderCount;
-        }
-
-        /// <summary>
-        /// Unfrob a DMA address like the hardware do.  This is common to IOB
-        /// and CIO, and any OIO device that uses DMA.  For EIO, the hardware
-        /// doesn't invert the high bits, but it does use one nibble to encode
-        /// the (inverted) word count for header transfers.
-        /// </summary>
-        /// <remarks>
-        ///                                 ! Explained:
-        /// tmp := 176000;                  ! Need to compliment upper 6 bits
-        ///                                 ! of buffer address. The hardware
-        ///                                 ! has an inversion for the upper
-        ///                                 ! 10 bits of the 20 bit address.
-        /// Buffer xor tmp, IOB(LHeadAdrL); ! Send lower 16 bits of logical
-        ///                                 ! header address to channel ctrl.
-        /// not 0, IOB(LHeadAdrH);          ! Send higher 4 bits of logical
-        ///                                 ! header address to channel ctrl.
-        ///                                 ! Remember, these bits are inverted.
-        /// </remarks>
-        public virtual int Unfrob(ExtendedRegister addr)
-        {
-            int unfrobbed;
-
-            if (PERQemu.Sys.IOB.IsEIO)
-            {
-                // For EIO, only the upper bits are inverted
-                unfrobbed = (~addr.Hi & 0x0f0000) | addr.Lo;
-            }
-            else
-            {
-                // Hi returns the upper 4 or 8 bits shifted; Lo needs to be unfrobbed
-                unfrobbed = addr.Hi | (~(0x3ff ^ addr.Lo) & 0xffff);
-            }
-            Log.Detail(Category.DMA, "Unfrobbed {0:x} -> {1:x}", addr.Value, unfrobbed);
-
-            return unfrobbed;
-        }
-
-        // Debugging
-        public void DumpDMARegisters()
-        {
-            Console.WriteLine("DMA registers:");
-
-            for (var i = ChannelName.uProc; i < ChannelName.Idle; i++)
-            {
-                Console.WriteLine(_channels[(int)i]);
-                Console.WriteLine("Unfrobbed:          {0:x6}        {1:x6}",
-                                  GetHeaderAddress(i), GetDataAddress(i));
-            }
-        }
-
-
-        internal struct DMAChannel
-        {
-            public DMAChannel(ChannelName chan)
-            {
-                Name = chan;
-
-                // Should be 20 bits for IOB/CIO, 20 or 24 bits for EIO!
-                HeaderAddr = new ExtendedRegister(CPU.CPUBits - 16, 16);
-                DataAddr = new ExtendedRegister(CPU.CPUBits - 16, 16);
-
-                // For EIO, bits <7:4> of the high header address are the complement
-                // of the (quad) word count.  Provided for convenience :-)
-                HeaderCount = 0;
-            }
-
-            public override string ToString()
-            {
-                return string.Format("{0}  Header: {1:x6}  Data: {2:x6}  Count: {3}",
-                                     $"{Name}".PadRight(10), HeaderAddr.Value, DataAddr.Value, HeaderCount);
-            }
-
-            public ChannelName Name;
-            public ExtendedRegister HeaderAddr;
-            public ExtendedRegister DataAddr;
-
-            public byte HeaderCount;
-        }
-
-        DMAChannel[] _channels;
-        Dictionary<byte, LoadRegisterDelegate> _portToChannelAction;
     }
 }

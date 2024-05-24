@@ -40,7 +40,6 @@ namespace PERQemu.IO
 
         public void Clock()
         {
-
 #if PERQLINK
             //
             // Synchronize the two processes in lockstep here.
@@ -92,13 +91,11 @@ namespace PERQemu.IO
             // reset latch
             _bufCycLatch = 0;
 
-#if TRACING_ENABLED
-           // if (Trace.TraceOn) Log.Debug(Category.Link, "PERQLink CSR read {0:x1}.", (value & 0xf));
-#endif
+            Log.Debug(Category.Link, "PERQLink CSR read {0:x1}.", (value & 0xf));
 
             return value;
 #else
-            return 0xff;    // Just indicate that nothing's there...
+            return 0xffff;    // Just indicate that nothing's there...
 #endif
         }
 
@@ -116,16 +113,14 @@ namespace PERQemu.IO
                 value = _linkData.DataDebugger;
             }
 
-#if TRACING_ENABLED
-                Log.Debug(Category.Link, "PERQLink Data debugger {0:x4}.", _linkData.DataDebugger);
-                Log.Debug(Category.Link, "PERQLink Data target {0:x4}.", _linkData.DataTarget);
-                Log.Debug(Category.Link, "PERQLink Data read {0:x4}.", value);
+            Log.Debug(Category.Link, "PERQLink Data debugger {0:x4}.", _linkData.DataDebugger);
+            Log.Debug(Category.Link, "PERQLink Data target {0:x4}.", _linkData.DataTarget);
+            Log.Debug(Category.Link, "PERQLink Data read {0:x4}.", value);
 
             if (value == 0x14e5)        // Hello
             {
                 Log.Debug(Category.Link, "Read HELLO!", value);
             }
-#endif
 
             return value;
 #else
@@ -136,9 +131,7 @@ namespace PERQemu.IO
         public void WriteCommandStatus(int value)
         {
 #if PERQLINK
-#if TRACING_ENABLED
-            // Log.Debug(Category.Link, "PERQLink CSR write {0:x1}.", (value & 0xf));
-#endif
+            Log.Debug(Category.Link, "PERQLink CSR write {0:x1}.", (value & 0xf));
 
             if (_linkData.EndPoint == Endpoint.Debugger)
             {
@@ -154,23 +147,20 @@ namespace PERQemu.IO
         public void WriteData(int value)
         {
 #if PERQLINK
-#if TRACING_ENABLED
-
             if (value == 0x14e5)        // Hello
             {
                 Log.Debug(Category.Link, "Wrote HELLO!", value);
             }
-#endif
 
             if (_linkData.EndPoint == Endpoint.Debugger)
             {
                 _linkData.DataDebugger = value;
-                // Log.Debug(Category.Link, "PERQLink Data write {0:x4}.", _linkData.DataDebugger);
+                Log.Debug(Category.Link, "PERQLink Data write {0:x4}.", _linkData.DataDebugger);
             }
             else
             {
                 _linkData.DataTarget = value;
-               // Log.Debug(Category.Link, "PERQLink Data write {0:x4}.", _linkData.DataTarget);
+                Log.Debug(Category.Link, "PERQLink Data write {0:x4}.", _linkData.DataTarget);
             }
 #endif
         }
@@ -179,8 +169,10 @@ namespace PERQemu.IO
         private SharedLinkData _linkData;
         private int _bufCycLatch;
 #endif
-        }
+    }
 
+
+#if PERQLINK
     /// <summary>
     /// Data marshalled to and from shared memory via SharedLinkData
     /// </summary>
@@ -199,7 +191,6 @@ namespace PERQemu.IO
         Debugger
     }
 
-#if PERQLINK
     /// <summary>
     /// Encapsulates win32 shared memory used to allow PERQLink to communicate between two processes,
     /// as well as a shared event for interlocking execution of the two processes.
@@ -423,7 +414,6 @@ namespace PERQemu.IO
             SectionNoCache = 0x10000000,
             SectionReserve = 0x4000000,
         }
-
     }
 #endif
 }

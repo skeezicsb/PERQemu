@@ -237,11 +237,11 @@ namespace PERQemu.IO.Network
                     break;
 
                 case 0xc3:
-                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
+                    Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
                     break;
 
                 default:
-                    throw new InvalidOperationException($"Unhandled write to port 0x{address:x}");
+                    throw new UnhandledIORequestException(address, value);
             }
         }
 
@@ -332,7 +332,7 @@ namespace PERQemu.IO.Network
                     return retVal;
 
                 default:
-                    throw new InvalidOperationException($"Unhandled read from port 0x{address:x}");
+                    throw new UnhandledIORequestException(address);
             }
         }
 
@@ -368,7 +368,7 @@ namespace PERQemu.IO.Network
             // regardless of whether the net or timer raised it -- or both!?
             _system.CPU.ClearInterrupt(_irq);
             Log.Info(Category.Ethernet, "Read status: {0} interrupt cleared, flags {1} ({2:x})",
-                                        _irq, _status, retVal);
+                                         _irq, _status, retVal);
             return retVal;
         }
 
@@ -383,7 +383,7 @@ namespace PERQemu.IO.Network
             var addr = _system.IOB.DMARegisters.GetHeaderAddress(_dmaRx);
             var words = _physAddr.Unscrambled(_system.IOB.IsEIO);
 
-            Log.Debug(Category.Ethernet, "Writing machine address to 0x{0:x6}", addr);
+            Log.Info(Category.Ethernet, "Writing machine address to 0x{0:x6}", addr);
 
             // DMA the unscrambled address bytes into the header buffer
             for (var i = 0; i < words.Length; i++)

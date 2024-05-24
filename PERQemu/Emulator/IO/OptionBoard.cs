@@ -45,6 +45,9 @@ namespace PERQemu.IO
             _sys = system;
         }
 
+        public static string Name => _name;
+        public static string Description => _desc;
+
         public bool HandlesPort(byte port)
         {
             return _portsHandled[port];
@@ -59,7 +62,26 @@ namespace PERQemu.IO
             Log.Info(Category.IO, "{0} board reset", _name);
         }
 
-        public abstract uint Clock();
+        public virtual void Run()
+        {
+            // Replaces Clock(), which only the Link used, and may again someday?
+            // If we ever get to Ether3Mbit, Multibus, Audre we'll consider if
+            // the Run/RunAsync/Stop approach that IOBoard uses is appropriate here
+        }
+
+        public virtual void Shutdown()
+        {
+            for (var p = 0; p < _portsHandled.Length; p++)
+            {
+                _portsHandled[p] = false;
+            }
+
+            Log.Detail(Category.Emulator, "OptionBoard shutdown.");
+        }
+
+        //
+        // IO Bus connection
+        //
 
         public abstract int IORead(byte port);
 
@@ -83,17 +105,6 @@ namespace PERQemu.IO
         {
         }
 
-        public virtual void Shutdown()
-        {
-            for (var p = 1; p < _portsHandled.Length; p++)
-                _portsHandled[p] = false;
-
-            Log.Detail(Category.Emulator, "OptionBoard shutdown.");
-        }
-
-        /// <summary>
-        /// Populate the port lookup table.
-        /// </summary>
         protected void RegisterPorts(byte[] ports)
         {
             foreach (var p in ports)
@@ -111,10 +122,10 @@ namespace PERQemu.IO
         protected static string _name;
         protected static string _desc;
 
-        // I/O port map for this board
-        static bool[] _portsHandled = new bool[256];
-
         // Parent
         protected PERQSystem _sys;
+
+        // I/O port map for this board
+        static bool[] _portsHandled = new bool[256];
     }
 }

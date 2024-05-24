@@ -22,9 +22,20 @@ using System.Collections.Generic;
 
 namespace PERQemu.IO
 {
+    /// <summary>
+    /// Handle read/write errors in a uniform way?
+    /// </summary>
     public class UnhandledIORequestException : Exception
     {
-        public UnhandledIORequestException(string message) : base(message)
+        public UnhandledIORequestException(byte addr) : base($"Unhandled IO Read from port {addr:x2}")
+        {
+        }
+
+        public UnhandledIORequestException(byte addr, byte val) : base($"Unhandled IO Write 0x{val:x2} to port {addr:x2}")
+        {
+        }
+
+        public UnhandledIORequestException(byte addr, int val) : base($"Unhandled IO Write 0x{val:x4} to port {addr:x2}")
         {
         }
     }
@@ -68,22 +79,23 @@ namespace PERQemu.IO
         public int IORead(byte ioPort)
         {
             int value = 0xffff;
-            IIODevice device = _deviceDispatch[ioPort];
 
-            if (device != null)
+            try
             {
+                IIODevice device = _deviceDispatch[ioPort];
+                if (device == null) throw new UnhandledIORequestException(ioPort);
+
                 value = device.IORead(ioPort);
 #if DEBUG
                 // Reads from the video regs cause too much log spewage
-                if (!(_deviceDispatch[ioPort] is Memory.VideoController))
+                if (!(device is Memory.VideoController))
                     Log.Debug(Category.IO, "Read 0x{0:x4} from port 0x{1:x2} ({2})",
                                             value, ioPort, device.ToString());
 #endif
             }
-            else
+            catch (UnhandledIORequestException e)
             {
-                Log.Warn(Category.IO, "Unhandled Read from port 0x{0:x2}, returning 0x{1:x4}",
-                                       ioPort, value);
+                Log.Warn(Category.IO, e.Message);
             }
 
             return value;
@@ -91,23 +103,23 @@ namespace PERQemu.IO
 
         public void IOWrite(byte ioPort, int value)
         {
-            value &= 0xffff;    // IOD is 16 bits wide; trim upper bits
-            IIODevice device = _deviceDispatch[ioPort];
-
-            if (device != null)
+            try
             {
+                IIODevice device = _deviceDispatch[ioPort];
+                if (device == null) throw new UnhandledIORequestException(ioPort, value);
+
+                value &= 0xffff;
                 device.IOWrite(ioPort, value);
 #if DEBUG
                 // Cut down on too much noise; comment out to debug video
-                if (!(_deviceDispatch[ioPort] is Memory.VideoController))
+                if (!(device is Memory.VideoController))
                     Log.Debug(Category.IO, "Write 0x{0:x4} to port 0x{1:x2} ({2})",
                                             value, ioPort, device.ToString());
 #endif
             }
-            else
+            catch (UnhandledIORequestException e)
             {
-                Log.Warn(Category.IO, "Unhandled Write of 0x{0:x4} to port 0x{1:x2})",
-                                       value, ioPort);
+                Log.Warn(Category.IO, e.Message);
             }
         }
 

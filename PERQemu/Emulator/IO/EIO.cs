@@ -160,8 +160,7 @@ namespace PERQemu.IO
                     return _ethernetController?.ReadRegister(port) ?? 0xff;
 
                 default:
-                    Log.Warn(Category.IO, "Unhandled EIO Read from port {0:x2}", port);
-                    return 0xff;
+                    throw new UnhandledIORequestException(port);
             }
         }
 
@@ -226,8 +225,7 @@ namespace PERQemu.IO
                     break;
 
                 default:
-                    Log.Warn(Category.IO, "Unhandled EIO Write to port {0:x2}, data {1:x4}", port, value);
-                    break;
+                    throw new UnhandledIORequestException(port, value);
             }
         }
 

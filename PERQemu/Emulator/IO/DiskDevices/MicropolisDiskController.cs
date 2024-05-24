@@ -165,7 +165,7 @@ namespace PERQemu.IO.DiskDevices
                     break;
 
                 default:
-                    throw new InvalidOperationException($"Bad register write 0x{address:x2}");
+                    throw new UnhandledIORequestException(address, value);
             }
         }
 

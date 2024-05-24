@@ -207,16 +207,16 @@ namespace PERQemu.IO.Network
                 case 0xcf:  // Grp5
                     offset = address - 0xca;
                     _mcastGroups[offset] = (byte)(~value & 0xff);
-                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to multicast register {1} (0x{2:x2})", value, offset, address);
+                    Log.Detail(Category.Ethernet, "Wrote 0x{0:x2} to multicast register {1} (0x{2:x2})", value, offset, address);
                     break;
 
                 // Interrupt enable register
                 case 0xc3:
-                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
+                    Log.Detail(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
                     break;
 
                 default:
-                    throw new InvalidOperationException($"Unhandled write to port 0x{address:x}");
+                    throw new UnhandledIORequestException(address, value);
             }
         }
 
@@ -332,7 +332,7 @@ namespace PERQemu.IO.Network
                     return retVal;
 
                 default:
-                    throw new InvalidOperationException($"Unhandled write to port 0x{address:x}");
+                    throw new UnhandledIORequestException(address);
             }
         }
 
@@ -398,7 +398,7 @@ namespace PERQemu.IO.Network
             var addr = _system.IOB.DMARegisters.GetHeaderAddress(_dmaRx);
             var words = _physAddr.Unscrambled(_system.IOB.IsEIO);
 
-            Log.Info(Category.Ethernet, "Writing machine address to 0x{0:x6}", addr);
+            Log.Debug(Category.Ethernet, "Writing machine address to 0x{0:x6}", addr);
 
             // DMA the unscrambled address bytes into the header buffer
             for (var i = 0; i < words.Length; i++)

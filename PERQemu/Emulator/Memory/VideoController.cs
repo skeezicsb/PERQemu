@@ -144,7 +144,7 @@ namespace PERQemu.Memory
                     return 0x0;
 
                 default:
-                    throw new UnhandledIORequestException($"Unhandled Memory IO Read from port {ioPort:x2}");
+                    throw new UnhandledIORequestException(ioPort);
             }
         }
 
@@ -281,7 +281,7 @@ namespace PERQemu.Memory
                     break;
 
                 default:
-                    throw new UnhandledIORequestException($"Unhandled IO Write to port {ioPort:x2}, data {value:x4}");
+                    throw new UnhandledIORequestException(ioPort, value);
             }
         }
 

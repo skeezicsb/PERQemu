@@ -136,18 +136,20 @@ namespace PERQemu.IO.Z80
 
         byte ReadPort(int port)
         {
-            IZ80Device device = _devicePorts[port];
             byte value = 0xff;
 
-            if (device != null)
+            try
             {
+                IZ80Device device = _devicePorts[port];
+                if (device == null) throw new UnhandledIORequestException((byte)port);
+
                 value = device.Read((byte)port);
 
-                Log.Debug(Category.Z80, "Read 0x{0:x} from port 0x{1:x} ({2})", value, port, device.Name);
+                Log.Debug(Category.Z80, "Read 0x{0:x2} from port 0x{1:x2} ({2})", value, port, device.Name);
             }
-            else
+            catch (UnhandledIORequestException e)
             {
-                Log.Warn(Category.Z80, "Unhandled Read from port 0x{0:x}, returning 0xff", port);
+                Log.Warn(Category.Z80, e.Message);
             }
 
             return value;
@@ -155,17 +157,16 @@ namespace PERQemu.IO.Z80
 
         void WritePort(int port, byte value)
         {
-            IZ80Device device = _devicePorts[port];
-
-            if (device != null)
+            try
             {
+                IZ80Device device = _devicePorts[port];
                 device.Write((byte)port, value);
 
                 Log.Debug(Category.Z80, "Write 0x{0:x} to port 0x{1:x} ({2})", value, port, device.Name);
             }
-            else
+            catch (UnhandledIORequestException e)
             {
-                Log.Warn(Category.Z80, "Unhandled Write of 0x{0:x} to port 0x{1:x}", value, port);
+                Log.Warn(Category.Z80, e.Message);
             }
         }
 
