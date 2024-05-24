@@ -160,6 +160,8 @@ namespace PERQemu.IO.Z80
             try
             {
                 IZ80Device device = _devicePorts[port];
+                if (device == null) throw new UnhandledIORequestException((byte)port);
+
                 device.Write((byte)port, value);
 
                 Log.Debug(Category.Z80, "Write 0x{0:x} to port 0x{1:x} ({2})", value, port, device.Name);
