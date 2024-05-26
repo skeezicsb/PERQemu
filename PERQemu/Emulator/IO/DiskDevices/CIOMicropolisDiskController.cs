@@ -43,6 +43,9 @@ namespace PERQemu.IO.DiskDevices
         //  good disassembly of a definitive microcode binary can be found.
         //  The standard MicropolisDiskController is now EIO only.
         //
+        //  Todo: when revisiting this, use the split controller/DIB approach
+        //  that worked so beautifully in the EIO implementation.
+        //
 
         public CIOMicropolisDiskController(PERQSystem system)
         {
@@ -54,7 +57,9 @@ namespace PERQemu.IO.DiskDevices
             _cylinder = new ExtendedRegister(4, 8);
             _nibLatch = new ExtendedRegister(4, 4);
 
-            // 8" drives are only supported on the 20-bit machines...
+            // 8" drives are only supported on the 20-bit machines?
+            // Actually... there is an Accent.PQ2.24.Mboot! but these
+            // are probably deleted with the new DMA registry anyway
             _dataBuffer = new ExtendedRegister(4, 16);
             _headerAddress = new ExtendedRegister(4, 16);
         }
@@ -64,12 +69,9 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         public void Reset()
         {
-            if (_disk != null)
-            {
-                _disk.Reset();
-            }
+            _disk?.Reset();
 
-            // Clears busy and the interrupt
+            // Clear busy and the interrupt
             ClearBusyState();
 
             // Force a soft reset (calls ResetFlags)

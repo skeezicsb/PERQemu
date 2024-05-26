@@ -240,7 +240,12 @@ namespace PERQemu
         {
             try
             {
+                // Save our current state; if running, pause, adjust, and restart!
+                bool restart = _requesters[tag].Enabled;
+
+                if (restart) Enable(tag, false);
                 _requesters[tag].Interval = interval;
+                if (restart) Enable(tag, true);
                 Log.Debug(Category.Timer, "Interval for timer {0} now {1}", tag, interval);
             }
             catch

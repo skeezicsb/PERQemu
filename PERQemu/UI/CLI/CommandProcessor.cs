@@ -165,11 +165,32 @@ namespace PERQemu
             {
                 HighResolutionTimer.Run();
 
-                if (Console.KeyAvailable)
-                    break;
+                UpdateDDS();
+                if (Console.KeyAvailable) break;
             }
 
             return Console.ReadKey(true);
+        }
+
+        /// <summary>
+        /// Updates the DDS in the console window title bar.
+        /// </summary>
+        /// <remarks>
+        /// Someday this will probably move to the GUI/SDL since the console
+        /// window title bar updates are kind of problematic.  Updating too fast
+        /// causes some terminal emulators to glitch; inserting a pause/yield on
+        /// the main thread bogs down the whole emulator.  Because POS G wraps
+        /// the DDS around several times during boot, we buffer the updates to
+        /// at most every 50ms or so (in real time).
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        void UpdateDDS()
+        {
+            if (_lastDDS != _dds)
+            {
+                Console.Title = $"DDS {_dds:d3}";
+                _lastDDS = _dds;
+            }
         }
 
         /// <summary>
@@ -177,13 +198,7 @@ namespace PERQemu
         /// </summary>
         void OnDDSChange(MachineStateChangeEventArgs a)
         {
-            var dds = (int)a.Args[0];
-            Console.Title = $"DDS {dds:d3}";
-
-            // POS G goes nuts running up the DDS at boot time, causing the
-            // old Mac OS Terminal to just lag out horribly; see if this makes
-            // it run a little smoother?
-            System.Threading.Thread.Sleep(2);
+            _dds = (int)a.Args[0];
         }
 
         /// <summary>
@@ -193,19 +208,16 @@ namespace PERQemu
         {
             var state = a.State;
 
-            // Reset our title if the machine is off; add or remove the DDS
-            // change hook when the machine is powered up or down
-            if (state == RunState.Off)
+            // Add or remove the DDS change hook when the machine powers up or down
+            if (state == RunState.WarmingUp)
             {
-                Console.Title = "PERQemu";
-            }
-            else if (state == RunState.WarmingUp)
-            {
+                _dds = _lastDDS = 0;
                 PERQemu.Sys.DDSChanged += OnDDSChange;
             }
             else if (state == RunState.ShuttingDown)
             {
                 PERQemu.Sys.DDSChanged -= OnDDSChange;
+                Console.Title = "PERQemu";
             }
         }
 
@@ -426,7 +438,11 @@ namespace PERQemu
         }
 
 
+        int _dds;
+        int _lastDDS;
+
         bool _running;
+
         CommandExecutor _exec;
         CommandPrompt _editor;
     }

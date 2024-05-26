@@ -8,6 +8,17 @@ avoid wasting precious time scrolling to the end. :-)
 
 May, 2024:
 
+    5. Some cleanups and small tweaks: fixed Yet Another strange PNX video issue
+    so now PNX 3 can drive the display properly.  So close, guys.  So close.
+
+    Finally got around to fixing the DDS update in the Console title bar that
+    would glitch out some terminal emulators, removing the awful sleep() hack.
+    Now when POS G boots the poor VM doesn't grind to a snail's pace waiting on
+    the main thread to loop updating the DDS.  Still have to debug why the new
+    PERQ-2 serial keyboard isn't properly transmitting certain control codes,
+    like the SAPPHIRE prefix key.  Hope to have some new PERQ-2 configurations
+    with pre-loaded Micropolis disk images assembled soon for an interim release!
+
     4. Ethernet and GPIB fixes for EIO.  Bitpad tracking now works, and the Null
     and 10Mbit Ethernet drivers are properly returning the MAC address bytes,
     updated and "simplified" for both OIO and EIO.  But do not attempt to reason
@@ -336,4 +347,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Thu May 23 16:00:09 PDT 2024
+Last update: skeezics    Sun May 26 00:28:49 PDT 2024

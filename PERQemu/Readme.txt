@@ -265,6 +265,11 @@ Fixed in v0.5.3:
   - A workaround for PNX 2 video support is included (disk image TBA).
   - Accent S7 (Release III, unreleased) also verified as well.
 
+Added in v0.5.8:
+  - PNX 3 is now also confirmed to boot and run (from floppy) with an
+    included video patch.  (I may be missing one critical floppy needed
+    to complete a full hard disk install, however.  Watch this space.)
+
 
 NOTE: PNX 1 only supports 1MB of memory and will crash if configured with more.
 PNX 2, PNX 3, POS, MPOS and Accent have no trouble with a full megaword (2MB)
@@ -329,8 +334,8 @@ The following hardware has been implemented in the emulator:
 
   Keyboard:
     - Now uses the SDL2 interface so no more horrible hacks required for MacOS;
-    - Support for the VT100-style PERQ-2 keyboard is now included but can't be
-      tested until EIO support is complete.
+    - Support for the VT100-style PERQ-2 keyboard is now included and is working
+      (but is not fully tested and has some limitations);
     - Currently caps lock is problematic and can get out of sync with the host.
       This is a minor inconvenience but it's on the bug list.  [TODO: check if
       this is still the case under SDL2.]
@@ -354,7 +359,7 @@ The following hardware has been implemented in the emulator:
   Tablets:
     - The proprietary Kriz tablet works with the new SIO chip; it is only
       useful on POS F.1 and later (no support in D.6, F.0, PNX 1, or Accent S4);
-    - The simulated Summagraphics BitPadOne works with the new GPIB; it is
+    - The simulated Summagraphics BitPadOne works with the new GPIB and is
       supported on all PERQ OSes;
     - PERQ-2/EIO configuration support: Kriz tablet and GPIB BitPad are working.
 
@@ -461,18 +466,14 @@ developed and is included in PERQemu v0.5.8 and beyond.
 
 5. PNX video glitches.
 
-Symptoms: The PNX 2 window manager paints its stippled background with a strange
-striped pattern; PNX 3 does not seem to display anything after the VFY memory
-test, even though the DDS seems to indicate the system has booted.
+Symptoms: The PNX 2 window manager sometimes randomly paints its background 
+pattern with strange stripes or other visual anomalies.
 
-Workaround:  Under PNX 2, the strange background pattern is visually distracting
-but does not appear to cause any issues running the OS.  Sometimes dragging a
-window around will cause it to repaint properly.  When attempting to boot PNX 3,
-the LineCounter interrupt does not appear to fire and thus the screen does not
-repaint properly once PNX takes over control of the video display list.  If you
-can type "debug raise interrupt linecounter" on the console 60 times a second
-the display is properly refreshed.  (Yet Another PNX video patch will be added
-in a future snapshot as PNX 3 seems to add significant functionality!)
+Workaround:  While the odd background pattern is visually distracting it does
+not appear to cause any issues running the OS.  Sometimes dragging a window
+around will cause it to repaint properly.  Initial analysis shows that this
+might be a RasterOp glitch specific to the PNX 2 implementation, as it does not
+affect PNX 1 or other OSes.
 
 
 5.0 Version History and Roadmap
@@ -631,7 +632,7 @@ v0.1 - First public release.
 
 Update history:
 
-5/23/2024 - skeezicsb - v0.5.8 (experiments)
+5/25/2024 - skeezicsb - v0.5.8 (experiments)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0
 1/17/2023 - skeezicsb - v0.4.9 (main)

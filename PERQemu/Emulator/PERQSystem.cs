@@ -295,8 +295,8 @@ namespace PERQemu
                     break;
 
                 case RunState.ShuttingDown:
-                    _state = RunState.Off;
                     Shutdown();
+                    _state = RunState.Off;
                     break;
 
                 case RunState.Reset:
@@ -362,11 +362,10 @@ namespace PERQemu
             // Now go away or I shall taunt you some more
             _inputs.Shutdown();
             _display.Shutdown();
-
-            if (_oio != null) _oio.Shutdown();
-
+            _oio?.Shutdown();
             _iob.Shutdown();
             _cpu.Shutdown();
+
             _ioBus = null;
             Log.Detail(Category.Emulator, "PERQSystem shutdown.");
         }

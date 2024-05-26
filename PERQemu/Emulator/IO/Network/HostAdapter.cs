@@ -45,7 +45,7 @@ namespace PERQemu.IO.Network
 
             if (_adapter == null)
             {
-                throw new UnimplementedHardwareException("Host adapter not found");
+                throw new UnimplementedHardwareException("Host adapter not found (or not accessible)");
             }
 
             // Open the device and register our receive callback
@@ -75,6 +75,11 @@ namespace PERQemu.IO.Network
         {
             if (!Running)
             {
+                // If we just changed configuration, our own address may have changed;
+                // the table will get refreshed pretty quickly so this shouldn't be too
+                // disruptive (but make it a CLI option instead, if it is)
+                _nat.Flush();
+
                 // Add our local NAT entry
                 if (!_nat.Add(new NATEntry(_adapter.MacAddress, _controller.MACAddress, true)))
                 {
@@ -615,7 +620,7 @@ namespace PERQemu.IO.Network
                 }
             }
 
-            Log.Write("Could not find a match for Ethernet adapter '{0}'", name);
+            Log.Info(Category.NetAdapter, "Could not find a match for Ethernet adapter '{0}'", name);
             return null;
         }
 

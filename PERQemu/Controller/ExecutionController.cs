@@ -319,7 +319,7 @@ namespace PERQemu
             var count = (int)context;
             var keycode = (byte)(PERQemu.Sys.IOB.Z80System.IsEIO ? ~_bootChar : _bootChar);
 
-            if (PERQemu.Sys.CPU.DDS < 152 && count < 5)
+            if (PERQemu.Sys.CPU.DDS < 152 && count < 10)
             {
                 if (PERQemu.Sys.IOB.Z80System.IsRunning)
                 {
