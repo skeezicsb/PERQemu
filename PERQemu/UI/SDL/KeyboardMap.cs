@@ -75,6 +75,8 @@ namespace PERQemu.UI
     {
         public KeyboardMap(ChassisType machine)
         {
+            _map = new Dictionary<SDL.SDL_Keycode, PERQKey>();
+
             if (machine == ChassisType.PERQ1)
                 SetupPERQ1Map();
             else
@@ -108,6 +110,12 @@ namespace PERQemu.UI
 
         public void SetKeyMapping(SDL.SDL_Keycode keycode, PERQKey key)
         {
+#if DEBUG
+            if (_map.ContainsKey(keycode))
+            {
+                Console.WriteLine($"Duplicate keycode {keycode} (key {key}) entered in map!");
+            }
+#endif
             _map[keycode] = key;
         }
 
@@ -279,7 +287,7 @@ namespace PERQemu.UI
             SetKeyMapping(SDL.SDL_Keycode.SDLK_TAB, new PERQKey(0xf6, 0xf6, 0x76, 0x76));        // TAB
             SetKeyMapping(SDL.SDL_Keycode.SDLK_ESCAPE, new PERQKey(0xe4, 0xe4, 0x64, 0x64));     // ESCAPE
             SetKeyMapping(SDL.SDL_Keycode.SDLK_INSERT, new PERQKey(0xe4, 0xe4, 0x64, 0x64));     // INSERT (same as ESC on PERQ)
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_DELETE, new PERQKey(0x80, 0x80, 0x00, 0x00));     // DELETE (ZERO? SRSLY?)
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_DELETE, new PERQKey(0x80, 0x80, 0xf4, 0xf4));     // DELETE (send SETUP, not NUL!)
             SetKeyMapping(SDL.SDL_Keycode.SDLK_RETURN, new PERQKey(0xf2, 0xf2, 0x72, 0x72));     // RETURN
 
             // Arrows
@@ -291,38 +299,45 @@ namespace PERQemu.UI
             // PERQ/VT100 keys
             SetKeyMapping(SDL.SDL_Keycode.SDLK_HELP, new PERQKey(0xf8, 0xf8, 0x78, 0x78));       // HELP
             SetKeyMapping(SDL.SDL_Keycode.SDLK_CLEAR, new PERQKey(0xea, 0xea, 0x6a, 0x6a));      // OOPS
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_SYSREQ, new PERQKey(0x7f, 0x7e, 0x7d, 0x7c));     // BREAK (Todo: Pause/Break?)
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_CLEAR, new PERQKey(0xea, 0xea, 0x6a, 0x6a));   // OOPS (Mac)
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_SYSREQ, new PERQKey(0x7f, 0x7e, 0x7d, 0x7c));     // BREAK
             SetKeyMapping(SDL.SDL_Keycode.SDLK_SCROLLLOCK, new PERQKey(0xf3, 0xf3, 0xf1, 0xf1)); // NOSCRL
             SetKeyMapping(SDL.SDL_Keycode.SDLK_PAGEDOWN, new PERQKey(0xf5, 0xf5, 0x75, 0x75));   // LINEFEED
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_PAGEUP, new PERQKey(0xf4, 0xf4, 0xf9, 0xf9));     // SETUP (Todo: SYSREQ better choice?)
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_PAGEUP, new PERQKey(0xf4, 0xf4, 0xf9, 0xf9));     // SETUP
 
             // Keypad
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_F1, new PERQKey(0x7b));         // PF1
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_F2, new PERQKey(0x7a));         // PF2
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_F3, new PERQKey(0x79));         // PF3
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_F4, new PERQKey(0x74));         // PF4
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_F1, new PERQKey(0x7b));          // PF1
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_F2, new PERQKey(0x7a));          // PF2
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_F3, new PERQKey(0x79));          // PF3
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_F4, new PERQKey(0x74));          // PF4
 
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_PERIOD, new PERQKey(0x6b));  // Keypad '.'
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_MINUS, new PERQKey(0x6c));   // Keypad '-'
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_COMMA, new PERQKey(0x6d));   // Keypad ','
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_ENTER, new PERQKey(0x73));   // ENTER
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_PERIOD, new PERQKey(0x6b));   // Keypad '.'
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_MINUS, new PERQKey(0x6c));    // Keypad '-'
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_COMMA, new PERQKey(0x6d));    // Keypad ','
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_ENTER, new PERQKey(0x73));    // ENTER
 
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_0, new PERQKey(0x69));       // NumPad 0
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_1, new PERQKey(0x68));       // NumPad 1
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_2, new PERQKey(0x67));       // NumPad 2
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_3, new PERQKey(0x66));       // NumPad 3
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_4, new PERQKey(0x65));       // NumPad 4
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_5, new PERQKey(0x63));       // NumPad 5
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_6, new PERQKey(0x62));       // NumPad 6
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_7, new PERQKey(0x61));       // NumPad 7
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_8, new PERQKey(0x60));       // NumPad 8
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_9, new PERQKey(0x5f));       // NumPad 9
+            // Not present on PERQ, map to expected key on modern keyboards:
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_PLUS, new PERQKey(0xd4));     // '+'
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_EQUALS, new PERQKey(0xc2));   // '='
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_DIVIDE, new PERQKey(0xd0));   // '/'
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_MULTIPLY, new PERQKey(0xd5)); // '*'
+
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_0, new PERQKey(0x69));        // NumPad 0
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_1, new PERQKey(0x68));        // NumPad 1
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_2, new PERQKey(0x67));        // NumPad 2
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_3, new PERQKey(0x66));        // NumPad 3
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_4, new PERQKey(0x65));        // NumPad 4
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_5, new PERQKey(0x63));        // NumPad 5
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_6, new PERQKey(0x62));        // NumPad 6
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_7, new PERQKey(0x61));        // NumPad 7
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_8, new PERQKey(0x60));        // NumPad 8
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_9, new PERQKey(0x5f));        // NumPad 9
 
             Log.Debug(Category.Keyboard, "PERQ-2 (VT100) map initialized");
         }
 
         // One map to rule them all
-        Dictionary<SDL.SDL_Keycode, PERQKey> _map = new Dictionary<SDL.SDL_Keycode, PERQKey>();
+        Dictionary<SDL.SDL_Keycode, PERQKey> _map;
 
         // Have to catch/test for CAPS LOCK status ourselves, and maintain local state.  Ugh.
         bool _lockCaps;
