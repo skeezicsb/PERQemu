@@ -6,7 +6,26 @@ notes moved to ChangeLog-Old.txt.  New entries here will be added at the top, to
 avoid wasting precious time scrolling to the end. :-)
 
 
+June, 2024:
+
+    1. Called away IRL to deal with the whole stupid "not going broke" thing but
+    trying to sneak in development time around the edges.  Merging the interim
+    alpha-/maybe-beta-quality PERQ-2/EIO/Micropolis code into main as a snapshot
+    before leaping into the multiple-drive capable MFM hard disk controller and
+    further PERQ-2 development/refinements.  User Guide way out of date and no
+    pre-built Micropolis disk images included, yet.  Calling this v0.5.8, on the
+    way to a proper v0.6 or v0.7 release when documentation/bugs/MFM catch up.
+
+
 May, 2024:
+
+    6. A few key mapping updates for the PERQ-2 VT100 layout: adding a few extra
+    keys that aren't on the actual PERQ keyboard but are present on modern ones,
+    I figure sending the expected thing rather than having no response at all is
+    the better choice.  I really do want to figure out a clean, simple, cross-
+    platform way to allow setting host-to-PERQ keyboard mappings (at least for a
+    handful of special keys).  For now, hacking UI/SDL/KeyboardMap.cs is the way
+    to change or add your own custom keyboard settings.
 
     5. Some cleanups and small tweaks: fixed Yet Another strange PNX video issue
     so now PNX 3 can drive the display properly.  So close, guys.  So close.
@@ -347,4 +366,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Sun May 26 00:28:49 PDT 2024
+Last update: skeezics    Tue May 28 17:57:16 PDT 2024

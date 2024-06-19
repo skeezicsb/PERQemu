@@ -65,21 +65,20 @@ the Great Refactoring (v0.5.0 and beyond) the WinForms-based emulator could run
 only the PERQ-1 "old" Z80 with a single Shugart hard disk.  The emulation was
 fairly complete, but the options for OS and software to run were limited.
 
-While the v0.5.0 release is a major leap in functionality and the available
-software base has expanded greatly, it still only emulates PERQ-1 configurations.
-Work on the experimental branch now shifts to expanded emulation options, adding
-new peripheral support (Ethernet, laser printer) and bug fixes, plus some new UI
-features along the way.
+The v0.5.0 release was a major leap in functionality and the available software
+base expanded greatly, but it still only emulated PERQ-1 configurations.  Work
+on the experimental branch shifted to expanding emulation options, adding new
+peripheral support (Ethernet, laser printer), bug fixes, and new UI features.
 
-PERQemu v0.5.5 rolls up new Canon printer support and expanded (but still highly
-experimental!) Ethernet support.  It is an interim release to skeezicsb/main and
-won't be submitted for a merge into the master at this time.
+PERQemu v0.5.5 added Canon printer support and expanded experimental Ethernet
+support.  It was an interim release to skeezicsb/main and wasn't submitted for
+a merge into the master.
 
 PERQemu v0.5.8 introduces the first milestone in PERQ-2/EIO support, adding a
 Micropolis 8" disk driver and enough of the EIO/Z80 components to allow POS G,
 Accent S6 and PNX 2 and 3 to boot.  There are still a number of rough edges and
-missing pieces that this interim development snapshot is not yet reliable enough
-for daily use.
+missing pieces, but this interim development snapshot is reliable enough to let
+it into the wild for testing from skeezicsb/main.
 
 Full PERQ-2 and 2/Tx support is underway; see the (tentative) roadmap below.
 Please check back often for updates!
@@ -500,7 +499,10 @@ v0.7 - TBD
     serial port, RTC chip, support for two hard disks
   - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
 
-v0.5.8 - Experimental branch (ongoing)
+v0.6.0 - Experiments branch
+  - Start of MFM support for PERQ-2/Tx multiple hard disk support
+
+v0.5.8 - Main branch (v0.7.0 pre-release)
   - Micropolis 8" disk (high-level operation works!; low-level formatting
     support is incomplete/untested)
   - EIO Z80 ROM source code formatted for use with the debugger
@@ -632,7 +634,7 @@ v0.1 - First public release.
 
 Update history:
 
-5/25/2024 - skeezicsb - v0.5.8 (experiments)
+6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0
 1/17/2023 - skeezicsb - v0.4.9 (main)
