@@ -38,13 +38,99 @@ namespace PERQemu.IO.Z80
     /// </remarks>
     public class TMS9914A : IGPIBDevice, IZ80Device, IDMADevice
     {
-        public TMS9914A(byte baseAddr)
+        public TMS9914A(byte baseAddr, byte SCaddr, byte PEaddr) : this(10)
+        {
+            // For EIO, these are signals wired directly to the bus transceivers
+            // but we handle them here (or ignore them, for now :-)
+            _scAddress = SCaddr;      // 0 = Not controller, 1 = Controller
+            _peAddress = PEaddr;      // 0 = Open collector, 1 = Tristate
+
+            // The 9914A defines a block of 8 R/W ports offset from a base address
+            _baseAddress = baseAddr;
+
+            // All of the port addresses to register with the Z80
+            for (var i = 0; i < 8; i++)
+            {
+                _allPorts[i] = (byte)(_baseAddress + i);
+            }
+            _allPorts[8] = _scAddress;
+            _allPorts[9] = _peAddress;
+
+            //
+            // Map the EIO read ports:
+            //
+            _rdPorts[0] = ReadRegister.IntStatus0;
+            _rdPorts[1] = ReadRegister.IntStatus1;
+            _rdPorts[2] = ReadRegister.AddressStatus;
+            _rdPorts[3] = ReadRegister.BusStatus;
+            _rdPorts[4] = ReadRegister.AddressSwitch;
+            _rdPorts[5] = ReadRegister.Illegal;
+            _rdPorts[6] = ReadRegister.CmdPassThrough;
+            _rdPorts[7] = ReadRegister.DataIn;
+
+            //
+            // EIO write ports:
+            //
+            _wrPorts[0] = WriteRegister.IntMask0;
+            _wrPorts[1] = WriteRegister.IntMask1;
+            _wrPorts[2] = WriteRegister.Illegal;
+            _wrPorts[3] = WriteRegister.AuxiliaryCmd;
+            _wrPorts[4] = WriteRegister.Illegal;
+            _wrPorts[5] = WriteRegister.Illegal;
+            _wrPorts[6] = WriteRegister.Illegal;
+            _wrPorts[7] = WriteRegister.DataOut;
+
+            // Put ourselves on the bus!
+            _bus.AddDevice(this);
+
+            Log.Info(Category.GPIB, "EIO GPIB initialized");
+        }
+
+        public TMS9914A(byte baseAddr) : this(8)
         {
             _baseAddress = baseAddr;
-            _ports = new byte[8];
 
-            for (int i = 0; i < 8; i++)
-                _ports[i] = (byte)(baseAddr + i);
+            for (var i = 0; i < 8; i++)
+            {
+                _allPorts[i] = (byte)(_baseAddress + i);
+            }
+
+            //
+            // IOB/CIO read ports:
+            //
+            _rdPorts[0] = ReadRegister.IntStatus0;
+            _rdPorts[1] = ReadRegister.AddressSwitch;
+            _rdPorts[2] = ReadRegister.AddressStatus;
+            _rdPorts[3] = ReadRegister.CmdPassThrough;
+            _rdPorts[4] = ReadRegister.IntStatus1;
+            _rdPorts[5] = ReadRegister.Illegal;
+            _rdPorts[6] = ReadRegister.BusStatus;
+            _rdPorts[7] = ReadRegister.DataIn;
+
+            //
+            // IOB/CIO write ports:
+            //
+            _wrPorts[0] = WriteRegister.IntMask0;
+            _wrPorts[1] = WriteRegister.Illegal;
+            _wrPorts[2] = WriteRegister.Illegal;
+            _wrPorts[3] = WriteRegister.Illegal;
+            _wrPorts[4] = WriteRegister.IntMask1;
+            _wrPorts[5] = WriteRegister.Illegal;
+            _wrPorts[6] = WriteRegister.AuxiliaryCmd;
+            _wrPorts[7] = WriteRegister.DataOut;
+
+            // Put ourselves on the bus!
+            _bus.AddDevice(this);
+
+            Log.Info(Category.GPIB, "IOB/CIO GPIB initialized");
+        }
+
+        protected TMS9914A(int portCount)
+        {
+            _allPorts = new byte[portCount];
+
+            _rdPorts = new ReadRegister[8];
+            _wrPorts = new WriteRegister[8];
 
             _rdRegisters = new byte[8];
             _wrRegisters = new byte[8];
@@ -54,12 +140,7 @@ namespace PERQemu.IO.Z80
 
             _bus = new GPIBBus();
             _busFifo = new Queue<ushort>();
-
-            // Put ourselves on the bus!
-            _bus.AddDevice(this);
         }
-
-        public byte DeviceID => 0;      // System Controller
 
         /// <summary>
         /// Hardware reset (power on or Z80 restart).
@@ -73,41 +154,35 @@ namespace PERQemu.IO.Z80
             _bus.Reset();
             _busFifo.Clear();
 
+            _dmaReadReady = false;
+            _dmaWriteReady = false;
+
             Log.Debug(Category.GPIB, "Controller reset");
         }
 
         public string Name => "TMS9914A";
-        public byte[] Ports => _ports;
-        public byte? ValueOnDataBus => 0x22;    // GPIVEC
+        public byte[] Ports => _allPorts;
+
+        public byte? ValueOnDataBus => 0x22;            // GPIVEC (IOB/CIO)
         public bool IntLineIsActive => _interruptActive;
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
 
         public GPIBBus Bus => _bus;
 
+        public byte DeviceID => 0;      // System Controller
+
         //
         // IDMADevice Interface
         //
 
-        public bool ReadDataReady
-        {
-            get
-            {
-                throw new NotImplementedException("TMS9914A DMA read");
-            }
-        }
-
-        public bool WriteDataReady
-        {
-            get
-            {
-                throw new NotImplementedException("TMS9914A DMA write");
-            }
-        }
+        public bool ReadDataReady => _dmaReadReady;
+        public bool WriteDataReady => _dmaWriteReady;
 
         public void DMATerminate()
         {
-            throw new NotImplementedException("TMS9914A DMA terminate");
+            // If we do single byte xfers, this is probably extraneous
+            Log.Debug(Category.GPIB, "TMS9914A DMA terminate received");
         }
 
         //
@@ -134,14 +209,20 @@ namespace PERQemu.IO.Z80
 
             if (_interruptActive != oldIntr)
                 Log.Debug(Category.GPIB, "Interrupt {0}", _interruptActive ? "asserted" : "cleared");
+
+            // EIO actually supports/uses the DMA interface, so set the read/write
+            // flags according to the FIFO status (and/or BI/BO state?)
+            _dmaReadReady = _busFifo.Count > 0;
+            _dmaWriteReady = _busFifo.Count == 0;
         }
+
 
         public byte Read(byte portAddress)
         {
-            var reg = portAddress - _baseAddress;
+            ReadRegister reg = _rdPorts[portAddress - _baseAddress];
             byte retval = 0;
 
-            switch ((ReadRegister)reg)
+            switch (reg)
             {
                 case ReadRegister.IntStatus0:
                     // To read the Interrupt Status 0 register, the INT0 and INT1
@@ -154,7 +235,7 @@ namespace PERQemu.IO.Z80
                     bool int1 = ((_rdRegisters[(int)ReadRegister.IntStatus1] &
                                   _wrRegisters[(int)WriteRegister.IntMask1]) != 0);
 
-                    retval = (byte)((_rdRegisters[reg] & 0x3f) |
+                    retval = (byte)((_rdRegisters[(int)reg] & 0x3f) |
                                     (int0 ? (byte)InterruptStatus0.Int0 : 0x0) |
                                     (int1 ? (byte)InterruptStatus0.Int1 : 0x0));
 
@@ -162,23 +243,23 @@ namespace PERQemu.IO.Z80
                     _rdRegisters[(int)ReadRegister.IntStatus0] &= (byte)~InterruptStatus0.BO;
                     _rdRegisters[(int)ReadRegister.IntStatus0] &= (byte)~InterruptStatus0.BI;
 
-                    Log.Debug(Category.GPIB, "Read 0x{0:x2} ({1}) from register {2}",
+                    Log.Debug(Category.GPIB, "Read 0x{0:x2} ({1}) from {2} register",
                                               retval, (InterruptStatus0)retval, reg);
                     AssertInterrupt();
-                    return retval;
+                    break;
 
                 case ReadRegister.AddressSwitch:
                 case ReadRegister.AddressStatus:
                 case ReadRegister.IntStatus1:
                 case ReadRegister.BusStatus:
-                    Log.Debug(Category.GPIB, "Read 0x{0:x2} from register {1}", _rdRegisters[reg], reg);
-                    return _rdRegisters[reg];
+                    Log.Debug(Category.GPIB, "Read 0x{0:x2} from {1} register", _rdRegisters[(int)reg], reg);
+                    return _rdRegisters[(int)reg];
 
                 case ReadRegister.CmdPassThrough:
                     // This just reads the data lines...
                     retval = (byte)(_busFifo.Count > 0 ? (_busFifo.Peek() >> 8) : 0x0);
                     Log.Debug(Category.GPIB, "Read 0x{0:x2} from register {1}", retval, reg);
-                    return retval;
+                    break;
 
                 case ReadRegister.DataIn:
                     // Retrieve the latest data byte from the bus
@@ -225,16 +306,41 @@ namespace PERQemu.IO.Z80
 
                     Log.Detail(Category.GPIB, "DataIn read 0x{0:x2} ({1} bytes remaining)", retval, _busFifo.Count);
                     AssertInterrupt();
-                    return retval;
+                    break;
 
-                default:
-                    throw new InvalidOperationException("Invalid port address on read");
+                case ReadRegister.Illegal:
+                    throw new InvalidOperationException($"Illegal port address 0x{portAddress:x} on GPIB register read");
             }
+
+            return retval;
         }
+
 
         public void Write(byte portAddress, byte value)
         {
-            var reg = (WriteRegister)(portAddress - _baseAddress);
+            // EIO has separate control registers for the 75160 and 75162 chips;
+            // it makes sense to just include them here, rather than plumb in a
+            // separate device.  For now, they're basically no-ops?
+            if (_allPorts.Length > 8)
+            {
+                if (portAddress == _scAddress)
+                {
+                    Log.Debug(Category.GPIB, "SC pin set to {0}", value);
+                    // Uh, save this or do something with it...
+                    return;
+                }
+
+                if (portAddress == _peAddress)
+                {
+                    Log.Debug(Category.GPIB, "PE pin set to {0}", value);
+                    // No-op for now?
+                    return;
+                }
+
+                // Otherwise it's a regular register write
+            }
+
+            WriteRegister reg = _wrPorts[portAddress - _baseAddress];
             _wrRegisters[(byte)reg] = value;
 
             switch (reg)
@@ -250,7 +356,10 @@ namespace PERQemu.IO.Z80
                 case WriteRegister.AddressRegister:
                 case WriteRegister.ParallelPoll:
                 case WriteRegister.SerialPoll:
-                    // Just note it for now, not sure what to do with these...
+                    // Just note it for now, not sure what to do with these, if anything?
+                    // The CIO/EIO rewrite doesn't even define them, and the PERQ may not
+                    // actually perform either Serial or Parallel polling (unless third-
+                    // party software maybe does it from Pascal?)
                     Log.Debug(Category.GPIB, "Wrote 0x{0:x2} to register {1}", value, reg);
                     break;
 
@@ -294,8 +403,8 @@ namespace PERQemu.IO.Z80
                     AssertInterrupt();
                     break;
 
-                default:
-                    throw new InvalidOperationException("Invalid port address on write");
+                case WriteRegister.Illegal:
+                    throw new InvalidOperationException($"Illegal port address 0x{portAddress:x} on GPIB register write");
             }
         }
 
@@ -375,7 +484,7 @@ namespace PERQemu.IO.Z80
 
         void ResetGPIB()
         {
-            // todo: determine if this is anywhere close to correct :-/
+            // Todo: determine if this is anywhere close to correct :-/
             _iListen = false;
             _iTalk = false;
             _listener = 0x1f;   // nobody
@@ -386,6 +495,9 @@ namespace PERQemu.IO.Z80
             // _interruptsEnabled flag like dai (which is unused anyway?) does
             _rdRegisters[(int)ReadRegister.IntStatus0] &= (byte)~InterruptStatus0.Int0;
             _rdRegisters[(int)ReadRegister.IntStatus0] &= (byte)~InterruptStatus0.Int1;
+
+            _dmaReadReady = false;
+            _dmaWriteReady = false;
         }
 
         /// <summary>
@@ -581,6 +693,7 @@ namespace PERQemu.IO.Z80
             AddressStatus = 2,      // GPIAS
             CmdPassThrough = 3,     // GPICPT
             IntStatus1 = 4,         // GPIIS1
+            Illegal = 5,            // Not used
             BusStatus = 6,          // GPIBS
             DataIn = 7              // GPIIN
         }
@@ -589,11 +702,14 @@ namespace PERQemu.IO.Z80
         {
             IntMask0 = 0,           // GPIIM0
             AddressRegister = 1,    // GPIADD
+            Illegal = 2,            // Not used
             ParallelPoll = 3,       // GPIPP
             IntMask1 = 4,           // GPIIM1
             SerialPoll = 5,         // GPISP
             AuxiliaryCmd = 6,       // GPIAUX
-            DataOut = 7             // GPIOUT
+            DataOut = 7,            // GPIOUT
+            GPControl = 8,          // SC pin (EIO)
+            GPTriState = 9          // PE pin (EIO)
         }
 
         //
@@ -718,9 +834,18 @@ namespace PERQemu.IO.Z80
         bool _interruptsEnabled;
         bool _interruptActive;
 
+        // DMA support
+        bool _dmaReadReady;
+        bool _dmaWriteReady;
+
         // Registers
         byte _baseAddress;
-        byte[] _ports;
+        byte _scAddress;
+        byte _peAddress;
+
+        byte[] _allPorts;
+        ReadRegister[] _rdPorts;
+        WriteRegister[] _wrPorts;
 
         byte[] _rdRegisters;
         byte[] _wrRegisters;

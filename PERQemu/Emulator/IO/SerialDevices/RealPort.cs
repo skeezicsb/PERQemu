@@ -201,18 +201,32 @@ namespace PERQemu.IO.SerialDevices
         /// Compute new baud rate from the timer tick rate provided by the CTC.
         /// See notes below for detailed information about baud calculation.
         /// </summary>
-        public override void NotifyRateChange(int newRate)
+        public override void NotifyRateChange(int chan, int newRate)
         {
-            if ((_perq.BaudRate = Conversion.TimerCountToBaudRate(newRate)) > 0)
+            var prescale = _system.IsEIO ? 1 : 16;
+
+            // Since we don't (yet? ever?) support the split baud rate ability
+            // of the EIO, just ignore the Tx rate (timer chn 0) and only set
+            // the effective baud rate to the Rx speed (which is far more critical
+            // to performance).
+            if (_system.IsEIO && chan == 2)
+            {
+                Log.Debug(Category.RS232, "Port {0} transmit clock rate change ignored", _name);
+                return;
+            }
+
+            // Make sure it's valid, and assume in range for the port (9600 on
+            // PERQ-1, 19200 max on PERQ-2).  External clocking isn't supported.
+            if ((_perq.BaudRate = Conversion.TimerCountToBaudRate(newRate, prescale)) > 0)
             {
                 _charRateInNsec = Conversion.BaudRateToNsec(_perq.BaudRate);
 
                 Log.Info(Category.RS232, "Port {0} baud rate (emulated) changed to {1}", _name, _perq.BaudRate);
+                return;
             }
-            else
-            {
-                Log.Warn(Category.RS232, "Port {0} bad baud rate {1} from the PERQ!", _name, newRate);
-            }
+
+            // This is highly unlikely, but alert if it happens
+            Log.Warn(Category.RS232, "Port {0} bad baud rate {1} from the PERQ!", _name, newRate);
         }
 
         /// <summary>
@@ -281,8 +295,7 @@ namespace PERQemu.IO.SerialDevices
         {
             if (_isOpen)
             {
-                var seriously = new byte[] { value };
-                _port.Write(seriously, 0, 1);
+                _port.Write(new byte[] { value }, 0, 1);
                 Log.Info(Category.RS232, "Wrote byte {0:x2} ({1} in output queue)", value, _port.BytesToWrite);
 
                 // Poke the receiver.  This is a gross HACK, but less gross than
@@ -304,13 +317,10 @@ namespace PERQemu.IO.SerialDevices
             Console.WriteLine($"Host settings: {_host}");
             Console.WriteLine($"PERQ settings: {_perq}");
 
-            //if (IsOpen)
-            //{
             Console.WriteLine($"Handshake: {_port.Handshake}  Break state: {_port.BreakState}");
             Console.WriteLine($"Rx buffer: {ByteCount}/{_port.ReadBufferSize}  " +
                               $"Tx buffer: {_port.BytesToWrite}/{_port.WriteBufferSize}, " +
                               $"pacing {_charRateInNsec * Conversion.NsecToMsec}ms");
-            //}
             Console.WriteLine($"Pins:  DCD={DCD} DTR={DTR} DSR={DSR} RTS={RTS} CTS={CTS}");
         }
 
@@ -353,8 +363,19 @@ namespace PERQemu.IO.SerialDevices
     a rate that wouldn't put an undue strain on the emulator if there
     was a clean way to avoid polling... or make it "cheap" enough.
 
-    EIO (Z80 @ 4Mhz) uses an Intel i8254 timer, so the programming will be
-    different.  [Not yet implemented]
+    EIO (Z80 @ 4Mhz) uses an Intel i8254 timer, so the rate codes are
+    different but the interface is the same.  EIO allows for two ports
+    and for separate Tx and Rx clocks (including split external clocking
+    if the TC and RC pins are used) so that throws the "baud rate" into
+    question... but so far I don't see any standard utilities that let a
+    user set up a split baud clock.  IF there was ever a desire to find
+    and build the IBM 3270 client software or do some radically strange
+    serial device with SDLC, CRCs, split or external clocking, etc., the
+    C#/Mono serial port implementation wouldn't support it anyway.  So
+    for now, the only modification is to have the CTC inform the client
+    which channel has changed (so the _virtual_ interface can in theory
+    split the clock timing, but the physical port runs at the fixed rate
+    from the host Settings.  I've given this more thought than it needs.
  */
 
 /*

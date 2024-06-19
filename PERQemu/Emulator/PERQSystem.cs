@@ -264,10 +264,10 @@ namespace PERQemu
                             {
                                 _cpu.Run();
                                 _iob.Run();
-                            }
-                            while (!CPU.IncrementBPC);
 
-                            _state = RunState.Paused;
+                                if (CPU.IncrementBPC) _state = RunState.Paused;
+                            }
+                            while (_state == RunState.RunInst);
                         });
                     break;
 
@@ -280,20 +280,23 @@ namespace PERQemu
                     RunGuarded(() =>
                         {
                             var startTime = _iob.Z80System.Clocks;
+
                             do
                             {
                                 _cpu.Run();
                                 _iob.Run();
-                            }
-                            while (_iob.Z80System.Clocks == startTime);
 
-                            _state = RunState.Paused;
+                                if (!_iob.Z80System.IsRunning ||
+                                     _iob.Z80System.Clocks != startTime)
+                                    _state = RunState.Paused;
+                            }
+                            while (_state == RunState.RunZ80Inst);
                         });
                     break;
 
                 case RunState.ShuttingDown:
-                    _state = RunState.Off;
                     Shutdown();
+                    _state = RunState.Off;
                     break;
 
                 case RunState.Reset:
@@ -359,11 +362,10 @@ namespace PERQemu
             // Now go away or I shall taunt you some more
             _inputs.Shutdown();
             _display.Shutdown();
-
-            if (_oio != null) _oio.Shutdown();
-
+            _oio?.Shutdown();
             _iob.Shutdown();
             _cpu.Shutdown();
+
             _ioBus = null;
             Log.Detail(Category.Emulator, "PERQSystem shutdown.");
         }
@@ -395,6 +397,11 @@ namespace PERQemu
             }
         }
 
+        // Debugging
+        public void ShowThreadStatus()
+        {
+            _cpu.ShowThreadStatus();
+        }
 
         #region The white zone is for media loading and unloading only
 

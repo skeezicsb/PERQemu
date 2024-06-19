@@ -22,6 +22,7 @@ using System.IO;
 using System.Threading;
 using System.Diagnostics;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
 namespace PERQemu
@@ -136,8 +137,6 @@ namespace PERQemu
             _fileLevel = Severity.Info;         // A bit more info to the file
             _logToFile = false;                 // Log only to the console
 
-            _logSize = 1024 * 1024 * 10;        // Default log size is 10MB?
-            _logLimit = 99;                     // Keep 100 files? (0..99)
             _logDirectory = Paths.OutputDir;
             _currentFile = string.Empty;
 
@@ -156,10 +155,13 @@ namespace PERQemu
 #if TRACING_ENABLED
             _loggingAvailable = true;
 
-            _log = null;
-            _turnstile = -1;
+            _logSize = 1024 * 1024 * 10;        // Default log size is 10MB?
+            _logLimit = 99;                     // Keep 100 files? (0..99)
             _logFilePattern = "debug{0:d2}.log";
             _currentFileNum = 0;
+
+            _log = null;
+            _queue = new ConcurrentQueue<string>();
 
             Initialize();
 #else
@@ -218,18 +220,6 @@ namespace PERQemu
         }
 
         /// <summary>
-        /// A shortcut for logging debugging output.  Makes a slow Debug process
-        /// that much slower but is compiled out entirely in Release builds.
-        /// </summary>
-        [Conditional("DEBUG")]
-        [Conditional("TRACING_ENABLED")]
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Debug(Category c, string fmt, params object[] args)
-        {
-            WriteInternal(Severity.Debug, c, fmt, args);
-        }
-
-        /// <summary>
         /// A shortcut for logging extra detailed debugging output.  Like, stuff
         /// that's reeeally verbose.  Like Debug, adds a ton of overhead but is
         /// compiled out entirely in Release builds.
@@ -239,7 +229,29 @@ namespace PERQemu
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Detail(Category c, string fmt, params object[] args)
         {
-            WriteInternal(Severity.Verbose, c, fmt, args);
+            if (_minLevel > Severity.Verbose) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Verbose, c, fmt, args);
+            }
+        }
+
+        /// <summary>
+        /// A shortcut for logging debugging output.  Makes a slow Debug process
+        /// that much slower but is compiled out entirely in Release builds.
+        /// </summary>
+        [Conditional("DEBUG")]
+        [Conditional("TRACING_ENABLED")]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Debug(Category c, string fmt, params object[] args)
+        {
+            if (_minLevel > Severity.Debug) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Debug, c, fmt, args);
+            }
         }
 
         /// <summary>
@@ -249,27 +261,45 @@ namespace PERQemu
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Info(Category c, string fmt, params object[] args)
         {
-            WriteInternal(Severity.Info, c, fmt, args);
+            if (_minLevel > Severity.Info) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Info, c, fmt, args);
+            }
         }
 
         /// <summary>
         /// Shortcut for debug warnings that should stand out (but are non-fatal
-        /// and can be ignored in Release builds).
+        /// and can be ignored in Release builds).  These are always shown in
+        /// Debug builds.
         /// </summary>
         public static void Warn(Category c, string fmt, params object[] args)
         {
-            WriteInternal(Severity.Warning, c, fmt, args);
+#if !DEBUG
+            if (_minLevel > Severity.Warning) return;
+#endif
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Warning, c, fmt, args);
+            }
         }
 
         /// <summary>
-        /// Shortcut for displaying a serious error.
+        /// Shortcut for displaying a serious error.  Always shown in Debug builds.
         /// </summary>
         /// <remarks>
         /// Gosh, it's a shame Console doesn't support <blink>attributes</blink>.
         /// </remarks>
         public static void Error(Category c, string fmt, params object[] args)
         {
-            WriteInternal(Severity.Error, c, fmt, args);
+#if !DEBUG
+            if (_minLevel > Severity.Error) return;
+#endif
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Error, c, fmt, args);
+            }
         }
 
         /// <summary>
@@ -284,129 +314,97 @@ namespace PERQemu
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Write(Category c, string fmt, params object[] args)
         {
-            WriteInternal(Severity.Normal, c, fmt, args);
+            if (_minLevel > Severity.Normal) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Normal, c, fmt, args);
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Write(Severity s, Category c, string fmt, params object[] args)
         {
-            WriteInternal(s, c, fmt, args);
+            if (_minLevel > s) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(s, c, fmt, args);
+            }
         }
 
         static void WriteInternal(Severity s, Category c, string fmt, params object[] args)
         {
-            // Apply filters before we do the work to format the output
-#if DEBUG
-            if ((s >= Severity.Warning) || ((s >= _minLevel) && ((c & _categories) != 0)))
-#else
-            if ((s >= _minLevel) && ((c & _categories) != 0) || (c == Category.All))
-#endif
+            var catfmt = (c == Category.All) ? fmt : c.ToString() + ": " + fmt;
+            var output = (args == null) ? catfmt : string.Format(catfmt, args);
+
+            // Cut down on the noise: things like the processor looping to
+            // check an I/O status byte spews a lot... summarize that (but
+            // not endlessly, to show progress)
+            if (output == _lastOutput && _repeatCount < 256)
             {
-                var output = string.Format(c != Category.All ? c.ToString() + ": " + fmt : fmt, args);
+                _repeatCount++;
+                return;
+            }
 
-                // Cut down on the noise: things like the processor looping to
-                // check an I/O status byte spews a lot... summarize that (but
-                // not endlessly to show progress)
-                if (output == _lastOutput && _repeatCount < 256)
+            if (_logToConsole && s >= _consLevel)
+            {
+                // Was the last message repeated?
+                if (_repeatCount > 0)
                 {
-                    _repeatCount++;
-                    return;
+                    if (_repeatCount == 1)
+                        Console.WriteLine(_lastOutput);     // one repeat is ok :-)
+                    else
+                        Console.WriteLine($"[Last message repeated {_repeatCount} times]");
                 }
 
-                if (_logToConsole && s >= _consLevel)
+                // Set the text color; in severe cases, override them to standout
+                // Since the Mac Terminal blats the background color across the
+                // entire output line, fudge the output to look a little better...
+                switch (s)
                 {
-                    // Was the last message repeated?
-                    if (_repeatCount > 0)
-                    {
-                        if (_repeatCount == 1)
-                            Console.WriteLine(_lastOutput);     // one repeat is ok :-)
-                        else
-                            Console.WriteLine($"[Last message repeated {_repeatCount} times]");
-                    }
+                    case Severity.Warning:
+                        Console.BackgroundColor = ConsoleColor.Yellow;
+                        Console.ForegroundColor = ConsoleColor.Black;
 
-                    // Set the text color; in severe cases, override them to standout
-                    // Since the Mac Terminal blats the background color across the
-                    // entire output line, fudge the output to look a little better...
-                    switch (s)
-                    {
-                        case Severity.Warning:
-                            Console.BackgroundColor = ConsoleColor.Yellow;
-                            Console.ForegroundColor = ConsoleColor.Black;
+                        Console.Write(output);
+                        Console.BackgroundColor = _defaultBackground;
+                        Console.WriteLine();
+                        break;
 
-                            Console.Write(output);
-                            Console.BackgroundColor = _defaultBackground;
-                            Console.WriteLine();
-                            break;
+                    case Severity.Error:
+                    case Severity.Heresy:
+                        Console.BackgroundColor = ConsoleColor.Red;
+                        Console.ForegroundColor = ConsoleColor.White;
 
-                        case Severity.Error:
-                        case Severity.Heresy:
-                            Console.BackgroundColor = ConsoleColor.Red;
-                            Console.ForegroundColor = ConsoleColor.White;
+                        Console.Write(output);
+                        Console.BackgroundColor = _defaultBackground;
+                        Console.WriteLine();
+                        break;
 
-                            Console.Write(output);
-                            Console.BackgroundColor = _defaultBackground;
-                            Console.WriteLine();
-                            break;
-
-                        default:
-                            Console.ForegroundColor = _colors[c];
-                            Console.WriteLine(output);
-                            break;
-                    }
-
-                    Console.ForegroundColor = _defaultForeground;
-
-                    Thread.Sleep(0);   // Give it a rest why dontcha
+                    default:
+                        Console.ForegroundColor = _colors[c];
+                        Console.WriteLine(output);
+                        break;
                 }
 
-                _lastOutput = output;
-                _repeatCount = 0;
+                Console.ForegroundColor = _defaultForeground;
+
+                Thread.Sleep(0);   // Give it a rest why dontcha
+            }
 
 #if TRACING_ENABLED
-                if (_logToFile && s >= _fileLevel)
-                {
-                    var me = Thread.CurrentThread.ManagedThreadId;
+            if (_logToFile && s >= _fileLevel)
+            {
+                var me = Thread.CurrentThread.ManagedThreadId;
+                var stamped = $"{DateTime.Now:yyyyMMdd HHmmss.ffff} [{me}]: {output}";
 
-                    // Does the file need to be rotated?
-                    if (Interlocked.Read(ref _turnstile) < 0 && _log.BaseStream.Length > _logSize)
-                    {
-                        // Make sure only one thread does it!
-                        if (Interlocked.Exchange(ref _turnstile, _currentFileNum) < 0)
-                        {
-                            RotateFile();
-
-                            // While we're here...
-                            _log.WriteLine("{0:yyyyMMdd HHmmss.ffff} [{1}]: {2}",
-                                           DateTime.Now, me, output);
-
-                            // Reset for next time!
-                            Interlocked.Exchange(ref _turnstile, -1);
-
-                            return;
-                        }
-                    }
-
-                    // If the rotation is in progress, hold up here
-                    if (Interlocked.Read(ref _turnstile) >= 0)
-                    {
-                        while (Interlocked.Read(ref _turnstile) >= 0)
-                        {
-                            Thread.SpinWait(10);
-                        }
-                    }
-
-                    // Write it, lazy & slow (_log is Synchronized)
-                    // But this is still wrong, results in corrupt log entries,
-                    // and someday I should fix it but right now it's enough to
-                    // help with the debugging.  At least until (under heavy
-                    // load) it blows up Mono and crashes.  So much for relying
-                    // on the "synchronized" stream.  Time for a more methodical
-                    // locking approach, or per-thread streams and no locking?
-                    _log.WriteLine("{0:yyyyMMdd HHmmss.ffff} [{1}]: {2}",
-                                   DateTime.Now, me, output);
-                }
-#endif
+                _queue.Enqueue(stamped);
             }
+#endif
+
+            _lastOutput = output;
+            _repeatCount = 0;
         }
 
 
@@ -454,6 +452,9 @@ namespace PERQemu
 
             // Ready for if/when file logging is enabled
             _currentFile = Paths.BuildOutputPath(string.Format(_logFilePattern, _currentFileNum));
+
+            // Create a timer for the log flush callback
+            _logTimerHandle = HighResolutionTimer.Register(100d, FlushQueue, "Logger");
         }
 
         static int GetFileNum(string filename)
@@ -475,19 +476,46 @@ namespace PERQemu
 
             if (enable)
             {
+                // Open log and start the timer
                 _log = File.AppendText(_currentFile);
-                Stream.Synchronized(_log.BaseStream);
+                HighResolutionTimer.Enable(_logTimerHandle, true);
                 return true;
             }
 
             if (_log != null)
             {
-                _log.Flush();       // A bit of overkill, hmm?
+                // Stop timer, flush entries, and close the file EMPHATICALLY :-]
+                HighResolutionTimer.Enable(_logTimerHandle, false);
+                FlushQueue(new HRTimerElapsedEventArgs(0d));
+
+                _log.Flush();
                 _log.Close();
                 _log.Dispose();
                 _log = null;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Flush queued messages to the file, rotating if necessary.  Runs as a
+        /// timer callback on the main thread (so no worries about concurrency
+        /// when rotating the file).
+        /// </summary>
+        static void FlushQueue(HRTimerElapsedEventArgs a)
+        {
+            if (_log == null) return;
+
+            string line;
+
+            while (_queue.TryDequeue(out line))
+            {
+                if (_log.BaseStream.Length > _logSize)
+                {
+                    RotateFile();
+                }
+
+                _log.WriteLine(line);
+            }
         }
 
         /// <summary>
@@ -506,20 +534,23 @@ namespace PERQemu
 
             // On rotate, overwrite rather than append
             _log = File.CreateText(_currentFile);
-            Stream.Synchronized(_log.BaseStream);
         }
-#endif
 
         /// <summary>
         /// Last one out, turn off the lights.
         /// </summary>
-        [Conditional("TRACING_ENABLED")]
         public static void Shutdown()
         {
             ToConsole = false;
             WriteInternal(Severity.None, Category.All, "PERQemu shutting down at {0}", DateTime.Now);
+            FlushQueue(new HRTimerElapsedEventArgs(0d));
             ToFile = false;
         }
+#else
+        public static void Shutdown()
+        {
+        }
+#endif
 
         /// <summary>
         /// Sets up a dictionary for mapping Categories to console colors,
@@ -628,14 +659,15 @@ namespace PERQemu
         static string _currentFile;
         static string _lastOutput;
         static int _repeatCount;
-        static int _logSize;
-        static int _logLimit;
 
 #if TRACING_ENABLED
+        static int _logSize;
+        static int _logLimit;
         static string _logFilePattern;
         static int _currentFileNum;
 
-        static long _turnstile;
+        static int _logTimerHandle;
+        static ConcurrentQueue<string> _queue;
         static StreamWriter _log;
 #endif
     }

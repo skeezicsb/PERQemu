@@ -6,6 +6,160 @@ notes moved to ChangeLog-Old.txt.  New entries here will be added at the top, to
 avoid wasting precious time scrolling to the end. :-)
 
 
+June, 2024:
+
+    1. Called away IRL to deal with the whole stupid "not going broke" thing but
+    trying to sneak in development time around the edges.  Merging the interim
+    alpha-/maybe-beta-quality PERQ-2/EIO/Micropolis code into main as a snapshot
+    before leaping into the multiple-drive capable MFM hard disk controller and
+    further PERQ-2 development/refinements.  User Guide way out of date and no
+    pre-built Micropolis disk images included, yet.  Calling this v0.5.8, on the
+    way to a proper v0.6 or v0.7 release when documentation/bugs/MFM catch up.
+
+
+May, 2024:
+
+    6. A few key mapping updates for the PERQ-2 VT100 layout: adding a few extra
+    keys that aren't on the actual PERQ keyboard but are present on modern ones,
+    I figure sending the expected thing rather than having no response at all is
+    the better choice.  I really do want to figure out a clean, simple, cross-
+    platform way to allow setting host-to-PERQ keyboard mappings (at least for a
+    handful of special keys).  For now, hacking UI/SDL/KeyboardMap.cs is the way
+    to change or add your own custom keyboard settings.
+
+    5. Some cleanups and small tweaks: fixed Yet Another strange PNX video issue
+    so now PNX 3 can drive the display properly.  So close, guys.  So close.
+
+    Finally got around to fixing the DDS update in the Console title bar that
+    would glitch out some terminal emulators, removing the awful sleep() hack.
+    Now when POS G boots the poor VM doesn't grind to a snail's pace waiting on
+    the main thread to loop updating the DDS.  Still have to debug why the new
+    PERQ-2 serial keyboard isn't properly transmitting certain control codes,
+    like the SAPPHIRE prefix key.  Hope to have some new PERQ-2 configurations
+    with pre-loaded Micropolis disk images assembled soon for an interim release!
+
+    4. Ethernet and GPIB fixes for EIO.  Bitpad tracking now works, and the Null
+    and 10Mbit Ethernet drivers are properly returning the MAC address bytes,
+    updated and "simplified" for both OIO and EIO.  But do not attempt to reason
+    with the Ethernet logic or understand how and why the low octets of the MAC
+    are scattered about like the Elemental Stones.  Ethernet is crying out for
+    a refactoring to eliminate some duplicated code, and there is still a ton
+    of work to do here.
+
+    3. Applied a patch to allow PNX to boot on the 16K CPU without manually
+    hacking around the Vfy microcode bug.  The emulator now patches the Victim
+    test automatically so PNX 2 (and 3) boot without intervention.  Also fixed
+    the Kriz tablet, which on EIO apparently does not invert the data (as it
+    does on IOB/CIO).  Investigating GPIB/BitPadOne problem on EIO and looking
+    at Accent S6 network initialization hanging when the Null Ethernet driver
+    is in use.
+
+    2. Bump to v0.5.8 to celebrate a successful installation of Accent S6 (needs
+    Amendment floppies loaded) and PNX 2 -- both OSes are able to load Z80 code
+    at boot time and execute from RAM.  PNX 2 even sets the clock using the RTC?
+    Still plenty of debugging to do and lots of cleanups and loose ends, but the
+    PERQ-2 support is finally happening!  This paves the way for a ton of fun
+    future projects.
+
+    1. PERQ-2/Microp/EIO floppy boot for POS G.6 now reaches 999 and gets to the
+    shell prompt!  Weeks of beating my head on single stepping disassembed Qcode
+    yielded the "aha!" moment that write-protecting the boot floppy fixes the
+    annoying crash that had stalled the process at LoadZ80 (a red herring).
+    Fixes to the Micropolis driver and additional debugging info.  PNX 3 will
+    require its own video workaround (or modification of the PNX 1/PNX 2 hacks)
+    because they did it _another_ different, non-standard way, hoorah!  Sigh.
+
+
+April, 2024:
+
+    3. Floppy boot on PERQ-2/Microp/EIO config reaches 970!  FIFO/interrupt/Z80
+    protocol handling is finicky and making sure the Z80 and PERQ see the right
+    interrupts in only the right situations is still slightly elusive.  The POS
+    init code doesn't seem to handle the floppy boot case very intelligently,
+    since it gets very unhappy when there's no ZBoot file on the boot partition
+    (as is the case booting from single density floppies - not enough room).
+    Sloppy, guys.  Workaround needed for PNX to get around a genuine bug in the
+    VFY MakeVictim test on the PNX2 and PNX3 boot floppies.
+
+    2. Added rudimentary Z80 breakpoint support (instruction or memory address
+    monitoring).  Used it to find the elusive/undocumented behavior of the DMA
+    chip (and diagnosed a bug/weakness in the Z80 semaphore wait/signal code),
+    and updated the Ethernet drivers (Ether10Mbit and NullEther) to handle the
+    EIO port assignments.  Now the floppy boot gets to DDS 416 and clears the
+    screen but hangs in GPIB intialization; likely the TMS9914 implementation
+    needs a few tweaks for EIO (plus support for DMA "HiVol" operation!).
+
+    1. So, so close to initial floppy boot on the PERQ-2/Micropolis.  Tracking
+    down a really obscure condition where the Z80 doesn't properly ack the final
+    floppy block read when loading the Mboot file, so the PERQ times out (still
+    at DDS 158).  To assist with this, took the time to reconstruct and reformat
+    the entire EIO Z80 ROM source code in PERQemu's debugger format.  (CIO will
+    eventually get this treatment too, since it's a much, much more readable
+    code base than the original old/IOB Z80.)  Check out PROM/eioz80.lst if you
+    want to learn more about the cooperative multitasking the Z80 does to run
+    the low-speed I/O devices on the EIO board.
+
+
+March, 2024:
+
+    9. Fixed some subtle Z80 IRQ and DMAC bugs and now PERQ-Z80 memory transfers
+    through the DMA FIFOs are kinda working.  Floppy boot dies at DDS 158 but it
+    is getting closer... made the boot key press more reliable (EIO Z80 takes a
+    bit longer to start up and it was missing the keypress events).
+    
+    8. All kids love Log.  Rework the debug file rotation since pushing it too
+    hard with a TON of debugging output turnt up kept hard crashing Mono, so I
+    had to address the thread crap (AND NO, IT STILL AIN'T RIGHT) but as long as
+    it grinds out the info I need to pinpoint where the PERQ-2 boot process is
+    binding up I'll call it a win. :-P  Speaking of which, PERQ-Z80 DMA device
+    added, refinements to the Z80 interrupts/DMAC, more bit fiddling to get the
+    finicky floppy boot sequence to complete... inching closer to a potential
+    bare metal POS G install on a PERQ-2/8" Micropolis.  Snapshot to checkpoint
+    progress and for regression testing on Windows/Linux.
+
+    7. Update the PERQ<->Z80 FIFOs to use a regular lock to protect from cross-
+    thread access (like the IOB/CIO latches, the EIO FIFOs talk to both CPU and
+    Z80).  Rework/expand/correct some finer details of the Am9519 and i8237,
+    plus a small EIO fix for the floppy.  Um... attempted floppy boot of a PERQ2
+    Micropolis configuration now makes it to 157 on the DDS.  Holy crap! :-)
+
+    6. Plumbed in most of the i8237 DMA chip and created the special PERQ DMA
+    hardware.  This is a _second_ set of FIFOs that allow memory-to-memory
+    transfers with no CPU intervention.  Add some debug commands to improve
+    visibility into the DMAC internals and hard disk drivers.
+
+    5. Micropolis 8" DIB showing signs of life: first little green shoots of
+    PERQ-2 support pushing up through the ground.  Am9519 is fielding Z80 IRQs,
+    the updated PERQ/Z80 FIFOs seem to be exchanging data, and the VT-100 style
+    keyboard is passing keystrokes through the SIO (even without the i8254 PIT
+    implemented :-).  Have to get the i8237 DMA chip working and hook up the
+    weird PERQ-Z80 DMA so I can attempt a floppy boot and try to format a new
+    8" Micropolis for the first time.  Bump version to v0.5.6 and snapshot.
+
+    4. Some random improvements along the way: in POS if you copy a file to RSX:
+    and forget to specify the destination filename, PERQemu creates a temp name
+    in the default Output directory.  Other minor tweaks and fixes have somehow
+    yielded an unexpected performance jump of around 4-5fps on my ancient Mac.
+    Not sure how or why, but I'll take it!  Updated the GPIB controller to take
+    in the two extra Z80 I/O addresses that are unique to the EIO; for now they
+    are no-ops to silence "unhandled write" warnings.
+
+    3. Starting on the i8237 (aka Am9517) DMA controller, and the i8254 PIT
+    (timer chip that replaces the Zilog CTC on EIO).  Minor modifications to let
+    the serial devices and SIO talk to the PIT (using the same interface).  Also
+    a minor update to the GPIB controller for EIO (no new functionality).
+
+    2. Have put some meat on the bones of the Am9519 and worked out how to route
+    interrupts on the EIO, and it's pretty reasonable.  EIO boots to DDS 013 so
+    basic initializations work; lots of work to get the FIFOs, DMA and hard disk
+    (Micropolis, MFM) going.  Some cleanups to mitigate/fix lingering Execution
+    Controller bugs or annoyances.  Similarly, small change to the HighResTimer
+    to avoid a silly thing (like the ancient Unix "cron" bug).
+
+    1. A number of small tweaks to get back into PERQ-2.  Studying the Am9519
+    and starting to flesh out the EIO's Z80 interrupt scheme.
+
+
 February, 2024:
 
     4. Small Ethernet, DMA tweaks plus a few guardrails on the Canon driver to
@@ -212,4 +366,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Sun Feb 18 23:02:08 PST 2024
+Last update: skeezics    Tue May 28 17:57:16 PDT 2024

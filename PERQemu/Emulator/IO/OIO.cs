@@ -97,9 +97,9 @@ namespace PERQemu.IO
         {
             _link.Reset();
 
-            if (_ethernet != null) _ethernet.Reset();
-            if (_streamer != null) _streamer.Reset();
-            if (_canon != null) _canon.Reset();
+            _ethernet?.Reset();
+            _streamer?.Reset();
+            _canon?.Reset();
 
             base.Reset();
         }
@@ -182,9 +182,7 @@ namespace PERQemu.IO
                     return _link.ReadData();
 
                 default:
-                    // Log a warning for invalid or unknown port read attempts
-                    Log.Warn(Category.IO, "Unhandled OIO Read from port {0:x2}", port);
-                    break;
+                    throw new UnhandledIORequestException(port);
             }
 
             // Unhandled things assume this?
@@ -279,16 +277,13 @@ namespace PERQemu.IO
                     break;
 
                 default:
-                    Log.Warn(Category.IO, "Unhandled OIO Write to port {0:x2}, data {1:x4}", port, value);
-                    break;
+                    throw new UnhandledIORequestException(port, value);
             }
         }
 
-        public override uint Clock()
+        public override void Run()
         {
-            _link.Clock();
-
-            return 1;
+            _link?.Clock();
         }
 
         public override void Shutdown()

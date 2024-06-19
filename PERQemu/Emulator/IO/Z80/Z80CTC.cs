@@ -425,7 +425,7 @@ namespace PERQemu.IO.Z80
                     // so that it can compute and set a baud rate for the external device...
                     if (TimerClient != null)
                     {
-                        TimerClient.NotifyRateChange(Counter);
+                        TimerClient.NotifyRateChange(Number, Counter);
                     }
                 }
 

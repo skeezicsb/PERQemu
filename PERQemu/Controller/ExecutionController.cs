@@ -149,9 +149,6 @@ namespace PERQemu
 
             Console.WriteLine("Power on requested.");
 
-            // Restart the SDL machinery
-            PERQemu.GUI.InitializeSDL();
-
             // In with the new?
             if (!Initialize(PERQemu.Config.Current))
             {
@@ -173,6 +170,9 @@ namespace PERQemu
                 SetState(RunState.Halted);
                 return;
             }
+
+            // Restart the SDL machinery
+            PERQemu.GUI.InitializeSDL();
 
             // Set the initial state
             SetState(RunState.WarmingUp);
@@ -287,7 +287,7 @@ namespace PERQemu
             if (dds == 149 && _bootChar != 0 && _bootKeyArmed)
             {
                 Log.Write("Selecting '{0}' boot...", (char)_bootChar);
-                var count = 25;
+                int count = 0;
                 BootCharCallback(0, count);
             }
         }
@@ -309,23 +309,33 @@ namespace PERQemu
         /// be such that a keyboard interrupt is generated within the window so
         /// that the keystroke is actually sent to the PERQ in a message -- it
         /// isn't enough to just have the boot character in the keyboard buffer!
+        /// Since the EIO startup is a bit more involved, we now check explicitly
+        /// for the Z80 to be turned on before sending the simulated keypresses.
         /// 
         /// NB: For the PERQ-2 keyboard, the data is sent inverted!
         /// </remarks>
         void BootCharCallback(ulong skewNsec, object context)
         {
-            var count = (int)context - 1;
-            var keycode = (byte)(PERQemu.Sys.Config.Chassis == ChassisType.PERQ1 ? _bootChar : ~_bootChar);
+            var count = (int)context;
+            var keycode = (byte)(PERQemu.Sys.IOB.Z80System.IsEIO ? ~_bootChar : _bootChar);
 
-            if (PERQemu.Sys.CPU.DDS < 152 && count > 0)
+            if (PERQemu.Sys.CPU.DDS < 152 && count < 10)
             {
-                // Send the key:
-                PERQemu.Sys.IOB.Z80System.QueueKeyboardInput(keycode);
+                if (PERQemu.Sys.IOB.Z80System.IsRunning)
+                {
+                    // Send the key:
+                    PERQemu.Sys.IOB.Z80System.QueueKeyboardInput(keycode);
+                    count++;
+
+                    Log.Detail(Category.Emulator, "Pressing the bootchar again in 10msec, retry {0}", count);
+                }
+                else
+                {
+                    Log.Detail(Category.Emulator, "Waiting for Z80 to initialize...");
+                }
 
                 // And do it again
                 PERQemu.Sys.Scheduler.Schedule(10 * Conversion.MsecToNsec, BootCharCallback, count);
-
-                Log.Detail(Category.Emulator, "Pressing the bootchar again in 10msec, retry {0}", count);
             }
             else
             {
@@ -403,17 +413,13 @@ namespace PERQemu
                         }
                     }
                 }
-                else
-                {
-                    // fixme: this shouldn't happen if our state machine is complete... 
-                    // so make this an error or just remove it once finally debugged
-                    Log.Error(Category.Controller, "What, bad steps!? Key {0} yeilded no value!", key);
-                }
             }
             else
             {
-                // throw new InvalidOperationException()
-                Console.WriteLine("Sorry, ya cahnt get theyah from heeyah.");
+                if (current == RunState.Halted)
+                    Console.WriteLine("The PERQ has halted; can only reset or power off.");
+                else
+                    Console.WriteLine("Sorry, ya cahnt get theyah from heeyah.");
             }
 
             Log.Debug(Category.Controller, "Transition result is {0}", State);
@@ -525,11 +531,27 @@ namespace PERQemu
                         new Transition(() => { SetState(RunState.SingleStep); }, RunState.Paused) }
                 },
                 {
+                    new SMKey(RunState.Running, RunState.Halted), new List<Transition> {
+                        new Transition(() => { SetState(RunState.Halted); }, RunState.Halted) }
+                },
+                {
                     new SMKey(RunState.Running, RunState.Off), new List<Transition> {
                         new Transition(() => { SetState(RunState.ShuttingDown); }, RunState.Off) }
                 },
                 {
+                    new SMKey(RunState.RunInst, RunState.Paused), new List<Transition> {
+                        new Transition(() => { SetState(RunState.Paused); }, RunState.Paused) }
+                },
+                {
                     new SMKey(RunState.RunInst, RunState.Halted), new List<Transition> {
+                        new Transition(() => { SetState(RunState.Halted); }, RunState.Halted) }
+                },
+                {
+                    new SMKey(RunState.RunZ80Inst, RunState.Paused), new List<Transition> {
+                        new Transition(() => { SetState(RunState.Paused); }, RunState.Paused) }
+                },
+                {
+                    new SMKey(RunState.RunZ80Inst, RunState.Halted), new List<Transition> {
                         new Transition(() => { SetState(RunState.Halted); }, RunState.Halted) }
                 },
                 {

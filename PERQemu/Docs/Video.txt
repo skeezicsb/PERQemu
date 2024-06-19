@@ -264,20 +264,35 @@ still faster than before, and at most it's only used to update 64 lines out of
 Other Stuff
 -----------
 
-In PNX 1 and PNX 2, ICL decided to do things differently.  PNX 1 only programs
-one 40-line vertical blanking band and doesn't set the StartOver bit.  PNX 2
-sets up one 43-line blanking band and sets the StartOver bit, but at the wrong
-time -- not in the band when VSync is enabled, but in the first Active field at
-the top of the screen!  Why, ICL?  Why?  This must work on the hardware, but I
-cannot fathom why they do it this way, when POS, MPOS and Accent, the ROMs and
-all the diagnostic microcode pretty consistently does it the same way.
+In PNX releases 1 through 3 (the versions tested so far), ICL decided to do
+things differently.  PNX 1 only programs one 40-line vertical blanking band and
+doesn't set the StartOver bit.  PNX 2 sets up one 43-line blanking band and sets
+the StartOver bit, but at the wrong time -- not in the band when VSync is 
+enabled, but in the first Active field at the top of the screen!  In PNX 3, they
+switched to issuing two bands like POS does (20 lines, then 23 lines) and set
+VSync in the first one, and StartOver in the second one.  But they don't leave
+VSync set in the second band, which throws off the emulator's state machine.
+
+Why, ICL?  Why?  Somehow all of these crazy variations in the control register
+programming must work on the hardware, but I cannot fathom why they do it this
+way, when POS, MPOS and Accent, the ROMs and all the diagnostic microcode pretty
+consistently does it the same way.
 
 The workaround in place for PNX 1 has been extended slighly to let PNX 2 drive
-the display properly now too, although it has a glitch where the window manager
-background and the left edge of windows looks as if it's shifted by one word --
-like they aren't properly passing a quad-aligned address to the display address
-register?  This isn't a showstopper but looks pretty bad; on the list of quirks
-to investigate and fix before a PNX 2 disk is bundled with the release.
+the display properly now too, while the PNX 3 fix involves simply forcing the
+VSync bit back on when the control register is _cleared_ for the second band.
+(The PNX 3 fix is similar to the Accent S6 glitch where they program a bogus
+value that tries to set ALL the bits, rather than none.  Sigh.)
+
+PNX 2 also has a graphical glitch where the window manager background and the
+left edge of windows looks as if it's shifted by one word -- like they aren't
+properly passing a quad-aligned address to the display address register?  Not
+the case, as it turns out, insofar as RasterOp and the Memory controller ignore
+the low bits on quad fetches so even if PNX Rop passes mis-aligned addresses
+the hardware and the emulator clear the two LSBs.  This isn't a showstopper as
+it only affects painting the background and not the contents of windows, but it
+looks pretty bad; it's on the list of quirks to investigate and hopefully fix
+before a PNX 2 disk is bundled with the release.
 
 
 The first four CursorFunctions just show the cursor over a blank screen.  This
@@ -288,7 +303,9 @@ to see what happens on the real hardware.  Rip in the fabric of spacetime?
 
 Landscape works!  Though there were only around a dozen PERQ-1s ever made with
 special 1MB landscape memory boards, POS G and Accent S6 both can detect and
-use the landscape display when the CIO Z80 is selected.
+use the landscape display when the CIO Z80 is selected.  It seems that any OS
+supporting the PERQ-2 has landscape support, although it hasn't been extensively
+tested yet.
 
 
 Note that the "CRT signals" register bit for LandscapeDisplay is inverted
@@ -307,4 +324,4 @@ rendered by Windows (on a Sun-branded 23" display using the same panel).  Sigh.
 
 
 ---
-Last update: skeezics    Mon Jul 24 03:09:26 PDT 2023
+Last update: skeezics    Sun May 26 00:28:49 PDT 2024

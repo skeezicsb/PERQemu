@@ -35,7 +35,7 @@ namespace PERQemu.IO.SerialDevices
         {
         }
 
-        public void NotifyRateChange(int newRate)
+        public void NotifyRateChange(int chan, int newRate)
         {
             throw new NotImplementedException();
         }

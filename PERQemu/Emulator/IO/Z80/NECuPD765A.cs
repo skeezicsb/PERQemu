@@ -97,7 +97,9 @@ namespace PERQemu.IO.Z80
                 _pollEvent = null;
             }
 
-            _interruptsEnabled = false;
+            // IOB/CIO uses IOReg3 to set this; EIO has no equivalent
+            _interruptsEnabled = PERQemu.Sys.IOB.Z80System.IsEIO;
+
             _interruptActive = false;
             _nonDMAMode = false;
             _status = Status.RQM;
@@ -119,7 +121,8 @@ namespace PERQemu.IO.Z80
 
         public string Name => "uPD765A FDC";
         public byte[] Ports => _ports;
-        public byte? ValueOnDataBus => 0x24;    // FLPVEC
+
+        public byte? ValueOnDataBus => 0x24;    // FLPVEC (IOB/CIO)
         public bool IntLineIsActive => _interruptActive && _interruptsEnabled;
 
         public bool InterruptsEnabled
@@ -208,6 +211,10 @@ namespace PERQemu.IO.Z80
         {
             if (portAddress == StatusPort)
             {
+                // For EIO (and possibly IOB/CIO too?) a read clears... otherwise
+                // the SenseInterruptStatus gets continually reasserted
+                //_interruptActive = false;
+
                 Log.Debug(Category.FloppyDisk, "FDC status read: {0} (0x{1:x})", _status, (byte)_status);
                 return (byte)_status;
             }
@@ -435,31 +442,49 @@ namespace PERQemu.IO.Z80
             SelectUnitHead(_commandData.Dequeue());
             var cylinder = (cmd == Command.Seek) ? _commandData.Dequeue() : (byte)0;
 
-            // Technically, once the seek starts the CB bit goes low to allow
-            // another drive to be selected for a seek operation in parallel;
-            // something to note if we ever add support for a second drive?
-
-            if (SelectedUnitIsReady)
-            {
-                Log.Debug(Category.FloppyDisk, "Unit {0} seek to cyl {1} scheduled", _unitSelect, cylinder);
-
-                // Set "Busy" bit for this drive:
-                _status |= (Status)(0x1 << _unitSelect);
-
-                _pcn[_unitSelect] = cylinder;
-                SelectedUnit.SeekTo(cylinder, SeekCompleteCallback);
-
-                PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, true);
-            }
-            else
+            if (!SelectedUnitIsReady)
             {
                 // Can't seek on a drive that's not ready (or not connected)
                 Log.Warn(Category.FloppyDisk, "{0} issued but drive {1} not ready", cmd, _unitSelect);
 
                 _seekEnd = true;
+                _pcn[_unitSelect] = 0;
                 SetErrorStatus(StatusRegister0.AbnormalTermination);
+
                 FinishCommand(true);
+                return;
             }
+
+            if (cylinder > SelectedUnit.Geometry.Cylinders)
+            {
+                // Not entirely clear what should happen when a bad cylinder is
+                // requested in Seek; the datasheet doesn't say.  It's likely a
+                // condition the PERQ's Z80 firmware doesn't expect to produce
+                // but in debugging EIO it's issuing Seeks to cyl 255.  For now,
+                // try setting one of the error bits to see how the firmware
+                // reacts... but do we clip to the max cylinder and move there,
+                // or just stay put and report the error?  Hmm.
+                Log.Warn(Category.FloppyDisk, "Cylinder {0} is out of range!", cylinder);
+
+                _seekEnd = true;
+                _pcn[_unitSelect] = (byte)(SelectedUnit.Geometry.Cylinders - 1);
+                FinishCommand(true);
+                return;
+            }
+
+            Log.Debug(Category.FloppyDisk, "Unit {0} seek to cyl {1} scheduled", _unitSelect, cylinder);
+
+            // Technically, once the seek starts the CB bit goes low to allow
+            // another drive to be selected for a seek operation in parallel;
+            // something to note if we ever add support for a second drive?
+
+            // Set "Busy" bit for this drive:
+            _status |= (Status)(1 << _unitSelect);
+
+            _pcn[_unitSelect] = cylinder;
+            SelectedUnit.SeekTo(cylinder, SeekCompleteCallback);
+
+            PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, true);
         }
 
         void SeekCompleteCallback(ulong skewNsec, object context)
@@ -471,7 +496,7 @@ namespace PERQemu.IO.Z80
             SetErrorStatus(StatusRegister0.None);
 
             // Clear drive "Busy" bit
-            _status &= ~((Status)(0x1 << _unitSelect));
+            _status &= ~((Status)(1 << _unitSelect));
 
             // Turn off activity light
             PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, false);
@@ -1011,7 +1036,9 @@ namespace PERQemu.IO.Z80
             }
 
             Log.Detail(Category.FloppyDisk, "Transfer completed:");
-            Log.Detail(Category.FloppyDisk, "C{0}/H{1}/S{2} N{3}", request.Cylinder, request.Head, request.Sector, request.Number);
+            Log.Detail(Category.FloppyDisk, "C{0}/H{1}/S{2} N{3}",
+                                            request.Cylinder, request.Head,
+                                            request.Sector, request.Number);
             Log.Detail(Category.FloppyDisk, "ST0 = {0}", request.ST0);
             Log.Detail(Category.FloppyDisk, "ST1 = {0}", request.ST1);
             Log.Detail(Category.FloppyDisk, "ST2 = {0}", request.ST2);
@@ -1355,8 +1382,7 @@ namespace PERQemu.IO.Z80
 }
 
 /*
- 
- Notes:
+    Notes:
 
     Ha!  I misread the datasheet for the status polling interval: it actually
     does say 1.024ms, not 1,024 -- but there's no way I'm going to run the drive
@@ -1403,5 +1429,4 @@ namespace PERQemu.IO.Z80
     The best part is that it's all sure to change when we try to run v10.017 on
     this thing, where it DOES look like the use all the FDC commands (except the
     search functions).  Just shoot me now.
-
 */

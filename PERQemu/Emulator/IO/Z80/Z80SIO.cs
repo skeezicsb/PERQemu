@@ -31,10 +31,20 @@ namespace PERQemu.IO.Z80
     /// mapping register configuration to real hardware on the host).  Still a
     /// work in progress.
     /// </summary>
+    /// <remarks>
+    /// TODO: For EIO, take the opportunity to revisit and refactor the SIO to
+    /// do _all_ of the timing delays based on the PERQ's baud rate setting --
+    /// the client devices shouldn't have to mess with any of that.  RealPort
+    /// devices have the system's deep buffers; fake devices (RSX:) don't read
+    /// or write any faster than the SIO provides or accepts the data.  Having
+    /// the event scheduling in one place should make things cleaner.
+    /// </remarks>
     public partial class Z80SIO : IZ80Device, IDMADevice
     {
-        public Z80SIO(byte baseAddress, Scheduler scheduler, bool isEio = false)
+        public Z80SIO(byte baseAddress, Z80System sys, string unit = "A")
         {
+            _sys = sys;
+            _unit = unit;
             _baseAddress = baseAddress;
             _ports = new byte[] {
                                     baseAddress,
@@ -44,10 +54,8 @@ namespace PERQemu.IO.Z80
                                 };
 
             _channels = new Channel[2];
-            _channels[0] = new Channel(0, scheduler);
-            _channels[1] = new Channel(1, scheduler);
-
-            _isEIO = isEio;
+            _channels[0] = new Channel(0, _sys.Scheduler);
+            _channels[1] = new Channel(1, _sys.Scheduler);
         }
 
         public void Reset()
@@ -55,10 +63,11 @@ namespace PERQemu.IO.Z80
             _channels[0].Reset();
             _channels[1].Reset();
 
-            Log.Debug(Category.SIO, "Reset");
+            Log.Debug(Category.SIO, "Unit {0} reset", _unit);
         }
 
-        public string Name => "Z80 SIO";
+        public string Name => $"Z80 SIO {_unit}";
+        public string Unit => _unit;
         public byte[] Ports => _ports;
 
         public bool IntLineIsActive
@@ -150,15 +159,13 @@ namespace PERQemu.IO.Z80
                     return _channels[0].ReadData();
 
                 case 1:
-                    if (_isEIO)
-                        return _channels[1].ReadData();
-                    
+                    if (_sys.IsEIO) return _channels[1].ReadData();
+
                     return _channels[0].ReadRegister();
 
                 case 2:
-                    if (_isEIO)
-                        return _channels[0].ReadRegister();
-                    
+                    if (_sys.IsEIO) return _channels[0].ReadRegister();
+
                     return _channels[1].ReadData();
 
                 case 3:
@@ -182,14 +189,14 @@ namespace PERQemu.IO.Z80
                     break;
 
                 case 1:
-                    if (_isEIO)
+                    if (_sys.IsEIO)
                         _channels[1].WriteData(value);
                     else
                         _channels[0].WriteRegister(value);
                     break;
 
                 case 2:
-                    if (_isEIO)
+                    if (_sys.IsEIO)
                         _channels[0].WriteRegister(value);
                     else
                         _channels[1].WriteData(value);
@@ -214,6 +221,8 @@ namespace PERQemu.IO.Z80
 
         byte _baseAddress;
         byte[] _ports;
-        bool _isEIO;
+        string _unit;
+
+        Z80System _sys;
     }
 }

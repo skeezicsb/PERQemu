@@ -18,7 +18,7 @@
 //
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 
 using PERQemu.Processor;
 
@@ -39,35 +39,58 @@ namespace PERQemu.IO.Z80
         public PERQToZ80FIFO(PERQSystem system)
         {
             _system = system;
-            _fifo = new ConcurrentQueue<byte>();
+            _lock = new object();
+            _fifo = new Queue<byte>();
             _interruptEnabled = false;
+            _perqIntRaised = false;
         }
 
         public void Reset()
         {
-            byte punt;
-
             // Clear the decks
-            while (!_fifo.IsEmpty) _fifo.TryDequeue(out punt);
+            _fifo.Clear();
 
-            // Assume this resets as well?
-            _system.CPU.ClearInterrupt(InterruptSource.Z80DataIn);
-            _interruptEnabled = false;
+            // Reset interrupts too
+            InterruptEnabled = false;
+            _z80IntRaised = false;
 
-            Log.Debug(Category.FIFO, "PERQ->Z80 FIFO reset");
+            Log.Debug(Category.FIFO, "{0} reset", Name);
         }
 
         public string Name => "PERQ->Z80 FIFO";
         public byte[] Ports => _ports;
-        public byte? ValueOnDataBus => 0x14;    // PERQI.ISR
 
-        public bool IsReady => !_fifo.IsEmpty;
-        public bool IntLineIsActive => _interruptEnabled && IsReady;
+        public byte? ValueOnDataBus => null;        // Supplied by the Am9519
+        public bool IntLineIsActive => _z80IntRaised;
 
+        public bool IsReady
+        {
+            get { lock (_lock) { return _fifo.Count == 0; } }
+        }
+
+        /// <summary>
+        /// PERQ access to the enabled flag from the IO bus control register.
+        /// </summary>
         public bool InterruptEnabled
         {
             get { return _interruptEnabled; }
-            set { _interruptEnabled = value; }
+
+            set
+            {
+                _interruptEnabled = value;
+
+                // Disabling dismisses the interrupt regardless of FIFO state?
+                if (!_interruptEnabled && _perqIntRaised)
+                {
+                    _system.CPU.ClearInterrupt(InterruptSource.Z80DataIn);
+                    _perqIntRaised = false;
+                }
+                else if (_interruptEnabled && !_perqIntRaised && IsReady)
+                {
+                    _system.CPU.RaiseInterrupt(InterruptSource.Z80DataIn);
+                    _perqIntRaised = true;
+                }
+            }
         }
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
@@ -77,23 +100,34 @@ namespace PERQemu.IO.Z80
         //
 
         /// <summary>
-        /// Writes a byte from the PERQ to the Z80 input FIFO.
+        /// Writes a byte from the PERQ to the Z80 input FIFO.  This clears the
+        /// PERQ interrupt and signals the Z80 interrupt controller that we have
+        /// data to read.
         /// </summary>
         public void Enqueue(int value)
         {
-            // TODO: Always clear the DataInReady CPU interrupt?
-            _system.CPU.ClearInterrupt(InterruptSource.Z80DataIn);
-
-            if (_fifo.Count > 16)
+            // Clear on every write?
+            if (_perqIntRaised)
             {
-                Log.Warn(Category.FIFO, "PERQ overran FIFO, byte 0x{0:x2} will be lost", value);
-                return;
+                _system.CPU.ClearInterrupt(InterruptSource.Z80DataIn);
+                _perqIntRaised = false;
             }
 
-            // Queue the byte
-            _fifo.Enqueue((byte)value);
+            lock (_lock)
+            {
+                if (_fifo.Count < 16)
+                {
+                    // Queue the byte
+                    _fifo.Enqueue((byte)value);
+                    _z80IntRaised = true;
 
-            Log.Detail(Category.FIFO, "PERQ wrote byte 0x{0:x2} to FIFO ({1} bytes)", value, _fifo.Count);
+                    Log.Detail(Category.FIFO, "PERQ wrote byte 0x{0:x2} to FIFO ({1} bytes)", value, _fifo.Count);
+                }
+                else
+                {
+                    Log.Warn(Category.FIFO, "PERQ overran FIFO, byte 0x{0:x2} will be lost", value);
+                }
+            }
         }
 
         //
@@ -102,51 +136,38 @@ namespace PERQemu.IO.Z80
 
         /// <summary>
         /// Handle reads from the Z80:
-        ///     port 162Q (0x72) - FIFO status register
-        ///     port 161Q (0x71) - data byte from the input FIFO from the PERQ
+        ///     port 160Q (0x70) - data byte from the input FIFO from the PERQ
         /// </summary>
-        /// <remarks>
-        /// The FIFO status bits read by the Z80 are _not quite_ the same as the
-        /// status returned to the CPU via IOB status read:
-        ///     bit 7 - set if there's room in the output FIFO
-        ///     bit 6 - same as IOD<7> (write channel output ready)
-        /// To access the Z80's output FIFO, we just read the status word from
-        /// the public interface and shuffle bits around.  This is... not great.
-        /// </remarks>
         public byte Read(byte portAddress)
         {
-            // Status register?
-            if (portAddress == 0x72)
-            {
-                // This is... lazy.  To access the other FIFO, just read the same
-                // status word from the public interface that the PERQ reads from,
-                // then shuffle the bits around.  I'm not proud of this.
-                var status = _system.IOB.Z80System.ReadStatus();
-                var result = (byte)((status & 0x8000) != 0 ? 0x40 : 0);
-                result |= (byte)(_fifo.Count < 16 ? 0x20 : 0);
-
-                Log.Debug(Category.FIFO, "Z80 read FIFO status 0x{0:x}", result);
-                return result;
-            }
-
-            // Read a byte from the PERQ
-
             byte value = 0;
 
-            if (!_fifo.TryDequeue(out value))
+            lock (_lock)
             {
-                Log.Warn(Category.FIFO, "Z80 read from empty FIFO, returning 0");
-            }
-            else
-            {
-                Log.Detail(Category.FIFO, "Z80 read byte 0x{0:x2} from FIFO ({1} bytes left)", value, _fifo.Count);
+                if (_fifo.Count > 0)
+                {
+                    value = _fifo.Dequeue();
+                    Log.Detail(Category.FIFO, "Z80 read byte 0x{0:x2} from FIFO ({1} bytes left)", value, _fifo.Count);
+                }
+                else
+                {
+                    Log.Warn(Category.FIFO, "Z80 read from empty FIFO, returning 0");
+                }
 
                 // Is the FIFO empty?  Then interrupt if the PERQ has asked us to
-                if (_fifo.IsEmpty && _interruptEnabled)
+                // and deassert the Z80 IRQ (no more data to read)
+                if (_fifo.Count == 0)
                 {
-                    _system.CPU.RaiseInterrupt(InterruptSource.Z80DataIn);
+                    _z80IntRaised = false;
+
+                    if (_interruptEnabled)
+                    {
+                        _system.CPU.RaiseInterrupt(InterruptSource.Z80DataIn);
+                        _perqIntRaised = true;
+                    }
                 }
             }
+
             return value;
         }
 
@@ -157,31 +178,36 @@ namespace PERQemu.IO.Z80
             throw new NotImplementedException("Z80 write to read-only FIFO");
         }
 
-        // debug
+
+        // Debugging
         public void DumpFifo()
         {
             Console.WriteLine($"PERQ->Z80 FIFO: IRQ enabled={_interruptEnabled}");
 
             Console.Write("PERQ->Z80 FIFO: ");
 
-            if (_fifo.IsEmpty)
+            if (_fifo.Count == 0)
             {
                 Console.WriteLine("is empty.");
+                return;
             }
-            else
-            {
-                var contents = _fifo.ToArray();
 
-                foreach (var b in contents) Console.Write($" 0x{b:x2}");
-                Console.WriteLine();
-            }
+            var contents = _fifo.ToArray();
+
+            foreach (var b in contents) Console.Write($" 0x{b:x2}");
+            Console.WriteLine();
         }
 
-        PERQSystem _system;
-        ConcurrentQueue<byte> _fifo;
+
+        Queue<byte> _fifo;
+        readonly object _lock;
 
         bool _interruptEnabled;
+        bool _perqIntRaised;
+        bool _z80IntRaised;
 
-        byte[] _ports = { 0x71, 0x72 };  // PERQ.IN, status register?
+        byte[] _ports = { 0x70 };  // PERQ.IN
+
+        PERQSystem _system;
     }
 }

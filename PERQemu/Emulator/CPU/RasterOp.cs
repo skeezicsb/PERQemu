@@ -26,65 +26,6 @@ using PERQemu.Memory;
 
 namespace PERQemu.Processor
 {
-    enum Direction
-    {
-        LeftToRight,
-        RightToLeft
-    }
-
-    enum Function
-    {
-        Insert = 0,
-        InsertNot,
-        And,
-        AndNot,
-        Or,
-        OrNot,
-        Xor,
-        Xnor
-    }
-
-    enum Phase
-    {
-        Begin = 0,
-        Mid,
-        End,
-        BeginEnd,
-        XtraSource,
-        FirstSource,
-        EndClear,
-        BeginEndClear,
-        Done
-    }
-
-    enum State
-    {
-        Idle = 0,
-        DestFetch,
-        SrcFetch,
-        Off
-    }
-
-    enum EdgeStrategy
-    {
-        NoPopNoPeek = 0,
-        NoPopPeek,
-        PopNoPeek,
-        PopPeek,
-        Unknown = 7
-    }
-
-    [Flags]
-    enum CombinerFlags
-    {
-        Invalid = 0x00,         // word not properly initialized (debugging)
-        DontMask = 0x01,        // pass word unmodified; beginning of scan line
-        LeftEdge = 0x02,        // word contains a left edge
-        RightEdge = 0x04,       // word contains a right edge
-        Both = 0x06,            // word contains both edges (shortcut)
-        FullWord = 0x08,        // use all 16 bits
-        Leftover = 0x10         // pass word; end of scan line
-    }
 
     public enum MulDivCommand
     {
@@ -95,47 +36,12 @@ namespace PERQemu.Processor
     }
 
     /// <summary>
-    /// A memory word in the RasterOp datapath, augmented with debugging info
-    /// (tracks the source address of a given word).
-    /// </summary>
-    struct ROpWord
-    {
-        public ROpWord(int addr, int idx, ushort val)
-        {
-            Address = addr;
-            Index = idx;
-            Data = val;
-            Mask = CombinerFlags.Invalid;
-        }
-
-        public void Clear()
-        {
-            Address = 0;
-            Index = 0;
-            Data = 0;
-            Mask = CombinerFlags.Invalid;
-        }
-
-        public override string ToString()
-        {
-            return string.Format("Addr={0:x6} Idx={1} Data={2:x4} Mask={3}",
-                                 Address, Index, Data, Mask);
-        }
-
-        public int Address;
-        public int Index;
-        public ushort Data;
-        public CombinerFlags Mask;
-    }
-
-    /// <summary>
     /// Implements the PERQ's RasterOp hardware pipeline.  Works with the
     /// RasterOp microcode to feed quad words through the shifter/combiner
     /// to move rectangular regions of memory very quickly.
     /// </summary>
     public sealed class RasterOp
     {
-
         static RasterOp()
         {
             _rdsTable = new CombinerFlags[512];     // 9 bit index
@@ -1073,6 +979,101 @@ namespace PERQemu.Processor
         bool _ropDebug;
 #endif
         #endregion
+
+
+        /// <summary>
+        /// A memory word in the RasterOp datapath, augmented with debugging info
+        /// (tracks the source address of a given word).
+        /// </summary>
+        struct ROpWord
+        {
+            public ROpWord(int addr, int idx, ushort val)
+            {
+                Address = addr;
+                Index = idx;
+                Data = val;
+                Mask = CombinerFlags.Invalid;
+            }
+
+            public void Clear()
+            {
+                Address = 0;
+                Index = 0;
+                Data = 0;
+                Mask = CombinerFlags.Invalid;
+            }
+
+            public override string ToString()
+            {
+                return string.Format("Addr={0:x6} Idx={1} Data={2:x4} Mask={3}",
+                                     Address, Index, Data, Mask);
+            }
+
+            public int Address;
+            public int Index;
+            public ushort Data;
+            public CombinerFlags Mask;
+        }
+
+        enum Direction
+        {
+            LeftToRight,
+            RightToLeft
+        }
+
+        enum Function
+        {
+            Insert = 0,
+            InsertNot,
+            And,
+            AndNot,
+            Or,
+            OrNot,
+            Xor,
+            Xnor
+        }
+
+        enum Phase
+        {
+            Begin = 0,
+            Mid,
+            End,
+            BeginEnd,
+            XtraSource,
+            FirstSource,
+            EndClear,
+            BeginEndClear,
+            Done
+        }
+
+        enum State
+        {
+            Idle = 0,
+            DestFetch,
+            SrcFetch,
+            Off
+        }
+
+        enum EdgeStrategy
+        {
+            NoPopNoPeek = 0,
+            NoPopPeek,
+            PopNoPeek,
+            PopPeek,
+            Unknown = 7
+        }
+
+        [Flags]
+        enum CombinerFlags
+        {
+            Invalid = 0x00,         // word not properly initialized (debugging)
+            DontMask = 0x01,        // pass word unmodified; beginning of scan line
+            LeftEdge = 0x02,        // word contains a left edge
+            RightEdge = 0x04,       // word contains a right edge
+            Both = 0x06,            // word contains both edges (shortcut)
+            FullWord = 0x08,        // use all 16 bits
+            Leftover = 0x10         // pass word; endscan line
+        }
 
         // Can't reference the protected _memory from CPU parent class?
         MemoryBoard _memory;

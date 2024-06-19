@@ -51,6 +51,7 @@ namespace PERQemu.IO.DiskDevices
 
             _cyl = 0;
             _lastStep = 0;
+            _lastIndexPulse = 0;
             _discRotationTimeNsec = 0;
             _indexPulseDurationNsec = 0;
         }
@@ -62,6 +63,9 @@ namespace PERQemu.IO.DiskDevices
         public virtual bool Track0 => (_cyl == 0);
         public virtual bool SeekComplete => _seekComplete;
 
+        // Timing/rotational delay
+        public virtual ulong LastIndexPulse => _lastIndexPulse;
+
         // Debugging/sanity check
         public virtual ushort CurCylinder => _cyl;
         public virtual byte CurHead => _head;
@@ -69,42 +73,31 @@ namespace PERQemu.IO.DiskDevices
         /// <summary>
         /// Does a hardware reset on the device.
         /// </summary>
-        public virtual void Reset(bool soft = false)
+        public virtual void Reset()
         {
             if (!IsLoaded)
             {
-                // Not really relevant until we support removable pack hard drives?
+                // Not really relevant until we support removable pack hard drives
                 Log.Warn(Category.HardDisk, "Reset called but no disk loaded!");
                 _fault = true;
                 return;
             }
 
-            // A "soft" reset from the controller just clears the fault status
-            // and should probably clear the seek state... but what if a seek
-            // is in progress?  Abort or wait for motion to stop?
-
+            // Clear fault status and reset the seek state
             FaultClear();
             StopSeek();
 
-            if (soft) return;
+            // Schedule a motor start to bring the drive up to speed (if it isn't
+            // already); will bring the drive on-line and set the ready bit
+            MotorStart();
 
-            // A "hard" reset is from a power-on or reboot
-            _ready = false;
-            _index = false;
-            _seekComplete = false;
-
-            if (_startupEvent == null)
-            {
-                // Cold start: schedule a ready event so our drive can
-                // come up to speed.  Todo: play the spin-up audio! :-)
-                MotorStart();
-            }
-
+            // Stop the current index event and reset, restart it
             if (_indexEvent != null)
             {
                 _scheduler.Cancel(_indexEvent);
             }
 
+            _index = false;
             IndexPulseStart(0, null);
         }
 
@@ -224,41 +217,29 @@ namespace PERQemu.IO.DiskDevices
         /// For 8" or 5.25" drives with embedded controllers, computes the timing
         /// for a seek from the current head position to the requested cylinder.
         /// Assumes the controller checks bounds and that it tracks busy status,
-        /// not initiating a new seek while one in progress...
+        /// not initiating a new seek while one is in progress...
         /// </remarks>
         public virtual void SeekTo(ushort cyl)
         {
-            // Quick and dirty time delay, probably not very accurate; clamp it
-            // to the max seek according to the specs (though if rate limiting
-            // is off, we could clip that to a "reasonable" minimum).
+            // NB: If the heads are already over the requested cylinder, we DO
+            // fire the completion callback, with a minimal (1 usec) delay so
+            // that the microcode can potentially catch the state machine's idle
+            // to busy transition (which some versions explicitly check for).
 
-            // NB: If the heads are already over the requested cylinder, we don't
-            // fire the SeekCompletion callback!  It _seems_ that the microcode
-            // generally checks for this and doesn't issue the seek in the first
-            // place, but we shouldn't rely on that; the question is whether the
-            // completion interrupt will cause more problems (at boot time) than
-            // treating a zero-track seek as a no-op solves.  This will have to
-            // be revisited when EIO is implemented (or if CIO Micropolis is ever
-            // figured out).  A 1usec delay for head switching isn't unreasonable
-            // if no head movement takes place?
-            
-            var steps = Math.Abs(_cyl - cyl);
-            var delay = (Specs.MinimumSeek);
+            var delay = Specs.MinimumSeek;
+            _stepCount = Math.Abs(_cyl - cyl);
 
-            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
+            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed) && _stepCount > 0)
             {
-                delay = Math.Min(steps * Specs.MinimumSeek, Specs.MaximumSeek);
+                delay = Math.Min(_stepCount * Specs.MinimumSeek, Specs.MaximumSeek);
             }
 
-            Log.Debug(Category.HardDisk, "Seek to cyl {0} from {1}, {2} steps in {3:n}ms",
-                                          cyl, _cyl, steps, delay);
+            Log.Debug(Category.HardDisk, "Drive seek to cyl {0} from {1}, {2} steps in {3:n}ms",
+                                          cyl, _cyl, _stepCount, delay);
             _cyl = cyl;
 
-            if (delay > 0)
-            {
-                // Schedule the callback
-                _seekEvent = _scheduler.Schedule((ulong)delay * Conversion.MsecToNsec, SeekCompletion);
-            }
+            // Schedule the callback
+            _seekEvent = _scheduler.Schedule((ulong)delay * Conversion.MsecToNsec, SeekCompletion);
         }
 
         /// <summary>
@@ -278,19 +259,23 @@ namespace PERQemu.IO.DiskDevices
                 // If faithfully emulating the slow ass disk drives of the mid-
                 // 1980s, then add the head settling time to cap off our seek
                 // odyssey.  Otherwise a default 1us delay is reasonable.
-                if ((Settings.Performance & RateLimit.DiskSpeed) != 0 && Specs.HeadSettling > 0)
+                if (Settings.Performance.HasFlag(RateLimit.DiskSpeed) && _stepCount > 0 && Specs.HeadSettling > 0)
                 {
                     settle = (ulong)Specs.HeadSettling * Conversion.MsecToNsec;
-                }
 
-                Log.Debug(Category.HardDisk, "Seek complete [settling callback in {0:n}ms]",
-                                              settle * Conversion.NsecToMsec);
+                    Log.Detail(Category.HardDisk, "Seek complete [settling callback in {0:n}ms]",
+                                                  settle * Conversion.NsecToMsec);
+                }
+                else
+                {
+                    Log.Detail(Category.HardDisk, "Seek complete [callback in 1us]");
+                }
 
                 _scheduler.Schedule(settle, _seekCallback);
             }
             else
             {
-                Log.Debug(Category.HardDisk, "Seek complete");
+                Log.Detail(Category.HardDisk, "Seek complete");
             }
         }
 
@@ -325,33 +310,42 @@ namespace PERQemu.IO.DiskDevices
         }
 
         /// <summary>
-        /// Spin up the virtual drive.  This schedules an event to raise the
-        /// ready signal (which should cause an interrupt) after hardware reset.
+        /// Spin up the virtual drive on a cold start.  This schedules an event to
+        /// raise the ready signal (which should cause an interrupt) after hardware
+        /// reset.  If already on-line, calls DriveReady without delay.
         /// </summary>
         void MotorStart()
         {
-            ulong delay = 100;
-
-            if ((Settings.Performance & RateLimit.StartupDelay) != 0)
+            if (!_ready && _startupEvent == null)
             {
-                // This makes sense if we do the whole "watch the screen warm up
-                // and play audio of the fans & disks whirring" for the total
-                // multimedia experience.  If we just rewrote this as a fully
-                // immersive 60fps 3D game, texture mapping the screen output
-                // to the display and simulating actual keyboard presses through
-                // data glove/VR or 3D first person shooter style, then you'd
-                // really appreciate this attention to detail.  Otherwise it's
-                // basically just insane.
+                ulong delay = 100;
 
-                // Introduce a little variation, from 50-95% of max startup time
-                var rand = new Random();
-                delay = (ulong)(Specs.StartupDelay / 100 * rand.Next(50, 95));
+                if (Settings.Performance.HasFlag(RateLimit.StartupDelay) && _lastIndexPulse == 0)
+                {
+                    // This makes sense if we do the whole "watch the screen warm up
+                    // and play audio of the fans & disks whirring" for the total
+                    // multimedia experience.  If we just rewrote this as a fully
+                    // immersive 60fps 3D game, texture mapping the screen output
+                    // to the display and simulating actual keyboard presses through
+                    // data glove/VR or 3D first person shooter style, then you'd
+                    // really appreciate this attention to detail.  Otherwise it's
+                    // basically just insane.
+
+                    // Introduce a little variation, from 66-99% of max startup time
+                    var rand = new Random();
+                    delay = (ulong)(Specs.StartupDelay / 100 * rand.Next(66, 99));
+                }
+
+                _startupEvent = _scheduler.Schedule(delay * Conversion.MsecToNsec, DriveReady);
+
+                Log.Info(Category.HardDisk, "Drive {0} motor start (ready in {1:n} seconds)",
+                                              Info.Name, delay * Conversion.MsecToSec);
             }
-
-            _startupEvent = _scheduler.Schedule(delay * Conversion.MsecToNsec, DriveReady);
-
-            Log.Debug(Category.HardDisk, "Drive {0} motor start ({1} sec delay)",
-                      Info.Name, delay * Conversion.MsecToSec);
+            else
+            {
+                // On a reset, just assume the drive is online
+                DriveReady(0, null);
+            }
         }
 
         /// <summary>
@@ -389,6 +383,7 @@ namespace PERQemu.IO.DiskDevices
         void IndexPulseEnd(ulong skew, object context)
         {
             var next = _discRotationTimeNsec - _indexPulseDurationNsec;
+            _lastIndexPulse = _scheduler.CurrentTimeNsec;
 
             _index = false;
             _indexEvent = _scheduler.Schedule(next, IndexPulseStart);
@@ -402,6 +397,7 @@ namespace PERQemu.IO.DiskDevices
             // Compute the index pulse duration and gap
             _discRotationTimeNsec = Conversion.RPMtoNsec(Specs.RPM);
             _indexPulseDurationNsec = (ulong)Specs.IndexPulse;
+            _lastIndexPulse = _scheduler.CurrentTimeNsec;
 
             Log.Info(Category.HardDisk, "{0} drive loaded!  Index is {1:n}us every {2:n}ms",
                      Info.Name, _indexPulseDurationNsec / 1000.0,
@@ -426,6 +422,7 @@ namespace PERQemu.IO.DiskDevices
         // Index timing
         ulong _discRotationTimeNsec;
         ulong _indexPulseDurationNsec;
+        ulong _lastIndexPulse;
         SchedulerEvent _indexEvent;
 
         // Seek timing

@@ -90,8 +90,6 @@ namespace PERQemu
 
             // Set up command-line parser and GUI manager
             _cli = new CommandProcessor();
-
-            //_gui = new FormsManager();
             _gui = new EventLoop();
 
             // Create main objects
@@ -125,7 +123,14 @@ namespace PERQemu
             // If the user requested a start-up script, read it now
             if (!string.IsNullOrEmpty(_switches.runScript))
             {
-                _cli.ReadScript(_switches.runScript);
+                try
+                {
+                    _cli.ReadScript(_switches.runScript);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"Could not read startup script: {e.Message}");
+                }
             }
 
             // If the GUI is requested, start up the FrontPanel display

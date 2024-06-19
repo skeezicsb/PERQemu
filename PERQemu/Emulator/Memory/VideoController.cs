@@ -144,7 +144,7 @@ namespace PERQemu.Memory
                     return 0x0;
 
                 default:
-                    throw new UnhandledIORequestException($"Unhandled Memory IO Read from port {ioPort:x2}");
+                    throw new UnhandledIORequestException(ioPort);
             }
         }
 
@@ -167,7 +167,7 @@ namespace PERQemu.Memory
                     _startOver = (value & (int)StatusRegister.StartOver) != 0;
 
                     // Deal with some special cases :-|
-                    if (!_startOver && VSyncEnabled && (_lineCounterInit == 40 || _lineCounterInit == 43))                    
+                    if (VSyncEnabled && (_lineCounterInit == 40 || _lineCounterInit == 43))
                     {
                         // ** PNX 1 & 2 HACK **
                         //
@@ -185,17 +185,6 @@ namespace PERQemu.Memory
                         // See Docs/Video.txt for more information.
                         //
                         _startOver = (_scanLine > _lastVisibleScanLine);
-                    }
-
-                    if (_startOver && DisplayEnabled)
-                    {
-                        // ** PNX 2 HACK (part two) **
-                        //
-                        // Although I could hack the state machine to ignore the
-                        // _startOver bit at the end of visible bands, resetting
-                        // it here works too and keeps all the cruft in one place.
-                        //
-                        _startOver = false;
                     }
 
                     // Clear interrupt
@@ -224,14 +213,27 @@ namespace PERQemu.Memory
 
                 case 0xe3:  // Video control port
 
-                    // ** ACCENT S6 HACK **
-                    // The S6 microcode doesn't properly initialize VidNext for
-                    // "normal" display and passes in a bogus value instead; POS
-                    // does it correctly.  Argh.  Crude workaround here...
-                    if ((value & 0xff00) == 0xff00)
+                    // More special cases
+                    if ((value & 0x1f00) == 0x1f00)
                     {
-                        // Force just EnableDisplay, no cursor, map normal.
+                        // ** ACCENT S6 HACK **
+                        // The S6 microcode doesn't properly initialize VidNext for
+                        // "normal" display and passes in a bogus value instead; POS
+                        // does it correctly.  Argh.  Crude workaround here is to
+                        // force just EnableDisplay, no cursor, map normal.
                         value = 0x8400;
+                    }
+
+                    if ((value & 0x1f00) == 0 && VSyncEnabled)
+                    {
+                        // ** PNX 3 HACK **
+                        // Okay, ICL.  You ALMOST got it right: using two bands for
+                        // vertical sync (20 lines + 23 lines) and you properly set
+                        // the StartOver bit on the second one -- but you only set
+                        // VSync on the first band!  The workaround here, to keep the
+                        // state machine happy, is to force VSync back on for that
+                        // band so the final count expires and fires the interrupt.
+                        value = (int)StatusRegister.EnableVSync;
                     }
 
                     // Video Ctrl (343 W) Mode control bits (see IOVideo.pas)
@@ -263,7 +265,8 @@ namespace PERQemu.Memory
                         RunStateMachine();
                     }
 
-                    Log.Debug(Category.Display, "Video status port set to {0} @ line {1}", _videoStatus, _scanLine);
+                    Log.Debug(Category.Display, "Video status port set to {0} (0x{1:x}) @ line {2}",
+                                               _videoStatus, value, _scanLine);
                     break;
 
                 case 0xe4:  // Load cursor X position
@@ -281,7 +284,7 @@ namespace PERQemu.Memory
                     break;
 
                 default:
-                    throw new UnhandledIORequestException($"Unhandled IO Write to port {ioPort:x2}, data {value:x4}");
+                    throw new UnhandledIORequestException(ioPort, value);
             }
         }
 
@@ -395,7 +398,7 @@ namespace PERQemu.Memory
             // Trigger an interrupt if the line counter is set and has reached 0
             if (_lineCounter == 0 && _lineCounterInit > 0)
             {
-                if (MicroInterruptEnabled && !_lineCountOverflow)     // Just trigger it once...
+                if (MicroInterruptEnabled && !_lineCountOverflow)     // Just once...
                 {
                     Log.Debug(Category.Display, "Line counter overflow @ scanline {0}", _scanLine);
                     _system.CPU.RaiseInterrupt(InterruptSource.LineCounter);
@@ -408,7 +411,15 @@ namespace PERQemu.Memory
                 // blanking band we're about to start a new frame, so reset the
                 // scan line counter before we return to idle.  The microcode
                 // should then reenable the display at line zero!
-                if (_startOver)
+                //
+                // ** PNX 2 HACK (part two) **
+                // 
+                // PNX 2 sets the StartOver bit at the _start_ of the first band
+                // after the VSync band, which means we end up off by 128 lines.
+                // StartOver is forced on when it should be set (but isn't) and
+                // is ignored here when it is set (and shouldn't be).  Sigh.
+                // 
+                if (_startOver && !DisplayEnabled)
                 {
                     _scanLine = 0;
                 }
@@ -435,10 +446,11 @@ namespace PERQemu.Memory
         {
             UpdateSignals();
 
-            Console.WriteLine("counterInit={0}, count={1}, overflow={2}, intrEnabled={3}",
-                              _lineCounterInit, _lineCounter, _lineCountOverflow, MicroInterruptEnabled);
-            Console.WriteLine("scanline={0}, startOver={1}, state={2}, crt={3}",
-                              _scanLine, _startOver, _state, _crtSignals);
+            Console.WriteLine("counterInit={0}, count={1}, overflow={2}, scanline={3}, startOver={4}",
+                              _lineCounterInit, _lineCounter, _lineCountOverflow, _scanLine, _startOver);
+            Console.WriteLine("screen @ 0x{0:x}, cursor @ 0x{1:X}, intrEnabled={2}",
+                              _displayAddress, _cursorAddress, MicroInterruptEnabled);
+            Console.WriteLine("state={0}, crt={1}", _state, _crtSignals);
         }
 
         /// <summary>

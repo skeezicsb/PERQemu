@@ -33,8 +33,6 @@ namespace PERQemu.IO.Network
     /// "special receive" command.  The first four bytes are fixed (three octets
     /// 02:1c:7c assigned by Xerox, plus the board ID set by 3RCC) while the last
     /// two are machine-specific, burned into the PROMs during manufacturing.
-    /// These aren't just returned as two bytes, though; they are given as four
-    /// nibbles, bit reversed, and must be flipped and reconstructed in software.
     /// </remarks>
     public struct MachineAddress
     {
@@ -66,7 +64,7 @@ namespace PERQemu.IO.Network
         public ushort High => (ushort)((_mac[0] << 8) | _mac[1]);
         public ushort Mid => (ushort)((_mac[2] << 8) | _mac[3]);
 
-        // This one can be tweaked
+        // This one can be set
         public ushort Low
         {
             get
@@ -84,11 +82,75 @@ namespace PERQemu.IO.Network
             }
         }
 
-        // How the hardware returns the low word
-        public byte Hn => Mirror(_mac[4], 4);
-        public byte MHn => Mirror(_mac[4], 0);
-        public byte MLn => Mirror(_mac[5], 4);
-        public byte Ln => Mirror(_mac[5], 0);
+        // EIO writes them separately
+        public byte LowFifth
+        {
+            set { _mac[4] = value; }
+        }
+
+        public byte LowSixth
+        {
+            set { _mac[5] = value; }
+        }
+
+        /// <summary>
+        /// Return the low address word of a MAC in the form the microcode expects.
+        /// This unscrambles and recombines the bits based on the truly insane way
+        /// the hardware shuffles the nibbles around <smdh>which is different from
+        /// the OIO to EIO implementations.</smdh>
+        /// </summary>
+        /// <returns>
+        /// Four 16-bit words with the 48-bit MAC address properly formatted with all
+        /// of the nibbles organized according to interface type.  Just poke these into
+        /// memory and we shall not speak of it again.
+        /// </returns>
+        public ushort[] Unscrambled(bool eio)
+        {
+            var magicWords = new ushort[4];
+
+            #region This will melt your brain
+            //
+            //  The hardware writes the MAC from the PROM into the special response
+            //  packet when the microcode requests the address for the interface.
+            //  How it's stored:
+            //
+            //      Word    High byte   Low byte          MAC[]
+            //      ----    ---------   --------    ------------------
+            //        0         correct order       [0] 02      [1] 1c
+            //        1         correct order       [2] 7c      [3] <0..2>
+            //        2     Sixth octet, scrambled  \
+            //        3     Fifth octet, scrambled  /   (see below)
+            //
+            //  How it's assembled and used:
+            //
+            //      Word    High byte   Low byte
+            //      ----    ---------   --------
+            //        0         byte swapped        [1]..[0]
+            //        1         byte swapped        [3]..[2]
+            //        2      LLL,LLH     LHH,LHL    [5],,[4]    OIO (Bits mirrored)
+            //              ELLL,ELLH   ELHH,ELHL   [5]..[4]    EIO
+            //
+            #endregion
+
+            // Assign the first two words (four octets) of the MAC:
+            magicWords[0] = High;
+            magicWords[1] = Mid;
+
+            if (eio)
+            {
+                // For EIO, 5th & 6th octets are written as 0x0y in one word each
+                magicWords[2] = (ushort)(((_mac[4] & 0xf0) << 4) | (_mac[4] & 0x0f));
+                magicWords[3] = (ushort)(((_mac[5] & 0xf0) << 4) | (_mac[5] & 0x0f));
+            }
+            else
+            {
+                // OIO mirrors the bits AND writes the bytes as x0y0 into the word
+                magicWords[2] = (ushort)((Mirror(_mac[4], 4) << 12) | (Mirror(_mac[4], 0) << 4));
+                magicWords[3] = (ushort)((Mirror(_mac[5], 4) << 12) | (Mirror(_mac[5], 0) << 4));
+            }
+
+            return magicWords;
+        }
 
         // Return a bit-swapped nibble (OIO only)
         byte Mirror(byte nibble, int offset)
@@ -96,7 +158,7 @@ namespace PERQemu.IO.Network
             var mirrored = 0;
             nibble >>= offset;
 
-            // On OIO bits are stored in network order, so we have to flip them
+            // Bits are stored in network order, so we have to flip them
             for (var i = 0; i < 4; i++)
             {
                 mirrored = (mirrored << 1) | (nibble & 0x1);

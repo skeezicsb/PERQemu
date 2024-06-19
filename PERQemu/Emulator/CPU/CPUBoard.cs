@@ -127,7 +127,13 @@ namespace PERQemu.Processor
         {
             if (_asyncThread != null)
             {
-                throw new InvalidOperationException("CPU thread is already running; Stop first");
+                if (!_stopAsyncThread)
+                    throw new InvalidOperationException("CPU thread is already running; Stop first");
+
+                // Clean up a halted thread that may be lingering to avoid annoying
+                // the user (me) with spurious halts.  Reset should maybe also clean
+                // up un-Join()ed threads or I should fix this properly ugh.
+                Stop();
             }
 
             // Fire off the CPU thread
@@ -147,9 +153,9 @@ namespace PERQemu.Processor
             _heartbeat.Enable(true);
             Log.Debug(Category.Controller, "[CPU running on thread {0}]", Thread.CurrentThread.ManagedThreadId);
 
-            do
+            try
             {
-                try
+                do
                 {
                     Run(_heartbeat.Period);
 
@@ -161,19 +167,21 @@ namespace PERQemu.Processor
                         _heartbeat.WaitForHeartbeat();
                     }
                 }
-                catch (Exception e)
-                {
-                    _stopAsyncThread = true;
-                    _system.Halt(e);
-                }
+                while (!_stopAsyncThread);
             }
-            while (!_stopAsyncThread);
+            catch (Exception e)
+            {
+                _stopAsyncThread = true;
+                _system.Halt(e);
+            }
+            finally
+            {
+                Log.Debug(Category.Controller, "[CPU thread stopped]");
+                _heartbeat.Enable(false);
 
-            Log.Debug(Category.Controller, "[CPU thread stopped]");
-            _heartbeat.Enable(false);
-
-            // Detach
-            PERQemu.Controller.RunStateChanged -= OnRunStateChange;
+                // Detach
+                PERQemu.Controller.RunStateChanged -= OnRunStateChange;
+            }
         }
 
         /// <summary>
@@ -186,7 +194,8 @@ namespace PERQemu.Processor
                 return;
             }
 
-            Log.Detail(Category.Controller, "[Stop() called on CPU thread]");
+            Log.Detail(Category.Controller, "[CPU Stop() called from thread {0}]",
+                                            Thread.CurrentThread.ManagedThreadId);
             _stopAsyncThread = true;
             _heartbeat.Enable(false);
 
@@ -217,6 +226,16 @@ namespace PERQemu.Processor
         {
             Log.Debug(Category.Controller, "[CPU state change event -> {0}]", s.State);
             _stopAsyncThread = (s.State != RunState.Running);
+        }
+
+        public void ShowThreadStatus()
+        {
+            if (_asyncThread != null)
+            {
+                Console.WriteLine("CPU thread is ID {0}, status {1}",
+                                  _asyncThread.ManagedThreadId,
+                                  _asyncThread.ThreadState);
+            }
         }
 
         /// <summary>

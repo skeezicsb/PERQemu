@@ -29,19 +29,10 @@ namespace PERQemu.IO.DiskDevices
     /// Represents a Micropolis 8" hard drive controller which manages disk
     /// drives in the Disk8Inch class.  This is implemented in the PERQ as an
     /// adapter from the SA4000 interface to the Micropolis 1200-series drives.
+    /// This version of the driver attempts to suss out the CIO version of the
+    /// controller, for which there is almost no documentation or surviving
+    /// software support.
     /// </summary>
-    /// <remarks>
-    /// Although the 1220 controller can manage a string of up to four drives,
-    /// there doesn't appear to be any software support for setting the Drive
-    /// Select value.  This statement in a recently unearthed document also
-    /// corrects my misconception that the ICL cabinet could house two drives:
-    /// 
-    ///     "None of the PERQ cabinets has enough space for mounting more
-    ///      than one 8" drive internally."
-    ///         -- config.doc Rev 3, Steve Clark 18 Dec 84
-    /// 
-    /// As with the Shugart, emulation for now is limited to a single drive. :-(
-    /// </remarks>
     public sealed class CIOMicropolisDiskController : IStorageController
     {
 
@@ -51,6 +42,9 @@ namespace PERQemu.IO.DiskDevices
         //  can be completed once additional source, documentation, or even a
         //  good disassembly of a definitive microcode binary can be found.
         //  The standard MicropolisDiskController is now EIO only.
+        //
+        //  Todo: when revisiting this, use the split controller/DIB approach
+        //  that worked so beautifully in the EIO implementation.
         //
 
         public CIOMicropolisDiskController(PERQSystem system)
@@ -63,7 +57,9 @@ namespace PERQemu.IO.DiskDevices
             _cylinder = new ExtendedRegister(4, 8);
             _nibLatch = new ExtendedRegister(4, 4);
 
-            // 8" drives are only supported on the 20-bit machines...
+            // 8" drives are only supported on the 20-bit machines?
+            // Actually... there is an Accent.PQ2.24.Mboot! but these
+            // are probably deleted with the new DMA registry anyway
             _dataBuffer = new ExtendedRegister(4, 16);
             _headerAddress = new ExtendedRegister(4, 16);
         }
@@ -73,12 +69,9 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         public void Reset()
         {
-            if (_disk != null)
-            {
-                _disk.Reset();
-            }
+            _disk?.Reset();
 
-            // Clears busy and the interrupt
+            // Clear busy and the interrupt
             ClearBusyState();
 
             // Force a soft reset (calls ResetFlags)
@@ -227,26 +220,6 @@ namespace PERQemu.IO.DiskDevices
                     Log.Write(Category.HardDisk, "Micropolis Sector # set to 0x{0:x2}", _sector);
                     break;
 
-                case 0xd0:      // Micropolis Data Buffer Address High register
-                    _dataBuffer.Hi = ~value;
-                    Log.Write(Category.HardDisk, "Micropolis Data Buffer Address (high) set to 0x{0:x}", _dataBuffer.Hi);
-                    break;
-
-                case 0xd1:      // Micropolis Header Address High register
-                    _headerAddress.Hi = ~value;
-                    Log.Write(Category.HardDisk, "Micropolis Header Address (high) set to 0x{0:x}", _headerAddress.Hi);
-                    break;
-
-                case 0xd8:      // Micropolis Data Buffer Address Low register
-                    _dataBuffer.Lo = (ushort)value;
-                    Log.Write(Category.HardDisk, "Micropolis Data Buffer Address (low) set to 0x{0:x4}", _dataBuffer.Lo);
-                    break;
-
-                case 0xd9:      // Micropolis Header Address low register
-                    _headerAddress.Lo = (ushort)value;
-                    Log.Write(Category.HardDisk, "Micropolis Header Address (low) set to 0x{0:x4}", _headerAddress.Lo);
-                    break;
-
                 default:
                     throw new InvalidOperationException($"Bad register write 0x{address:x2}");
             }
@@ -273,7 +246,7 @@ namespace PERQemu.IO.DiskDevices
         /// since it's used to turn the Z80 off and on.  So on the CIO, for which we
         /// have no *$)!#*& schematics, does that bit do double duty?
         /// </remarks>
-        public void LoadCommandRegister(int data)
+        void LoadCommandRegister(int data)
         {
             var command = (Command)(data & 0x07);
             var nibCommand = (NibbleSelect)(data & 0x78);
@@ -707,6 +680,11 @@ namespace PERQemu.IO.DiskDevices
             {
                 _system.CPU.ClearInterrupt(InterruptSource.HardDisk);
             }
+        }
+
+        public void DumpStatus()
+        {
+            throw new NotImplementedException();
         }
 
         /// <summary>

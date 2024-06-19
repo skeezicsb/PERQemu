@@ -73,8 +73,7 @@ namespace PERQemu.IO
                     return _z80System.ReadData();
 
                 default:
-                    Log.Warn(Category.IO, "Unhandled IOB Read from port {0:x2}", port);
-                    return 0xffff;
+                    throw new UnhandledIORequestException(port);
             }
         }
 
@@ -102,28 +101,28 @@ namespace PERQemu.IO
                     _hardDiskController.LoadRegister(port, value);
                     break;
 
-                case 0xd0:      // DMA Registers
+                case 0xd0:      // DMA Registers: Hard disk (Shugart/Microp)
                 case 0xd1:
                 case 0xd8:
                 case 0xd9:
                     _dmaRegisters.LoadRegister(ChannelName.HardDisk, port, value);
                     break;
 
-                case 0xd2:
+                case 0xd2:      // DMA: Network (unused)
                 case 0xd3:
                 case 0xda:
                 case 0xdb:
                     _dmaRegisters.LoadRegister(ChannelName.Network, port, value);
                     break;
 
-                case 0xd4:
+                case 0xd4:      // DMA: Ext B (OIO Canon)
                 case 0xd5:
                 case 0xdc:
                 case 0xdd:
                     _dmaRegisters.LoadRegister(ChannelName.ExtB, port, value);
                     break;
 
-                case 0xd6:
+                case 0xd6:      // DMA: Ext A (OIO Ethernet or Ether3Mbit)
                 case 0xd7:
                 case 0xde:
                 case 0xdf:
@@ -131,8 +130,7 @@ namespace PERQemu.IO
                     break;
 
                 default:
-                    Log.Warn(Category.IO, "Unhandled IOB Write to port {0:x2}, data {1:x4}", port, value);
-                    break;
+                    throw new UnhandledIORequestException(port, value);
             }
         }
 

@@ -121,9 +121,7 @@ namespace PERQemu.UI
 
             // Adjust the timer for running the message loop.  It should be no
             // longer than 16.667ms if we're to maintain 60fps on the Display
-            HighResolutionTimer.Enable(_timerHandle, false);
             HighResolutionTimer.Adjust(_timerHandle, 15d);
-            HighResolutionTimer.Enable(_timerHandle, true);
         }
 
         /// <summary>
@@ -137,9 +135,7 @@ namespace PERQemu.UI
             _winStateChanged = false;
 
             // Pump the brakes
-            HighResolutionTimer.Enable(_timerHandle, false);
             HighResolutionTimer.Adjust(_timerHandle, 50d);
-            HighResolutionTimer.Enable(_timerHandle, true);
         }
 
         /// <summary>

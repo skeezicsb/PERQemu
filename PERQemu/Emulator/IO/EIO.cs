@@ -30,14 +30,15 @@ namespace PERQemu.IO
     /// <summary>
     /// Represents an EIO or NIO card in a PERQ2 system.  This contains hardware
     /// for a Micropolis or MFM disk controller, an Ethernet controller (not
-    /// present on the NIO) and a Z80 for controlling low-speed devices.
+    /// present on the NIO) and a Z80 subsystem for attaching low-speed devices.
     /// </summary>
     public sealed class EIO : IOBoard
     {
         static EIO()
         {
             _name = "EIO";
-            _desc = "PERQ-2 I/O Board, new Z80, Microp/MFM, Ethernet";
+            _desc = "PERQ-2 I/O Board, Z80A, Microp/MFM, Ethernet";
+            _isEIO = true;
 
             _z80CycleTime = 250;    // 4Mhz!
 
@@ -46,16 +47,19 @@ namespace PERQemu.IO
             // 16Kx1 SRAMs (2167s), but the EIO sources have very strange values
             // for the base address and length.  It must be that they reserve
             // around 10K for loading from the Zboot file at startup, and only
-            // use 6K for data?  Why not use 16K ROM and avoid that whole mess?
+            // use 6K for data?  The MEM4 decoder PAL shows that the 16K range
+            // from 0x4000:0x7fff is mapped to RAM select.  Hmm.
             // 
-            // Similarly, there's an 8Kx8 ROM (2764) chip on the board but the
-            // ROM that's built seems to limit the Z80 assembler's view to 4K
-            // and several other docs show that only 4K is used.  Since we're
-            // loading from actual ROM dumps, the ROM loader wants to match the
-            // RomSize to the length of the actual file.
+            // Similarly, there's an 8Kx8 ROM (2764) chip on the schematic but the
+            // actual chip used is a 4Kx8 (2732) -- another spectacular own goal,
+            // Three Creeks.  The 4K chip is just small enough that several device
+            // handlers are left out and must be loaded using the "ZBoot" file and
+            // executed out of RAM.  This complicates everything.  For now we load
+            // the actual ROM dump, so the ROM loader wants to match the RomSize
+            // to the length of the actual file.
             //
-            _z80RamSize = 0x1800;   // 6K (of 16K) RAM
-            _z80RamAddr = 0x6800;
+            _z80RamSize = 0x4000;   // 16K RAM
+            _z80RamAddr = 0x4000;
             _z80RomSize = 0x1000;   // 4K (of 8K) ROM
             _z80RomAddr = 0x0;
         }
@@ -85,8 +89,7 @@ namespace PERQemu.IO
                      system.Config.GetDrivesOfType(DeviceType.Disk5Inch).Length > 0)
             {
                 // A PERQ-2/T2 or 2/T4
-                // _hardDiskController = new MFMDiskController(system);
-                throw new UnimplementedHardwareException("MFMDiskController not yet implemented");
+                _hardDiskController = new MFMDiskController(/* incomplete */);
             }
             else
             {
@@ -121,6 +124,13 @@ namespace PERQemu.IO
 
         public INetworkController Ether => _ethernetController;
 
+        public override void Reset()
+        {
+            _ethernetController?.Reset();
+
+            base.Reset();
+        }
+
         /// <summary>
         /// Reads a word from the given I/O port.
         /// </summary>
@@ -128,18 +138,29 @@ namespace PERQemu.IO
         {
             switch (port)
             {
-                case 0x53:      // DskStat (SMStat): read disk status reg
+                //  Ethernet status register
+                case 0x52:
+                    return _ethernetController?.ReadStatus() ?? 0xff;
+
+                // Hard disk status
+                case 0x53:
                     return _hardDiskController.ReadStatus();
 
-                case 0x54:      // 124 EioZ80In: dismiss Z80 interrupt
+                // Z80 data port
+                case 0x54:
                     return _z80System.ReadData();
 
-                case 0x55:      // 125 EioZ80Stat: read Z80 interface status
+                // Z80 status port
+                case 0x55:
                     return _z80System.ReadStatus();
 
+                // Ethernet bit counter (lo, hi bytes)
+                case 0x5a:
+                case 0x5b:
+                    return _ethernetController?.ReadRegister(port) ?? 0xff;
+
                 default:
-                    Log.Warn(Category.IO, "Unhandled EIO Read from port {0:x2}", port);
-                    return 0xff;
+                    throw new UnhandledIORequestException(port);
             }
         }
 
@@ -157,7 +178,6 @@ namespace PERQemu.IO
 
                 // Z80 control register
                 case 0xc5:
-                    // Todo: if bit 3 set, inform the PDMA
                     _z80System.WriteStatus(value);
                     break;
 
@@ -183,6 +203,9 @@ namespace PERQemu.IO
 
                 // Load Ethernet registers
                 case 0xc2:
+                    _ethernetController?.LoadCommand(value);
+                    break;
+
                 case 0xc3:
                 case 0xc8:
                 case 0xc9:
@@ -198,15 +221,11 @@ namespace PERQemu.IO
                 case 0xdc:
                 case 0xdd:
                 case 0xde:
-                    if (_ethernetController != null)
-                    {
-                        _ethernetController.LoadRegister(port, value);
-                    }
+                    _ethernetController?.LoadRegister(port, value);
                     break;
 
                 default:
-                    Log.Warn(Category.IO, "Unhandled EIO Write to port {0:x2}, data {1:x4}", port, value);
-                    break;
+                    throw new UnhandledIORequestException(port, value);
             }
         }
 
@@ -221,7 +240,7 @@ namespace PERQemu.IO
                 _ethernetController.Shutdown();
             }
 
-            // todo: Save the RTC offset? :-)
+            // Todo: Save the RTC offset? :-)
 
             base.Shutdown();
         }
@@ -278,7 +297,7 @@ namespace PERQemu.IO
 
         /// <remarks>
         /// These EIO registers are not implemented:
-        /// 120     50      FPSat           read floating point status
+        /// 120     50      FPStat          read floating point status
         /// 121     51      FPResult        read floating point result
         /// 234     9C      AdrReg*         enable state machine addr reg
         /// 235     9D      WrtRam*         load ethernet test mumble
@@ -294,51 +313,3 @@ namespace PERQemu.IO
         ChannelName _chanSelect;
     }
 }
-
-/*
-    Notes:
-
-    This write register needs some special attention:
-    
-           305  Control register  bit 3  - Disable Ext A address
-                                           (see PERQ DMA)
-                                  bit 2  - Z80 reset when clear
-                                  bit 1  - Enable write channel;
-                                           interrupt when set
-                                  bit 0  - Enable read channel;
-                                           interrupt when set
-
-    ACK!  This is very confusing and finicky:
-
-    PERQ TO the Z80 is the "Write FIFO", or Z80 IO BUS INPUT (schematics pg 10):
-    
-        writes data to port 304 (LD_UPROC_DATA_L) trigger PERQ_INT on the Z80
-        and set UPROC_RDY if the FIFO OR signal is true (i.e., not empty)
-
-        control register (port 305) bit 1 is the UPROC_RDY_ENB flag; this enables
-        the UPROC_RDY_INT_L interrupt (Z80DataOut) to be sent TO the PERQ when
-        there is NO data in the FIFO AND the UPROC_RDY_ENB is set (meaning, "I'm
-        ready for more data")
-
-        bit 0 is the UPROC_ENB flag, which enables read-side (Z80DataIn) interrupts
-        (see below)
-
-        data is read from the FIFO on port 124 (0x54) RD_UPROC_DATA_L
-
-        the PERQ UPROC_INT_L is asserted when IOD_OUT_RDY is asserted by the Z80,
-        the FIFO OR is asserted (i.e., not empty) and the UPROC_ENB bit is set.
-
-        reads from the status register (125, 0x55, RD_UPROC_STAT_L) return the
-        IOD_OUT_RDY (output ready) bit as set by the Z80 directly) and UPROC_RDY
-        (meaning the Z80->PERQ FIFO is empty)
-        
-
-    Z80 to the PERQ is the "Read FIFO", mislabeled Z80 IO BUS INPUT (schematics
-    pg 9) when it is clearly output from BUF_D<> -> IOB<>
-
-        IOD_OUT_RDY is the one-bit register written to by the Z80 when it has
-        data to send TO the PERQ; it is latched in the '259 by writes to the
-        control register at port 170Q (0x78)
-
-        data bytes are queued by writes to port 161Q (0x71), SEL_IOD_WR_L
-*/

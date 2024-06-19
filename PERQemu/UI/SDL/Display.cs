@@ -448,7 +448,14 @@ namespace PERQemu.UI
             // Tell the EventLoop we're going away
             PERQemu.GUI.DetachDisplay();
 
-            // Clear the renderer
+            // Clear the display texture
+            if (_displayTexture != IntPtr.Zero)
+            {
+                SDL.SDL_DestroyTexture(_displayTexture);
+                _displayTexture = IntPtr.Zero;
+            }
+
+            // And the renderer
             if (_sdlRenderer != IntPtr.Zero)
             {
                 SDL.SDL_DestroyRenderer(_sdlRenderer);

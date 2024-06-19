@@ -405,6 +405,13 @@ namespace PERQemu.UI
                     // Now make the switch
                     PERQemu.Config.Current.IOBoard = ioType;
                     PERQemu.Config.Changed = true;
+
+                    // If we're switching to EIO, quietly remove the Ether
+                    // option if it's present (avoid spurious warnings)
+                    if (ioType == IOBoardType.EIO)
+                    {
+                        RemoveIOOption(IOOptionType.Ether);
+                    }
                 }
 
                 if (!PERQemu.Config.CheckIO())

@@ -23,7 +23,7 @@ using System;
 using System.IO;
 
 namespace PERQemu.IO.Z80
-{   
+{
     /// <summary>
     /// Z80MemoryBus implements the Konamiman Z80dotNet IMemory interface to
     /// provide access to the IO board's Z80 Memory space.
@@ -65,6 +65,15 @@ namespace PERQemu.IO.Z80
         //
         byte ReadByte(int address)
         {
+#if DEBUG
+            if (PERQemu.Sys.IOB.Z80System.Debugger.WatchedMemoryAddr.IsWatched(address) &&
+                PERQemu.Sys.IOB.Z80System.IsRunning)
+            {
+                byte val = (address < ROM_SIZE) ? _rom[address] : _ram[address - RAM_ADDRESS];
+                Console.WriteLine($"Z80 mem read: {address:x4} = {val:x2}");
+                PERQemu.Sys.IOB.Z80System.Debugger.WatchedMemoryAddr.BreakpointReached(address);
+            }
+#endif
             if (address < ROM_SIZE)
             {
                 return _rom[address];
@@ -75,21 +84,28 @@ namespace PERQemu.IO.Z80
                 return _ram[address - RAM_ADDRESS];
             }
 
-            // throw for now so I can see what's going on
+            // Throw for now so I can see what's going on
             throw new InvalidOperationException($"Unexpected memory read at address 0x{address:x}");
         }
 
         void WriteByte(int address, byte value)
         {
+#if DEBUG
+            if (PERQemu.Sys.IOB.Z80System.Debugger.WatchedMemoryAddr.IsWatched(address) &&
+                PERQemu.Sys.IOB.Z80System.IsRunning)
+            {
+                Console.WriteLine($"Z80 mem write: {address:x4} = {value:x2}");
+                PERQemu.Sys.IOB.Z80System.Debugger.WatchedMemoryAddr.BreakpointReached(address);
+            }
+#endif
             if (address >= RAM_ADDRESS && address < RAM_ADDRESS + RAM_SIZE)
             {
                 _ram[address - RAM_ADDRESS] = value;
+                return;
             }
-            else
-            {
-                // throw for now so I can see what's going on
-                throw new InvalidOperationException($"Unexpected memory write at address 0x{address:x} of 0x{value:x}");
-            }
+
+            // Draw attention to scribbles outside the lines
+            throw new InvalidOperationException($"Unexpected memory write at address 0x{address:x} of 0x{value:x}");
         }
 
         public void DMATerminate()

@@ -154,8 +154,6 @@ namespace PERQemu
             int tag = 0;
             double next = interval;
 
-            Log.Detail(Category.Timer, "Register called, requesters length = " + _requesters.Count);
-
             // Loop to see if we have an existing subscriber with the same
             // period; if so, adjust our new request to fire at the same time,
             // in effect coalescing the two and slightly improving efficiency :-)
@@ -164,7 +162,7 @@ namespace PERQemu
                 if (!_requesters[i].Free && Math.Abs(_requesters[i].Interval - interval) < Tolerance)
                 {
                     next = _requesters[i].NextTrigger;
-                    Log.Detail(Category.Timer, "Coalesced new timer at " + next);
+                    Log.Detail(Category.Timer, "Coalesced new timer at {0}", next);
                     break;
                 }
             }
@@ -211,10 +209,13 @@ namespace PERQemu
             {
                 _requesters[tag].Enabled = doit;
 
-                // Enabling a timer starts the thread if it isn't already running
-                if (doit && !_runTimers)
+                if (doit)
                 {
-                    Start();
+                    // Jump forward to current time
+                    _requesters[tag].NextTrigger = Math.Round(ElapsedHiRes());
+
+                    // Start the timer thread if not already running
+                    if (!_runTimers) Start();
                 }
             }
             catch
@@ -239,7 +240,12 @@ namespace PERQemu
         {
             try
             {
+                // Save our current state; if running, pause, adjust, and restart!
+                bool restart = _requesters[tag].Enabled;
+
+                if (restart) Enable(tag, false);
                 _requesters[tag].Interval = interval;
+                if (restart) Enable(tag, true);
                 Log.Debug(Category.Timer, "Interval for timer {0} now {1}", tag, interval);
             }
             catch

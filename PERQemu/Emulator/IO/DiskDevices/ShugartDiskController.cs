@@ -34,7 +34,6 @@ namespace PERQemu.IO.DiskDevices
         {
             _system = system;
             _disk = null;
-            _busyEvent = null;
 
             // This is assembled from separate register writes, so let
             // ExtendedRegister do the work to combine 'em!
@@ -46,10 +45,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         public void Reset()
         {
-            if (_disk != null)
-            {
-                _disk.Reset();
-            }
+            _disk?.Reset();
 
             _cylinder = 0;
             _head = 0;
@@ -170,7 +166,7 @@ namespace PERQemu.IO.DiskDevices
         ///         5     fault clear         /
         ///       6:7     unit select!?      /    Z80 control bit (conflict!)
         /// </remarks>
-        public void LoadCommandRegister(int data)
+        void LoadCommandRegister(int data)
         {
             _command = (Command)(data & 0x07);
             _seekCommand = (SeekCommand)(data & 0x78);
@@ -496,7 +492,7 @@ namespace PERQemu.IO.DiskDevices
             // if we're NOT doing a seek -- because reasons okay
             if (_command != Command.Seek)
             {
-                _busyEvent = _system.Scheduler.Schedule(delay, (skew, context) =>
+                _system.Scheduler.Schedule(delay, (skew, context) =>
                 {
                     ClearBusyState(true);
                 });
@@ -519,6 +515,19 @@ namespace PERQemu.IO.DiskDevices
             {
                 _system.CPU.ClearInterrupt(InterruptSource.HardDisk);
             }
+        }
+
+        /// <summary>
+        /// Dump internal state to the console.
+        /// </summary>
+        public void DumpStatus()
+        {
+            var stat = DiskStatus;
+
+            Console.WriteLine("Shugart hard drive status:");
+            Console.WriteLine($"  Command: {_command}  Busy: {_controllerBusy}");
+            Console.WriteLine($"  Seek command:  {_seekCommand}  State: {_seekState}");
+            Console.WriteLine($"  Disk status:   0x{stat:x4} ({(Status)stat})");
         }
 
         enum SeekState
@@ -611,8 +620,6 @@ namespace PERQemu.IO.DiskDevices
         // fiddle with this to make it more realistic.
         readonly ulong BlockDelayNsec = 585 * Conversion.UsecToNsec;
 
-        SchedulerEvent _busyEvent;
-
-        PERQSystem _system;
+        readonly PERQSystem _system;
     }
 }

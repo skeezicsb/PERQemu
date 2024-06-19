@@ -74,9 +74,9 @@ namespace PERQemu.UI.Output
 
                 phys.ResetChecksum();
                 phys.Write(Encoding.ASCII.GetBytes("pHYs"), 0, 4);
-                phys.WriteUInt(ppm);    // X
-                phys.WriteUInt(ppm);    // Y
-                phys.WriteByte(1);      // Pixels per meter!
+                phys.WriteUInt(ppm);            // X
+                phys.WriteUInt(ppm);            // Y
+                phys.WriteByte(1);              // Pixels per meter!
                 crc = phys.WriteCRC;
             }
             fs.WriteUInt(crc);
@@ -116,7 +116,7 @@ namespace PERQemu.UI.Output
                 {
                     for (var i = 0; i < page.BitHeight; i++)
                     {
-                        cmp.WriteByte(0);   // Filter type 0
+                        cmp.WriteByte(0);       // Filter type 0
                         cmp.Write(page.Buffer, (int)(page.ScanWidth * i), (int)page.ScanWidth);
                     }
                 }

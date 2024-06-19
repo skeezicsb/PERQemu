@@ -291,12 +291,14 @@ namespace PERQemu.Config
                 }
                 sb.AppendLine();
 
-                if ((IOOptionBoard == OptionBoardType.OIO ||
-                     IOOptionBoard == OptionBoardType.Ether3) &&
-                     EtherAddress != 0)
+                if (IOOptionBoard == OptionBoardType.OIO && IOBoard != IOBoardType.EIO && EtherAddress != 0)
                 {
                     sb.AppendLine("    Ethernet:  node " + EtherAddress);
                 }
+                
+                // Todo: for 3Mbit Ethernet, address is a single octet, not the
+                // two-octet low word; will have to be stored separately if we
+                // are ever able to emulate the CMU 3Mbit<->10Mbit gateway config!
             }
 
             // Todo: for PERQ-2 models, backplane serial number

@@ -85,13 +85,13 @@ namespace PERQemu.IO
                     return _z80System.ReadData();
 
                 default:
-                    Log.Warn(Category.IO, "Unhandled CIO Read from port {0:x2}", port);
-                    return 0xffff;
+                    throw new UnhandledIORequestException(port);
             }
         }
 
         /// <summary>
-        /// Writes a word to the given I/O port.
+        /// Writes a word to the given I/O port.  Same as IOB, with one extra
+        /// port for the Micropolis.
         /// </summary>
         public override void IOWrite(byte port, int value)
         {
@@ -144,8 +144,7 @@ namespace PERQemu.IO
                     break;
 
                 default:
-                    Log.Warn(Category.IO, "Unhandled CIO Write to port {0:x2}, data {1:x4}", port, value);
-                    break;
+                    throw new UnhandledIORequestException(port, value);
             }
         }
 

@@ -38,16 +38,18 @@ namespace PERQemu.IO.Z80
         public CIOZ80(PERQSystem system) : base(system)
         {
             // Set up the IOB/CIO peripherals
-            _fdc = new NECuPD765A(0xa8, _scheduler);
-            _tms9914a = new TMS9914A(0xb8);
             _seekControl = new HardDiskSeekControl(_system);
             _perqToZ80Fifo = new PERQToZ80Latch(_system);
             _z80ToPerqFifo = new Z80ToPERQLatch(_system);
-            _z80ctc = new Z80CTC(0x90, _scheduler);
-            _z80sio = new Z80SIO(0xb0, _scheduler);
+
+            _fdc = new NECuPD765A(0xa8, _scheduler);
+            _tms9914a = new TMS9914A(0xb8);
             _z80dma = new Z80DMA(0x98, _memory, _bus);
+            _z80ctc = new Z80CTC(0x90, _scheduler);
+            _z80sio = new Z80SIO(0xb0, this);
             _dmaRouter = new DMARouter(this);
             _keyboard = new Keyboard();
+
             _ioReg3 = new IOReg3(_perqToZ80Fifo, _keyboard, _fdc, _dmaRouter);
 
             // Initialize DMAC
@@ -67,15 +69,12 @@ namespace PERQemu.IO.Z80
             DeviceInit();
         }
 
-        // Allow for external CTC triggers (disk seeks)
-        public override Z80CTC CTC => _z80ctc;
-
         // Expose to the DMA router
         public override Z80SIO SIOA => _z80sio;
 
-        // Do we need a wait state?
-        protected override bool FIFOInputReady => _perqToZ80Fifo.IsReady;
-        protected override bool FIFOOutputReady => _z80ToPerqFifo.IsReady;
+        // Allow for external CTC triggers (disk seeks)
+        public override Z80CTC CTC => _z80ctc;
+
 
         /// <summary>
         /// Initializes the IOB/CIO devices and attaches them to the bus.
@@ -85,14 +84,12 @@ namespace PERQemu.IO.Z80
             // Attach the configured tablet(s)
             if (_system.Config.Tablet.HasFlag(TabletType.BitPad))
             {
-                var tablet = new BitPadOne(_scheduler, _system);
-                _tms9914a.Bus.AddDevice(tablet);
+                _tms9914a.Bus.AddDevice(new BitPadOne(_scheduler, _system));
             }
 
             if (_system.Config.Tablet.HasFlag(TabletType.Kriz))
             {
-                var tablet = new KrizTablet(_scheduler, _system);
-                _z80sio.AttachDevice(1, tablet);
+                _z80sio.AttachDevice(1, new KrizTablet(_scheduler, _system));
             }
 
             // If enabled and configured, attach device to RS232
@@ -118,16 +115,16 @@ namespace PERQemu.IO.Z80
             }
 
             // Everybody get on the bus!
-            _bus.RegisterDevice(_seekControl);
-            _bus.RegisterDevice(_perqToZ80Fifo);
-            _bus.RegisterDevice(_z80ToPerqFifo);
+            _bus.RegisterDevice(_fdc);
             _bus.RegisterDevice(_z80ctc);
             _bus.RegisterDevice(_z80sio);
             _bus.RegisterDevice(_z80dma);
-            _bus.RegisterDevice(_fdc);
             _bus.RegisterDevice(_tms9914a);
             _bus.RegisterDevice(_keyboard);
-            _bus.RegisterDevice(_ioReg3);
+            _bus.RegisterDevice(_perqToZ80Fifo);
+            _bus.RegisterDevice(_z80ToPerqFifo, false);
+            _bus.RegisterDevice(_seekControl, false);
+            _bus.RegisterDevice(_ioReg3, false);
         }
 
         protected override void DeviceReset()
@@ -303,7 +300,7 @@ namespace PERQemu.IO.Z80
 
             if (peek == 0xdba0 || peek == 0xedb2)
             {
-                if (!FIFOInputReady)
+                if (!_perqToZ80Fifo.IsReady)
                 {
                     Log.Debug(Category.FIFO, "Wait state for FIFO op ({0})",
                                               (peek == 0xdba0) ? "IN" : "INIR");
@@ -312,7 +309,7 @@ namespace PERQemu.IO.Z80
             }
             else if (peek == 0xd3d0 || (peek == 0xedb3 && regs.C == 0xd0))
             {
-                if (!FIFOOutputReady)
+                if (!_z80ToPerqFifo.IsReady)
                 {
                     Log.Debug(Category.FIFO, "Wait state for FIFO op ({0})",
                                               (peek == 0xd3d0) ? "OUT" : "OTIR");
@@ -323,11 +320,11 @@ namespace PERQemu.IO.Z80
             // Yes!  Run an instruction
             var ticks = _cpu.ExecuteNextInstruction();
 
+            // Run a DMA cycle (and account for the cycles used)
+            ticks += _z80dma.Clock();
+
             // Advance our wakeup time now so the CPU can chill a bit
             _wakeup = (long)(_scheduler.CurrentTimeNsec + ((ulong)ticks * IOBoard.Z80CycleTime));
-
-            // Run a DMA cycle
-            _z80dma.Clock();
 
             // Run the scheduler
             _scheduler.Clock(ticks);
@@ -357,6 +354,17 @@ namespace PERQemu.IO.Z80
         {
             Console.WriteLine($"{_system.Config.IOBoard} board does not have a serial port B.");
         }
+
+        public override void DumpIRQStatus()
+        {
+            _bus.DumpInterrupts();
+        }
+
+        public override void DumpDMAStatus()
+        {
+            _z80dma.DumpStatus();
+        }
+
 
         Z80SIO _z80sio;
         Z80CTC _z80ctc;

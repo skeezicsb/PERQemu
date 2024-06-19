@@ -24,7 +24,6 @@ using System.Collections.Generic;
 
 using PERQemu.Debugger;
 using PERQemu.Processor;
-using PERQemu.IO;
 
 namespace PERQemu
 {
@@ -119,7 +118,7 @@ namespace PERQemu
 
         bool CheckSys()
         {
-            if (PERQemu.Sys == null)
+            if (PERQemu.Controller.State == RunState.Off)
             {
                 Console.WriteLine("Cannot execute; the PERQ is not powered on.");
                 return false;
@@ -131,14 +130,10 @@ namespace PERQemu
         [Command("debug step", "Run one microinstruction", Repeatable = true)]
         public void DebugStep()
         {
-            if (PERQemu.Controller.State > RunState.Off)
+            if (CheckSys())
             {
                 PERQemu.Controller.TransitionTo(RunState.SingleStep);
                 PERQemu.Sys.PrintStatus();
-            }
-            else
-            {
-                Console.WriteLine("The PERQ is currently turned off.");
             }
         }
 
@@ -146,14 +141,10 @@ namespace PERQemu
         [Command("debug inst", "Run one Q-code", Repeatable = true)]
         public void DebugInst()
         {
-            if (PERQemu.Controller.State > RunState.Off)
+            if (CheckSys())
             {
                 PERQemu.Controller.TransitionTo(RunState.RunInst);
                 PERQemu.Sys.PrintStatus();
-            }
-            else
-            {
-                Console.WriteLine("The PERQ is currently turned off.");
             }
         }
 
@@ -283,13 +274,7 @@ namespace PERQemu
         [Command("debug show variables", "Show debugger variables and their descriptions")]
         void ShowVars()
         {
-            if (PERQemu.Sys == null)
-            {
-                Console.WriteLine("No PERQ defined.");
-                return;
-            }
-
-            PERQemu.Sys.Debugger.ShowVariables();
+            if (CheckSys()) PERQemu.Sys.Debugger.ShowVariables();
         }
 
         //
@@ -363,25 +348,27 @@ namespace PERQemu
         // Memory and RasterOp
         //
 
-        [Command("debug show memory", "Dump the PERQ's memory")]
-        void ShowMemory(uint startAddr, uint words = 64)
+        [Command("debug show memory", "Show contents of the PERQ's memory")]
+        void ShowMemory(uint address, uint words = 64)
         {
             if (!CheckSys()) return;
 
-            if (startAddr > PERQemu.Sys.Memory.MemSize - 1)
+            if (address > PERQemu.Sys.Memory.MemSize - 1)
             {
                 Console.WriteLine("Start address must be in range 0..{0}", PERQemu.Sys.Memory.MemSize - 1);
                 return;
             }
 
             // Round down to nearest octoword by masking off low address bits
-            var start = (int)(startAddr & 0xfffffff8);
+            var start = (int)(address & 0xfffffff8);
             var end = (int)Math.Min(PERQemu.Sys.Memory.MemSize, start + words);
+
+            var line = new StringBuilder();
 
             // Format and display 8 words per line
             for (var i = start; i < end; i += 8)
             {
-                var line = new StringBuilder();
+                line.Clear();
                 line.AppendFormat("{0:x6}: ", i);
 
                 // Words in hex (Todo: add output radix support)
@@ -407,11 +394,11 @@ namespace PERQemu
         }
 
         [Command("debug find memory", "Find a specific value in the PERQ's memory [@start, val]")]
-        void FindMemory(uint startAddress, ushort val)
+        void FindMemory(uint address, ushort val)
         {
             if (!CheckSys()) return;
 
-            if (startAddress >= PERQemu.Sys.Memory.MemSize)
+            if (address >= PERQemu.Sys.Memory.MemSize)
             {
                 Console.WriteLine("Start address must be in range 0..{0}", PERQemu.Sys.Memory.MemSize - 1);
                 return;
@@ -419,7 +406,7 @@ namespace PERQemu
 
             ushort[] mem = PERQemu.Sys.Memory.Memory;
 
-            for (uint i = startAddress; i < mem.Length; i++)
+            for (uint i = address; i < mem.Length; i++)
             {
                 if (mem[i] == val) ShowMemory((i & 0xffffc), 4);        // show the quadword
             }
@@ -512,26 +499,26 @@ namespace PERQemu
         }
 
         [Command("debug disassemble microcode", "Disassemble microinstructions (@ [addr])")]
-        void DisassembleMicrocode(ushort startAddress)
+        void DisassembleMicrocode(ushort address)
         {
-            DisassembleMicrocode(startAddress, 16);
+            DisassembleMicrocode(address, 16);
         }
 
         [Command("debug disassemble microcode", "Disassemble microinstructions (@ [addr, len])")]
-        void DisassembleMicrocode(ushort startAddress, ushort length)
+        void DisassembleMicrocode(ushort address, ushort length)
         {
             if (!CheckSys()) return;
 
-            var endAddr = Math.Min(startAddress + length, CPU.WCSSize - 1);
+            var endAddr = Math.Min(address + length, CPU.WCSSize - 1);
 
-            if (startAddress > CPU.WCSSize - 1)
+            if (address > CPU.WCSSize - 1)
             {
                 Console.WriteLine("Address out of range 0..{0}", CPU.WCSSize - 1);
                 return;
             }
 
             // Disassemble microcode
-            for (ushort i = startAddress; i < endAddr; i++)
+            for (ushort i = address; i < endAddr; i++)
             {
                 var line = Disassembler.Disassemble(i, PERQemu.Sys.CPU.GetInstruction(i));
                 Console.WriteLine(line);
@@ -546,12 +533,26 @@ namespace PERQemu
             if (nextPC > CPU.WCSSize - 1)
             {
                 Console.WriteLine("Address out of range 0..{0}; PC not modified.", CPU.WCSSize - 1);
+                return;
             }
-            else
+
+            // Trying to jump off the platform onto a moving train?
+            if (PERQemu.Controller.State != RunState.Paused)
             {
-                PERQemu.Sys.CPU.PC = nextPC;
-                // resume execution
+                PERQemu.Controller.TransitionTo(RunState.Paused);
             }
+
+            if (PERQemu.Controller.State != RunState.Paused)
+            {
+                Console.WriteLine("Jane, stop this crazy thing!");
+                return;
+            }
+
+            // Safe as it'll ever be; set the PC and let 'er rip
+            PERQemu.Sys.CPU.PC = nextPC;
+            Console.WriteLine($"Resuming execution @ {nextPC}");
+
+            PERQemu.Controller.TransitionTo(RunState.Running);
         }
 
         [Command("debug load qcodes", "Load Q-code definitions for opcode disassembly")]
@@ -603,18 +604,22 @@ namespace PERQemu
                 return;
             }
 
-            var list = GetBreakpoints(type)[0];
+            _bpList = GetBreakpoints(type)[0];
+            SetBPInternal(type, watch);
+        }
 
-            if (watch < 0 || watch > list.Range)
+        private void SetBPInternal(BreakpointType type, int watch)
+        {
+            if (watch < 0 || watch > _bpList.Range)
             {
-                Console.WriteLine($"{watch} is out of range 0..{list.Range}");
+                Console.WriteLine($"{watch} is out of range 0..{_bpList.Range}");
                 return;
             }
 
             var action = GetDefaultActionFor(type);
-            list.Watch(watch, action);
+            _bpList.Watch(watch, action);
 
-            Console.WriteLine($"Breakpoint set for {list.Name} {watch}");
+            Console.WriteLine($"Breakpoint set for {_bpList.Name} {watch}");
 
             // For now, breakpoints must be explicitly enabled, because reasons.
             if (!PERQemu.Sys.Debugger.BreakpointsEnabled)
@@ -632,15 +637,19 @@ namespace PERQemu
                 return;
             }
 
-            var list = GetBreakpoints(type)[0];
+            _bpList = GetBreakpoints(type)[0];
+            ClearBPInternal(type, watch);
+        }
 
-            if (!list.IsWatched(watch))
+        void ClearBPInternal(BreakpointType type, int watch)
+        {
+            if (!_bpList.IsWatched(watch))
             {
                 Console.WriteLine($"No {type} breakpoint at {watch}.");
                 return;
             }
 
-            list.Unwatch(watch);
+            _bpList.Unwatch(watch);
 
             Console.WriteLine($"{type} breakpoint at {watch} cleared.");
         }
@@ -683,16 +692,24 @@ namespace PERQemu
                 return;
             }
 
-            var list = GetBreakpoints(type)[0];
+            _bpList = GetBreakpoints(type)[0];
 
-            if (!list.IsWatched(watch))
+            if (EditBPInternal(type, watch))
+            {
+                PERQemu.CLI.SetPrefix("debug edit breakpoint");
+            }
+        }
+
+        bool EditBPInternal(BreakpointType type, int watch)
+        {
+            if (!_bpList.IsWatched(watch))
             {
                 Console.WriteLine($"No {type} breakpoint at {watch}.");
-                return;
+                return false;
             }
 
             // Make a copy of the breakpoint for editing
-            var orig = list.GetActionFor(watch);
+            var orig = _bpList.GetActionFor(watch);
 
             _bp = new BreakpointEventArgs(type, watch, orig);     // CHEESE!
             _bpAction = new BreakpointAction();
@@ -705,16 +722,18 @@ namespace PERQemu
             _bpAction.Script = orig.Script;
             _bpAction.Callback = orig.Callback;
 
-            PERQemu.CLI.SetPrefix("debug edit breakpoint");
+            return true;
         }
 
         [Command("debug edit breakpoint commands", "Show breakpoint edit commands")]
+        [Command("debug z80 edit breakpoint commands", "Show breakpoint edit commands")]
         public void ShowEditCommands()
         {
             PERQemu.CLI.ShowCommands("debug edit breakpoint");
         }
 
         [Command("debug edit breakpoint enable", "Enable or disable the breakpoint")]
+        [Command("debug z80 edit breakpoint enable", "Enable or disable the breakpoint")]
         public void EditEnable(bool enabled)
         {
             if (_bpAction.Enabled != enabled)
@@ -725,6 +744,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint pause emulation", "Set/clear flag to pause emulation when triggered")]
+        [Command("debug z80 edit breakpoint pause emulation", "Set/clear flag to pause emulation when triggered")]
         public void EditPause(bool pause)
         {
             if (_bpAction.PauseEmulation != pause)
@@ -735,6 +755,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint retriggerable", "Set the breakpoint as one-shot or retriggerable")]
+        [Command("debug z80 edit breakpoint retriggerable", "Set the breakpoint as one-shot or retriggerable")]
         public void EditRetrigger(bool oneshot)
         {
             if (_bpAction.Retriggerable != oneshot)
@@ -745,6 +766,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint reset count", "Reset the breakpoint counter")]
+        [Command("debug z80 edit breakpoint reset count", "Reset the breakpoint counter")]
         public void EditCount()
         {
             if (_bpAction.Count > 0)
@@ -755,6 +777,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint script", "Run a script when the breakpoint triggers")]
+        [Command("debug z80 edit breakpoint script", "Run a script when the breakpoint triggers")]
         public void EditScript(string script)
         {
             // todo: validate/mangle the path, look it up using the Scripts/ dir, .scr suffix?
@@ -766,6 +789,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint no script", "Do not run a script when triggered")]
+        [Command("debug z80 edit breakpoint no script", "Do not run a script when triggered")]
         public void EditNoScript()
         {
             if (_bpAction.Script != "")
@@ -776,6 +800,7 @@ namespace PERQemu
         }
 
         [Command("debug edit breakpoint show", "Show the current breakpoint")]
+        [Command("debug z80 edit breakpoint show", "Show the current breakpoint")]
         public void EditShow()
         {
             const string fmt = "{0,10}  {1,-20} {2,-20}";
@@ -806,8 +831,7 @@ namespace PERQemu
         public void EditDone()
         {
             // Save/apply the current temporary action
-            var list = GetBreakpoints(_bp.Type)[0];
-            list.Watch(_bp.Value, _bpAction);
+            _bpList.Watch(_bp.Value, _bpAction);
 
             Console.WriteLine("Saved.");
             SetDebugPrefix();
@@ -830,8 +854,12 @@ namespace PERQemu
                 return;
             }
 
+            ShowBPInternal(GetBreakpoints(type));
+        }
+
+        void ShowBPInternal(List<BreakpointList> breakpoints)
+        {
             int total = 0;
-            var breakpoints = GetBreakpoints(type);
 
             foreach (var list in breakpoints)
             {
@@ -856,6 +884,10 @@ namespace PERQemu
 
             switch (bp)
             {
+                case BreakpointType.OpCode:
+                    selected.Add(PERQemu.Sys.Debugger.WatchedOpCodes);
+                    break;
+
                 case BreakpointType.IOPort:
                     selected.Add(PERQemu.Sys.Debugger.WatchedIOPorts);
                     break;
@@ -873,9 +905,10 @@ namespace PERQemu
                     break;
 
                 case BreakpointType.All:
+                    selected.Add(PERQemu.Sys.Debugger.WatchedOpCodes);
+                    selected.Add(PERQemu.Sys.Debugger.WatchedIOPorts);
                     selected.Add(PERQemu.Sys.Debugger.WatchedInterrupts);
                     selected.Add(PERQemu.Sys.Debugger.WatchedMicroaddress);
-                    selected.Add(PERQemu.Sys.Debugger.WatchedIOPorts);
                     selected.Add(PERQemu.Sys.Debugger.WatchedMemoryAddress);
                     break;
             }
@@ -897,6 +930,7 @@ namespace PERQemu
                     action.Callback = OnInterrupt;
                     break;
 
+                case BreakpointType.OpCode:
                 case BreakpointType.IOPort:
                 case BreakpointType.MemoryLoc:
                     action.Callback = OnBreakpoint;
@@ -961,6 +995,14 @@ namespace PERQemu
         void ShowRS232BStatus()
         {
             if (CheckSys()) PERQemu.Sys.IOB.Z80System.DumpPortBStatus();
+        }
+
+        [Command("debug dump harddisk")]
+        void ShowHardDiskStatus()
+        {
+            if (!CheckSys()) return;
+
+            PERQemu.Sys.IOB.DiskController.DumpStatus();
         }
 
         [Command("debug dump streamer")]
@@ -1099,23 +1141,35 @@ namespace PERQemu
         }
 
         [Conditional("DEBUG")]
-        [Command("debug dump fifos")]
-        void DumpFifos()
-        {
-            PERQemu.Sys.IOB.Z80System.DumpFifos();
-        }
-
-        [Conditional("DEBUG")]
         [Command("debug dump qcodes")]
         void DumpQcodes()
         {
             QCodeHelper.DumpContents();
         }
 
+        [Conditional("DEBUG")]
+        [Command("debug unfrob")]
+        void UnfrobTest(int address)
+        {
+            Console.WriteLine($"Address: {address:x8} not: {~address:x8}");
+
+            ExtendedRegister r = new ExtendedRegister(4, 16);   // 20-bit for testing
+            r.Lo = (ushort)(address);
+            r.Hi = ~(address >> 16);
+            Console.WriteLine($"Register encoding: {r}");
+
+            var unfrobbed = r.Hi | (~(0x3ff ^ r.Lo) & 0xffff);
+            Console.WriteLine($"Unfrobbed std: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
+
+            unfrobbed = (~r.Hi & 0x0f0000) | r.Lo;
+            Console.WriteLine($"Unfrobbed EIO: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
+        }
+
 #if DEBUG
         // A temporary working copy for editing breakpoints
         BreakpointEventArgs _bp;
         BreakpointAction _bpAction;
+        BreakpointList _bpList;
 #endif
     }
 }

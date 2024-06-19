@@ -1,0 +1,523 @@
+﻿
+Notes on CIO/EIO Hard Disk Implementations
+==========================================
+
+
+This documents the ongoing development of and many intricacies and secrets of
+PERQemu's hard disk emulation.  It is a work in progress.
+
+
+Some Background and a Wee Rant
+------------------------------
+
+One of the most tragically shortsighted decisions in the PERQ software/firmware
+implementation was the design of the hardware to support _exactly one_ floppy
+and one hard disk, with no provision for multiple drives or even adding other
+types or device geometries (beyond the 12MB SA4004 or 24MB SA4008, which differ
+only in the number of available heads).  When it quickly became clear that a
+single hard disk of insufficient capacity was a massive limitation, the work
+required to extend the OS and libraries was a huge undertaking -- a case study
+in being "penny wise and pound foolish."  Economizing a few bits in the wrong
+places had painful repercussions, severely limiting the expandability of the
+machine.  There were even drives from other manufacturers available as early as
+1981-82 with a compatible SA4000-style interface that could have allowed for a
+transition away from the huge 14" form factor without having to stray down the
+weird proprietary path of adapting the (doomed) Micropolis 1200-series of 8"
+drives.  While it was not entirely wasted effort and did yield marginal capacity
+and performance gains, nobody else made compatible drives and the 8" form factor
+for "personal" workstations was quickly supplanted by 5.25" ST506/MFM drives.
+But the self-inflicted limits in the software support continued (like only
+allowing for 8 disk heads), which precluded obvious and easy future upgrades to
+ESDI, and later SASI/SCSI.  Hindsight, alas.
+
+PERQemu has already been refactored to support almost any geometry of hard disk
+type available in the 1980s through the PERQmedia library.  The goal, initially,
+was to allow emulation of all of the supported types from all the PERQ models.
+This has succeeded, with drivers for the Shugart SA4000 hard drives, Shugart
+SA851 floppy drives and the Archive Sidewinder QIC tape drive completed.  This
+document details the saga of figuring out the 8" and 5.25" interfaces to support
+the PERQ-2 models.  Eventually I plan to unravel the mysteries of emulating the
+interim "CIO Micropolis" hack and even someday adding SMD and GPIB disks.  It
+would be "period appropriate" to develop a SASI or SCSI-I driver, just for fun.
+(Donations and pre-orders gladly accepted. :-)
+
+
+The Shugart SA4000-series
+-------------------------
+
+The original PERQemu support for the Shugart drives, attached to the IOB, is
+the baseline for the new storage architecture.  It comprises the HardDisk class,
+which wraps the PERQmedia StorageDevice with all of the read/write/format and
+seek semantics expected of a typical hard disk, and is sufficiently general that
+the other drive types can all use the same code.
+
+The ShugartDiskController provides the PERQ interface by simulating the IOB's
+state machine semantics and its control and status registers.  Drives of the
+Disk14Inch class are the 12MB SA4004 and 24MB SA4008; the entirely mythical 48MB
+SA4104 is in the StorageDevices database but I haven't yet tried to extend the
+PERQ software to allow its extra 8 heads and doubled capacity to be unlocked.
+
+The Shugart controller is unique in that it works with both IOB (old Z80) and
+CIO (new Z80) PERQ-1 configurations, where the Z80 is used to do buffered seeks
+using the CTC chip.  None of the EIO boards used this strategy, instead building
+seek step hardware onto a separate interface board.
+
+This document mainly focuses on development of the EIO/PERQ-2 disk support, so
+the early Shugart controller is not exhaustively documented here.
+
+
+The Micropolis 1200-series
+--------------------------
+
+The earliest code found mentioning the Micropolis 8" disk support is from 1981.
+It isn't clear what actually got built, with almost no schematics or clear
+documentation to assist with reverse engineering efforts.  I have not uncovered
+any schematics for the early 8" Disk Interface Board (DIB) so software support
+is based solely on the behavior of the microcode.  Even that is rife with gaps,
+contradictions, and unknowns.
+
+For the emulator, two implementations are planned:  the first will model the
+earliest version of the adapter that used the old IOB ports and register setup.
+This was apparently developed on a PERQ-1 prior to any of the POS G releases,
+likely concurrently with the EIO board and the new state machine/DIB hardware.
+This is what I'm calling the "CIO Micropolis" IO board which, while exceedingly
+rare, actually exists.  It may only have support in ICL's release of POS called
+"R4" -- and _maybe_ in early PNX?  In theory this makes it possible to connect
+a single 1200-series drive using the new Z80 firmware from a PERQ-1, although
+I've never seen nor heard any mention of a PERQ-1 configured with an 8" drive
+in lieu of the classic 14" Shugart.
+
+The second and far more well known implementation is for the EIO in PERQ-2 and
+PERQ-2/T1 configurations.  This is currently underway and is beginning to show
+signs of life.  The EIO is much better documented, though numerous conflicting
+versions of the microcode and limited documentation are still proving difficult
+to reconcile.  They literally reversed the definition of status bits or changed
+the enumeration of commands in some cases, so figuring out what is supported by
+the boot ROMs, I/O microcode and operating systems is taking some time.
+
+The PERQ does NOT use the Micropolis 1220 "intelligent controller" board, as it
+turns out.  Although there are numerous mentions throughout the available code
+and scattered documentation to the "1223", the Micropolis DIB is built to drive
+a (single) 1203 disk drive directly.  The 1220 could control up to four "raw"
+1200-series drives, and the DIB claims to support two, but the PERQ can only
+physically accommodate one inside the chassis:
+
+    "None of the PERQ cabinets has enough space for mounting more
+     than one 8" drive internally."
+            -- config.doc Rev 3, Steve Clark 18 Dec 84
+
+That's not strictly true, if you consider swapping out the SA851 floppy drive,
+which has the exact same dimensions as the Micropolis 8" hard disks.  For now,
+though, PERQemu limits all Micropolis configurations to a single disk.  It will
+be fun down the road to try a dual-drive setup to see if it works, and if any
+OS can recognize and use the second drive of this type.
+
+
+The Micropolis 1300-series / MFM drives
+---------------------------------------
+
+The Micropolis 1303 was among the first 5.25" MFM/ST-506 type drives introduced
+with the PERQ-2/T2 model, using a new DIB design.  This will be implemented in
+PERQemu as the "MFMDiskController" class.  It is sufficiently different in 
+subtle but significant ways from the 8" Micropolis DIB to require a separate
+implementation.  Two variants were produced, mainly differing in one PAL and the
+use of one signal line: support for write precompensation as required by some
+drives of the class limited those disks to 8 heads.  The more common variant
+used the RWC line as a fourth head select line.  For the purpose of emulation,
+write precomp is irrelevant; one implementation suffices.  The MFM controller
+has enough data from the disk type to interpret the use of the RWC pin as a head
+select or (effective) no-op automatically.
+
+For PERQ-2/T2 (and T4) configurations, two MFM drives will be supported.  While
+the software has hints that all four drive select lines could be used, there are
+only two physical connectors and room in the case for two drives.  It will be
+interesting to see if there is any OS support for four drives after the basic
+functionality is complete.   Note that while PERQemu doesn't care what make or
+model of disks are attached, it may be necessary (at least under POS) that both
+drives in a dual-disk setup are the same -- documentation hints that mixing and
+matching capacities may not have been well supported?  TBD.
+
+
+Architecture
+============
+
+The PERQ hard disk controller is a state machine built around an Am2910 micro-
+sequencer (same as the main CPU).  THANKFULLY the source code to it has been
+found!  The emulation for EIO is based on the NDSK7 code, which is believed to
+be the most current version.  POS G.6 and Accent S6 source code is the baseline
+for Pascal and microcode support.  Where the docs are vague or flat out wrong,
+the source code is the definitive reference for reverse engineering.
+
+Microcode drives the EIO state machine through a set of registers:  SMCTL is a
+direct set of inputs (5 condition bits and 3 function bits) that affect the
+running state machine.  DSKCTL is a byte that is latched but not interpreted
+by the EIO itself; that byte is clocked into the DIB over the same 50-pin cable
+(JB) that the original Shugart used, with most of the status signals returned
+by the DIB using the same/similar meanings as the original interface.  Status
+bits from the drive are combined with status codes generated by the EIO state
+machine to form a single 11-bit SMSTAT register which can be read by the PERQ.
+The top two bits identify the drive class that's configured/attached.  The bits
+correspond, by sheer coincidence, with the two LSBs of the DeviceType code used
+by the PERQmedia library.  Imagine that.
+
+A 16-byte deep register file is written by the microcode and is read by the
+state machine as part of the controller's support for the PERQ's "logical
+header", and is used during formatting operations.  Like the original Shugart,
+the PERQ uses a custom format for the 8" and 5.25" drives, with 16 "logical
+header" bytes in addition to the 512 data bytes in each block (along with all
+of the usual low-level physical headers, gaps and sector format details that
+are not simulated by PERQemu).  Microcode writes the relevant data into the
+register file, sets up the PERQ DMA, then issues a command to the state machine.
+DMA and interrupts take care of sector transfers and signalling completion.
+
+Like the Archive Sidewinder implementation, the hard disk controller classes
+are the PERQ side of the interface: registers, DMA, interrupts.  The HardDisk
+class wraps the mechanical/media part of the implementation (i.e., the actual
+StorageDevice).  In between (for the 8" and 5.25" drives) is an internal class
+that does the magical translation bits that the DIB does in the real hardware:
+commands issued by the PERQ (through the state machine) must be translated and
+sent to the controller/drive using the "nibble bus" protocol, then reassembled
+and executed to perform reads and writes on the device.
+
+
+Nibble On This
+--------------
+
+The Micropolis and MFM drives use the same physical cabling (a single 50-pin
+ribbon from the front of the EIO board) as the original Shugart design.  Both
+the Micropolis and MFM drive types take 8-bit command bytes, but the SA4000
+interface does not provide a byte-wide bus for transmitting them.  Instead,
+the EIO controller and microcode repurpose the Shugart signals to send drive
+select, register select and "nibble" data to the DIB in two parts, and the DIB
+then reassembles and transmits the command bytes to the drive.  In theory, you
+can set two jumpers on the EIO board and attach any of the supported disks or
+DIBs to the controller; in practice -- and for the purposes of emulation -- 
+each type has its own driver specific to the drive class configured.
+
+The outgoing signal lines for the "nibble bus" are interpreted differently for
+the 8" and 5.25" DIBs, with different boot microcode and OS support.
+
+    Aside:  Another painful irony here is that if 3RCC had OEMed Shugart's
+    own controller board instead of rolling their own (assuming the Shugart
+    board was actually shipping in 1980), hard disk interfacing from the
+    start could have been an 8-bit wide SASI-type interaction and NOT the
+    low-level bit banging that the "raw" interface required.  Sigh.
+
+For the Micropolis DIB, four bit nibbles are reconstituted as drive select,
+cylinder and head select, with the drive handling Restore (seek to track 0),
+Seek, and Fault Clear functions directly.  The State Machine on the EIO (the
+controller class proper) handles all disk block operations.  In the emulator,
+all data is transfered between the system and the drive as full blocks using a
+pseudo-DMA approach.  That is: the block is read or written to/from the under-
+lying storage device in one go, directly to memory, and the response is delayed
+using the Scheduler to simulate the accurate timing of the transaction.  Disk
+geometry and performance specs provided by the PERQmedia library allow accurate
+seek delays, rotational delays, and head settling time to be computed.  This is
+sufficiently convincing that the microcode runs unmodified (even for most very
+low-level operations!).  But the lack of a true DMA implementation means that
+the CPU doesn't ever lose memory cycles to I/O access and runs a bit faster
+than a real PERQ does.  I can live with that...
+
+
+Implementation
+==============
+
+Notes!  Scribbles!  Lunatic ravings of a deranged mind!  Some truly esoteric
+details for posterity, based on the painstaking efforts to unravel the PERQ's
+dark mysteries.
+
+
+Disk Control Port
+-----------------
+
+The bit assignments for DSKCTL<7:0> (port 323/0xd3) are:
+ 
+    DSKCTL<7>:  DriveSelect<0>
+    DSKCTL<6>:  DriveSelect<1>
+    DSKCTL<5>:  BA<0>     \_______  RegSelect bits
+    DSKCTL<4>:  BA<1>     /
+    DSKCTL<3>:  B<3>      \
+    DSKCTL<2>:  B<2>       \______  Nibble bus
+    DSKCTL<1>:  B<1>       /
+    DSKCTL<0>:  B<0>      /
+
+These bits are latched and directly drive the lines on the JB cable to the
+Micropolis DIB.  LD CTRL 2 (enable for the latch) is also the signal over the
+cable (JB20) that triggers the latch on the DIB side.  So those are passed to
+the DIB without interpretation.
+
+It appears the MFM controller moves the DriveSelect<1:0> bits to a different
+registers, moves BA<1:0> to bits 6 & 7 while extending B<5:0>.  So that's neat.
+
+
+State Machine Control & Status Ports
+------------------------------------
+
+The bit assignments for SMCTL<7:0> (port 322/0xd2) are:
+ 
+    SMCTL<7>:   T2 H - Makes CRC errors non-fatal (proposed)
+    SMCTL<6>:   BusEn H - latch DSKCTL<5:0> data into drive control electronics
+    SMCTL<5>:   T H - Enables "DB" interrupt
+    SMCTL<4>:   Interrupts On H - Enable all interrupts to PERQ
+    SMCTL<3>:   Reset L - Reset disk controller when Low; must be set High
+                         before doing any disk operations
+    SMCTL<2>:   F2      \
+    SMCTL<1>:   F1       >--------  Command bits
+    SMCTL<0>:   F0      /
+
+The SMCTL<7:3> bits feed the condition code selector to the Am2910 so the state
+machine can test them; SMCTL<2:0> directly feeds the jump address mux to allow
+external commands to directly affect the program execution (when the 2910 MAP
+pin is asserted).  This is local to the EIO.  Bits <7:3> tend to be described
+consistently, although the "proposed" T2 bit seems to have been implemented by
+POS G, possibly earlier?  It's not clear if that was only specifically asserted
+by test/recovery programs.
+
+Note that SMCTL<5>, the "T" bit, seems to have two completely opposite inter-
+pretations based on which document you read:  sometimes it's "ENable the DB
+interrupt" and sometimes it's used as a DISable flag.  Since most sources agree
+that it's active high, I just have to track down as many possible boot floppies
+and diagnostics and OS images as I can to see what's what.
+
+The F<2:0> bits may require more digging because it seems there are numerous
+conflicting sources about their actual interpretation as well.  This is rather
+problematic, as different sources literally show one command code as Format,
+Read, or Write -- data corruption, anyone?  Sigh.  This has to be resolved from
+POS/Accent, eio*disk.micro, and ndsk7.mas sources.  It even changed from the
+included Oct82 to Feb83 versions of the Rose Quick Guide (Docs directory):
+
+       * EIO *                       * CIO *        DiskDefs
+      Accent S6    Operations       Accent S6       POS G.6
+                    PH LH DB
+    0   Idle         - -- -         Idle            DskIdle
+    1   Format       w  w w         WriteChk        DskRdCheck
+    2   Write        c  w w         Write           DskDiagRead
+    3   CWrite       c cr w         FormatWrite     DskWrCheck
+    4   Fix PH       w -- -         ReadChk         DskWrFirst
+    5   Bread        c  r r         FormatRead      DskFormat
+    6                - -- -         SeekOnly        DskSeek
+    7   Read         c cr r         Reset           DskClear
+
+    - = nop, w = write, c = check, r = read
+
+I'm gonna trash a lot of virtual disks before this is finally worked out...
+
+
+SMSTAT (port 123/0x53) returns 11 bits, SMSTAT<10:0> as follows:
+ 
+    SMSTAT<10>: DiskType<1>     - Device type code determined by
+    SMSTAT<9>:  DiskType<0>     - jumpers on the EIO board
+    SMSTAT<8>:  Index
+
+    SMSTAT<7>:  Unit Ready L    
+    SMSTAT<6>:  On Cylinder L
+    SMSTAT<5>:  Fault L
+
+    SMSTAT<4>:  Seek Error L
+    SMSTAT<3>:  State Machine Interrupt H
+
+    SMSTAT<2>:  Status<2>   \
+    SMSTAT<1>:  Status<1>    >----  Status bits
+    SMSTAT<0>:  Status<0>   /
+
+SMSTAT<3>, SMSTAT<4>, SMSTAT<6>, and SMSTAT<7> also cause an interrupt to PERQ
+when asserted. UnitReady, SMSTAT<7> will also cause an interrupt if de-asserted.
+SMCTL<4> must be High to enable interrupts to PERQ.  It is NOT clear if bit 3
+is meant to be asserted if any _condition_ that would assert an interrupt is
+true, even if interrupts are currently being masked, or if it is only asserted
+WHEN the PERQ hard disk interrupt is asserted.  The former interpretation makes
+a little more sense as it means you could poll the status port without raising
+or clearing the actual interrupt line, but why do that if you could just handle
+the interrupt?  TBD.
+
+The two DiskType<1:0> bits reflect jumpers on the EIO board, AND are mapped to
+the same codes in IO_Unit.pas (POS G) and were the source of the DiskType codes
+in PERQmedia.  OF COURSE there are a number of places where the descriptions are
+slightly different, or, in the case of the actual T2 schematics, bit reversed.
+For emulation, the type bits are initialized to Unused, then are updated when
+the actual storage device is loaded.  It's the little things...
+
+Like the SMCTL function bits, the SMSTAT<2:0> bits are, of course, interpreted
+differently in various places so it is taking some experimentation to work out
+the details.  Naturally, one of the codes (SMSTAT == 1) is completely reversed
+between the Micropolis and MFM (D5Inch) implementations:  it seems to mean
+"Logical Header found" in the latter case, probably checked after the mid-sector
+interrupt" is asserted, but at least some versions of D8Inch interpret that as
+LH _NOT_ found.  Sigh.  I swear I'm not making this up:
+
+    (CIO test code?)            Accent S6                     POS G.6
+    Mdsk.micro:         EioDisk.mic:    Eio5Disk.mic:   DiskDefs    IO_Unit
+    -----------------   -------------   -------------   --------    -------
+0   Done                DskDone         same            DIdle       DskOK
+1   SectorNotFound      DskLHFound      same            DBusy       AddrsErr
+2   PhysicalCRCError    DskDataErr      "not used"      DataCRC     PHCRC
+3   FileNumMismatch     DskPHMismatch   same            same        LHSer
+4   LogBlockMismatch    DskLHMismatch   same            same        LHLB
+5   LogHeaderCRCError   DskBadCmd       same            HeadCRC     LHCRC
+6   DataCRCError        DskPHLHCRC      same            unused!?    DaCRC
+7   Busy                DskECCandCRC    DskDataBlkCRC   unused!?    Busy
+
+DiskDefs THEN goes on -- RIGHT BELOW THE COMMENTS -- to actually implement the
+following structure:
+
+    SMStatus = Packed Record
+        SMSt               : (                { 000007 Bits<2:0> }
+            DIdle, DBusy, DataCRC, PHMismatch, LHMismatch,
+            HeadCRC, AbnormalError, SMError
+            );
+        SMInt              : Boolean;         { 000010 Bit<3> }
+        NotTrk0orNotSker   : Boolean;         { 000020 Bit<4> }
+        NotFault           : Boolean;         { 000040 Bit<5> }
+        NotOnCyl           : Boolean;         { 000100 Bit<6> }
+        NotUnitReady       : Boolean;         { 000200 Bit<7> }
+        IndexMark          : Boolean;         { 000400 Bit<8> }
+        DkType             : ( Dk5Inch,       { 003000 Bits<10:9> }
+                               DkUnused,
+                               Dk14Inch,
+                               Dk8Inch );
+        Unused             : 0..31            { 174000 Bits<15:11> }
+    End;
+
+What. the. hell. guys.
+
+
+Register File
+-------------
+
+The register file is written by setting the pointer (write to port 320 / 0xd0)
+and then writing data to port 321 / 0xd1.  With each store the counter auto-
+increments to the next address.  This replaces the individual ports called out
+by the Shugart/IOB where each byte is addressed directly (and there are fewer
+of them?).
+
+Naturally, there are discrepancies and naming incongruities from microcode to
+the state machine firmware, but it seems that so far the important bits line up?
+Check/reconcile Mdsk.micro, eiofmt.mpls.micro, and dprog.man:
+
+Register numbers for RegPointer:        Disk state machine:
+    constant(zerobyte,       0);        zeroadr:  'C3=0, C4=0, C5=0, C6=0'  !0
+    constant(syncbyte,       1);        syncadr:  'C3=1, C4=0, C5=0, C6=0'  !1
+    constant(Headbyte,       2);        headadr:  'C3=0, C4=1, C5=0, C6=0'  !2
+    constant(Sectorbyte,     3);        sectadr:  'C3=1, C4=1, C5=0, C6=0'  !3
+    constant(Cylinderlow,    4);        cyl1adr:  'C3=0, C4=0, C5=1, C6=0'  !4
+    constant(checkreg2,      5);        lh1adr:   'C3=1, C4=0, C5=1, C6=0'  !5
+    constant(checkreg4,      6);        lh3adr:   'C3=0, C4=1, C5=1, C6=0'  !6
+    constant(checkreg6,      7);        lh5adr:   'C3=1, C4=1, C5=1, C6=0'  !7
+    constant(Cylinderhigh,  10);        cyl2adr:  'C3=0, C4=0, C5=0, C6=1'  !10
+    constant(checkreg1,     11);        lh2adr:   'C3=1, C4=0, C5=0, C6=1'  !11
+    constant(checkreg3,     12);        lh4adr:   'C3=0, C4=1, C5=0, C6=1'  !12
+    constant(checkreg5,     13);        lh6adr:   'C3=1, C4=1, C5=0, C6=1'  !13
+
+PERQemu will likely just ignore the LH check bytes entirely.  The cylinder,
+header and sector bytes are crucial to reads/writes (identify which block to go
+fetch) while the LH bytes are basically ignored since PERQmedia doesn't require
+you to scan each block header as it rotates under the read head. :-)  Now, if I
+were to actually use the scheduler to initiate _sector pulses_ and simulate the
+actual rotational latency of the disk mechanism... heh heh.
+
+OOF.  Sector pulses actually ARE on the cable and were used to drive the state
+machine hardware during header matching.  Can probably simulate that without
+actually generating the scheduler events... generating the mid-sector interrupt
+based purely on RPM/byte timing (i.e., fake it).
+
+Those values come from NDsk7.mas so I'll go with that.  The order of checking
+for LH bytes is obvious so it shouldn't be difficult to determine which ones
+are which.
+
+
+M1200 Protocol
+--------------
+
+Most of this will be buried in the details of the DIB, as commands from the PERQ
+are simply executed directly (unlike the streamer, which actually has to bit-
+bang the interface signals based on hardware timing).  The nibble bus values
+from the EIO will be reassembled and latched in the DIB based on the multi-byte
+command format from the Micropolis documentation:
+
+
+                               !       BA1 BA0    REGISTER
+constant(cylreg,0);            !        0   0     Cylinder (8 LSB)
+constant(hdreg,10);            !        0   1     Head/Cylinder (4 MSB)
+constant(CtlReg,40);           !        1   0     Control Register
+                               !        1   1     Not Used
+
+        /// From the Micropolis documentation:
+        /// BA1  BA0    Register
+        ///  0    0     0 - Unused
+        ///  0    1     1 - Head[3:0] / Cylinder[11:8]
+        ///  1    0     2 - Cylinder[7:0]
+        ///  1    1     3 - Control register
+
+constant(DestCyll, 0);      -> BA0
+constant(BusEN,   10);      -> BUSEN
+constant(DestCylH,20);      -> BA1
+constant(DestCtrl,40);      -> ???
+
+ALL OF THESE THINGS ARE NOT LIKE THE OTHERS.  Geez.  Seriously?  I'm not losing
+my mind.  They really did shuffle the BA bits and meanings around.  Oy vey.
+
+For the 8" DIB, the bits MUST be inverted on the bus?  Because the DRIVE doesn't
+use BA0, the DIB uses that to address the nibble latch, but maybe the DIB FOR WHICH
+THERE ARE NO F*CKING SCHEMATICS inverts the select lines on the drive side.  UGH.
+For emulation purposes we ONLY care what the microcode thinks.
+
+
+IOD         EIO         CABLE       DIB
+        LD D CTRL 2     JB20        LOAD        clocks STEP PALs and other ffs
+7       DRIVE SEL<0>    JB18        BA<1>       with BA0 is latch/PAL selector
+6       DRIVE SEL<1>    JB16        BA<0>       for writing BUS<5:0>
+5       BA<0>           JB24        BUS<5>      becomes D SEL H
+4       BA<1>           JB28        BUS<4>      DIR pin on cable JC34
+3       B<3>            JB8         BUS<3>      RWC pin on cable JC2, RWC L sig
+2       B<2>            JB6         BUS<2>      HS<2> on cable JC4
+1       B<1>            JB4         BUS<1>      HS<1> on cable JC18
+0       B<0>            JB2         BUS<0>      HS<0> on cable JC14
+
+        LD D CTRL 1
+7       T2 BIT          --
+6       BUS ENB         JB26        FORM L      huh?   for MFM THIS is the FORMAT BIT?
+5       T BIT           --
+4       DISK INT ENB    --
+3       P RESET L       --
+2       F<2>            --
+1       F<1>            --
+0       F<0>            --
+
+other cable signals:
+
+        SEEK COMPLETE   JB22        pass through from JC8
+        TRACK 00        JB32        pass through from JC10
+        WRITE FAULT     JB34        pass through from JC12
+        READY L         JB12        pass through from JC22
+        INDEX           JB10        pass through from JC20
+        SECTOR L?       JB14        from SECTOR L sig
+
+        WRITE DATA -    JB40        becomes SYNC NRZ WR DATA
+        WRITE DATA +    JB39
+        WRITE CLK -     JB42        becomes WRITE CLOCK
+        WRITE CLK +     JB43
+        WRITE GATE L    JB30        becomes WRITE H -> WRITE GATE to JC6
+        READ GATE L     JB36        becomes READ GATE
+        READ DATA +     JB48        from READ DATA
+        READ DATA -     JB49        from READ DATA
+        PLO CLOCK +     JB45        from PLO CLOCK
+        PLO CLOCK -     JB46
+
+The DIB itself (at least the 5.25" one) creates the sector pulse, by feeding
+INDEX through its own counter.  some of the DP files illustrate this better.
+
+
+Sector Pulse
+------------
+
+To simulate rotational latencies and synthesize sector pulses, the simplest and
+least costly mechanism is to save a timestamp each time index pulse transitions.
+This lets me compute the time from the last index to the current time and fake
+up a sector pulse (so we don't actually fire those 16-30 times a second).  The
+EIO DIBs use Index from the drive to do exactly this, used for triggering the
+mid-sector interrupt.  (I see no evidence that the original Shugart controller
+did this -- it was an EIO thing only.)
+
+For now I can just split the pre-computed sector delay into two events if the
+mid-sector IRQ is enabled.  Otherwise it'll just fire at the end of a successful
+block read/write/format.

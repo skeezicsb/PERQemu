@@ -61,8 +61,7 @@ namespace PERQemu.IO.Z80
                 if (_devices[d].IntLineIsActive)
                 {
                     if (!_status[d])
-                        Log.Debug(Category.Z80IRQ, "Device {0} raised, vector is {1:x2}",
-                                  _devices[d].Name, _devices[d].ValueOnDataBus);
+                        Log.Debug(Category.Z80IRQ, "Device {0} raised", _devices[d].Name);
                     _status[d] = true;
                 }
                 else
@@ -74,6 +73,22 @@ namespace PERQemu.IO.Z80
             }
         }
 
+        // Debugging
+        public void DumpInterrupts()
+        {
+            var count = 0;
+
+            Console.WriteLine("Z80 active interrupts:");
+            for (var d = 0; d < _devices.Count; d++)
+            {
+                if (_devices[d].IntLineIsActive)
+                {
+                    Console.Write($"  {_devices[d].Name}");
+                    count++;
+                }
+            }
+            Console.WriteLine((count == 0) ? "  <none>" : "");
+        }
 
         //
         // IMemory Implementation
@@ -92,7 +107,7 @@ namespace PERQemu.IO.Z80
         //
         // Implementation
         //
-        public void RegisterDevice(IZ80Device device)
+        public void RegisterDevice(IZ80Device device, bool irqSource = true)
         {
             // Add to (the local copy of) the device list
             if (_devices.Contains(device))
@@ -112,24 +127,29 @@ namespace PERQemu.IO.Z80
                 _devicePorts[portAddress] = device;
             }
 
-            // Tell the Z80 about it
-            _z80System.CPU.RegisterInterruptSource(device);
+            if (irqSource)
+            {
+                // Tell the Z80 this device raises interrupts
+                _z80System.CPU.RegisterInterruptSource(device);
+            }
         }
 
         byte ReadPort(int port)
         {
-            IZ80Device device = _devicePorts[port];
             byte value = 0xff;
 
-            if (device != null)
+            try
             {
+                IZ80Device device = _devicePorts[port];
+                if (device == null) throw new UnhandledIORequestException((byte)port);
+
                 value = device.Read((byte)port);
 
-                Log.Debug(Category.Z80, "Read 0x{0:x} from port 0x{1:x} ({2})", value, port, device.Name);
+                Log.Debug(Category.Z80, "Read 0x{0:x2} from port 0x{1:x2} ({2})", value, port, device.Name);
             }
-            else
+            catch (UnhandledIORequestException e)
             {
-                Log.Warn(Category.Z80, "Unhandled Read from port 0x{0:x}, returning 0xff", port);
+                Log.Warn(Category.Z80, e.Message);
             }
 
             return value;
@@ -137,17 +157,18 @@ namespace PERQemu.IO.Z80
 
         void WritePort(int port, byte value)
         {
-            IZ80Device device = _devicePorts[port];
-
-            if (device != null)
+            try
             {
+                IZ80Device device = _devicePorts[port];
+                if (device == null) throw new UnhandledIORequestException((byte)port);
+
                 device.Write((byte)port, value);
 
                 Log.Debug(Category.Z80, "Write 0x{0:x} to port 0x{1:x} ({2})", value, port, device.Name);
             }
-            else
+            catch (UnhandledIORequestException e)
             {
-                Log.Warn(Category.Z80, "Unhandled Write of 0x{0:x} to port 0x{1:x}", value, port);
+                Log.Warn(Category.Z80, e.Message);
             }
         }
 
