@@ -20,6 +20,7 @@
 using System;
 
 using PERQmedia;
+using PERQemu.Config;
 using PERQemu.IO.Z80;
 using PERQemu.IO.DiskDevices;
 
@@ -48,18 +49,8 @@ namespace PERQemu.IO
 
         public CIO(PERQSystem system) : base(system)
         {
-            // See the Docs/IOBoard.txt for a discussion of "CIO" Micropolis
-            if (system.Config.GetDrivesOfType(DeviceType.Disk8Inch).Length > 0 ||
-                system.Config.GetDrivesOfType(DeviceType.DCIOMicrop).Length > 0)
-            {
-                _hardDiskController = new CIOMicropolisDiskController(system);
-            }
-            else
-            {
-                _hardDiskController = new ShugartDiskController(system);
-            }
-
-            _z80System = new CIOZ80(system);
+            // Set up the Z80
+            _z80System = new CIOZ80(_sys);
             _z80System.LoadZ80ROM("cioz80.bin");    // "new" Z80 ROM
 
             // Same DMA channel mapping as IOB (four channels)
@@ -68,7 +59,25 @@ namespace PERQemu.IO
             _dmaRegisters.Assign(0xd4, 0xdc, 0xd5, 0xdd);
             _dmaRegisters.Assign(0xd6, 0xde, 0xd7, 0xdf);
 
+            // Register the standard I/O ports
             RegisterPorts(_handledPorts);
+
+            // Attach the hard disk controller
+            if (_sys.Config.GetDrivesOfType(DeviceType.Disk14Inch).Length > 0 ||
+                _sys.Config.GetDrivesOfType(DeviceType.DCIOShugart).Length > 0)
+            {
+                _hardDiskController = new ShugartDiskController(_sys);
+            }
+            else if (_sys.Config.GetDrivesOfType(DeviceType.Disk8Inch).Length > 0 ||
+                     _sys.Config.GetDrivesOfType(DeviceType.DCIOMicrop).Length > 0)
+            {
+                // See the Docs/IOBoard.txt for a discussion of "CIO" Micropolis
+                _hardDiskController = new CIOMicropolisDiskController(_sys);
+            }
+            else
+            {
+                throw new InvalidConfigurationException("CIO does not support this disk/chassis configuration");
+            }
         }
 
         /// <summary>

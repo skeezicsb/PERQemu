@@ -140,40 +140,20 @@ namespace PERQemu.IO
             {
                 case 0x06:      // Ethernet bit counter registers
                 case 0x07:
-                    if (_ethernet != null)
-                    {
-                        return _ethernet.ReadRegister(port);
-                    }
-                    break;
+                    return _ethernet?.ReadRegister(port) ?? 0xffff;
 
                 case 0x08:      // Read Canon interrupt status
                 case 0x09:      // Read Canon mechanical status
-                    if (_canon != null)
-                    {
-                        return _canon.ReadStatus(port);
-                    }
-                    break;
+                    return _canon?.ReadStatus(port) ?? 0xffff;
 
                 case 0x0d:      // Read streamer status
-                    if (_streamer != null)
-                    {
-                        return _streamer.ReadStatus();
-                    }
-                    break;
+                    return _streamer?.ReadStatus() ?? 0xffff;
 
                 case 0x0e:      // Read streamer data
-                    if (_streamer != null)
-                    {
-                        return _streamer.ReadData();
-                    }
-                    break;
+                    return _streamer?.ReadData() ?? 0xffff;
 
                 case 0x0f:      // Ethernet status register
-                    if (_ethernet != null)
-                    {
-                        return _ethernet.ReadStatus();
-                    }
-                    break;
+                    return _ethernet?.ReadStatus() ?? 0xffff;
 
                 case 0x20:      // PERQlink input status port
                     return _link.ReadCommandStatus();
@@ -184,9 +164,6 @@ namespace PERQemu.IO
                 default:
                     throw new UnhandledIORequestException(port);
             }
-
-            // Unhandled things assume this?
-            return 0xffff;
         }
 
 
@@ -211,29 +188,16 @@ namespace PERQemu.IO
             switch (port)
             {
                 case 0x84:      // Load Streamer data AND/OR Canon line count
-                    if (_streamer != null)
-                    {
-                        _streamer.LoadRegister(port, value);
-                    }
-
-                    if (_canon != null)
-                    {
-                        _canon.LoadRegister(port, value);
-                    }
+                    _streamer?.LoadRegister(port, value);
+                    _canon?.LoadRegister(port, value);
                     break;
 
                 case 0x85:      // Load Canon control port
-                    if (_canon != null)
-                    {
-                        _canon.LoadCommand(value & 0x1f);
-                    }
+                    _canon?.LoadCommand(value & 0x1f);
                     break;
 
                 case 0x86:      // Load Streamer control
-                    if (_streamer != null)
-                    {
-                        _streamer.LoadRegister(port, value);
-                    }
+                    _streamer?.LoadRegister(port, value);
                     break;
 
                 case 0x88:
@@ -246,26 +210,17 @@ namespace PERQemu.IO
                 case 0x91:
                 case 0x92:
                 case 0x93:      // Load Ethernet registers
-                    if (_ethernet != null)
-                    {
-                        _ethernet.LoadRegister(port, value);
-                    }
+                    _ethernet?.LoadRegister(port, value);
                     break;
 
                 case 0x99:      // Load Ethernet control register
-                    if (_ethernet != null)
-                    {
-                        _ethernet.LoadCommand(value);
-                    }
+                    _ethernet?.LoadCommand(value);
                     break;
 
                 case 0x94:      // Load Canon page margin control register
                 case 0x95:      // Load Canon left margin register
                 case 0x96:      // Load Canon line length register
-                    if (_canon != null)
-                    {
-                        _canon.LoadRegister(port, value);
-                    }
+                    _canon?.LoadRegister(port, value);
                     break;
 
                 case 0xa1:      // PERQlink output status
@@ -295,17 +250,14 @@ namespace PERQemu.IO
             }
 
             // If we stopped mid-print, tell Canon to close the file
-            if (_canon != null)
-            {
-                _canon.Shutdown();
-            }
+            _canon?.Shutdown();
 
             base.Shutdown();
         }
 
         /// <summary>
-        /// Complete list of IO ports used by the Option IO boards.  At present
-        /// we only emulate the Link and Streamer options.
+        /// Complete list of IO ports used by the Option IO boards.  Grouped so
+        /// that only the selected options are loaded.
         /// </summary>
         byte[] _handledPorts =
         {

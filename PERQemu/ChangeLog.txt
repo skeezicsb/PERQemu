@@ -8,6 +8,13 @@ avoid wasting precious time scrolling to the end. :-)
 
 June, 2024:
 
+    2. MFM disk support coming on-line.  Can now configure up the PERQ-2Tx type
+    chassis and attach one or two 5.25" disks!  As with the 8" Micropolis, the
+    low-level formatting support isn't debugged and dual-disk operation is not
+    fully exercised but initial indications show that OS installation tools are
+    able to prepare MFM disks for use.  Bumping version to v0.6.0 for debugging
+    and initial platform testing.
+
     1. Called away IRL to deal with the whole stupid "not going broke" thing but
     trying to sneak in development time around the edges.  Merging the interim
     alpha-/maybe-beta-quality PERQ-2/EIO/Micropolis code into main as a snapshot
@@ -366,4 +373,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Tue May 28 17:57:16 PDT 2024
+Last update: skeezics    Sun Jun 30 13:52:25 PDT 2024

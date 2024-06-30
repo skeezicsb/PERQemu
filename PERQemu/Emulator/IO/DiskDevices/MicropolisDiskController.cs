@@ -20,6 +20,7 @@
 using System;
 
 using PERQmedia;
+using PERQemu.Config;
 using PERQemu.Processor;
 
 namespace PERQemu.IO.DiskDevices
@@ -42,8 +43,8 @@ namespace PERQemu.IO.DiskDevices
         {
             _system = system;
 
-            _registerFile = new byte[16];
             _dib = new DiskInterfaceBoard(this);
+            _registerFile = new byte[16];
         }
 
         /// <summary>
@@ -298,32 +299,32 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         bool CheckLogicalHeaderBytes(byte[] LH)
         {
-#if DEBUG
+//#if DEBUG
             // Check the header bytes against the register file values!  If
             // there are any discrepancies, report the error and abort due to
             // a logical header mismatch.  Realism baybeeee!!!  ALSO, this is
             // only an error condition if the T2 bit isn't set, right? :-)
             if ((LH[0] != _registerFile[5]) ||
-                (LH[1] != _registerFile[11]) ||
+                (LH[1] != _registerFile[9]) ||
                 (LH[2] != _registerFile[6]) ||
-                (LH[3] != _registerFile[12]) ||
+                (LH[3] != _registerFile[10]) ||
                 (LH[4] != _registerFile[7]) ||
-                (LH[5] != _registerFile[13]))
+                (LH[5] != _registerFile[11]))
             {
                 Console.Write("LH mismatch: blk: ");
                 for (int i = 0; i < 6; i++)
                 {
                     Console.Write($"  {i}={LH[i]:x2}");
                 }
-                Console.WriteLine("\n  register file:  ");
+                Console.Write("\n   register file:  ");
                 for (int i = 5; i < 8; i++)
                 {
-                    Console.Write($"  {i}={_registerFile[i]:x2}  {i + 6}={_registerFile[i + 6]:x2}");
+                    Console.Write($"  {i}={_registerFile[i]:x2}  {i + 4}={_registerFile[i + 4]:x2}");
                 }
                 Console.WriteLine();
                 return false;
             }
-#endif
+//#endif
             return true;
         }
 
@@ -343,9 +344,15 @@ namespace PERQemu.IO.DiskDevices
             // aren't modeling accurate disk timings.  We'll say that 100usec
             // is a reasonable minimum to the mid-sector point in case we bug
             // out on a header error (or fire the DB interrupt on a good read)
-            var delay = Settings.Performance.HasFlag(RateLimit.DiskSpeed) ?
-                                ComputeRotationalDelay(sector) :    // Accurate
-                                100 * Conversion.UsecToNsec;        // Fast
+
+            // Fast...
+            var delay = 100 * Conversion.UsecToNsec;
+
+            // ...or accurate?
+            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
+            {
+                delay = _dib.SelectedDrive.ComputeRotationalDelay(_system.Scheduler.CurrentTimeNsec, sector);
+            }
 
             // Sanity checks
             if (!CheckBlockParameters(cyl, head))
@@ -425,10 +432,12 @@ namespace PERQemu.IO.DiskDevices
             var cyl = (ushort)((_registerFile[8] & 0xf0) << 4 | _registerFile[4]);
             var head = (byte)(_registerFile[8] & 0x0f);
             var sector = _registerFile[3];
+            var delay = 100 * Conversion.UsecToNsec;
 
-            var delay = Settings.Performance.HasFlag(RateLimit.DiskSpeed) ?
-                                ComputeRotationalDelay(sector) :    // Accurate
-                                100 * Conversion.UsecToNsec;        // Fast
+            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
+            {
+                delay = _dib.SelectedDrive.ComputeRotationalDelay(_system.Scheduler.CurrentTimeNsec, sector);
+            }
 
             if (!CheckBlockParameters(cyl, head))
             {
@@ -445,14 +454,14 @@ namespace PERQemu.IO.DiskDevices
             {
                 int word = _system.Memory.FetchWord(data + (i >> 1));
                 block.Data[i] = (byte)(word & 0xff);
-                block.Data[i + 1] = (byte)((word & 0xff00) >> 8);
+                block.Data[i + 1] = (byte)(word >> 8);
             }
 
             for (int i = 0; i < block.Header.Length; i += 2)
             {
                 int word = _system.Memory.FetchWord(header + (i >> 1));
                 block.Header[i] = (byte)(word & 0xff);
-                block.Header[i + 1] = (byte)((word & 0xff00) >> 8);
+                block.Header[i + 1] = (byte)(word >> 8);
             }
 
             _dib.SelectedDrive.SetSector(block);
@@ -497,7 +506,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 int word = _system.Memory.FetchWord(data + (i >> 1));
                 sec.Data[i] = (byte)(word & 0xff);
-                sec.Data[i + 1] = (byte)((word & 0xff00) >> 8);
+                sec.Data[i + 1] = (byte)(word >> 8);
             }
 
             // Write the new header data...
@@ -505,7 +514,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 int word = _system.Memory.FetchWord(header + (i >> 1));
                 sec.Header[i] = (byte)(word & 0xff);
-                sec.Header[i + 1] = (byte)((word & 0xff00) >> 8);
+                sec.Header[i + 1] = (byte)(word >> 8);
             }
 
             // Write the sector to the disk...
@@ -610,37 +619,11 @@ namespace PERQemu.IO.DiskDevices
 
         #endregion
 
-        /// <summary>
-        /// Computes a rotational delay for the start of a sector from the last
-        /// index pulse.  Returns nanoseconds so you don't have to scale it for
-        /// scheduling.  Isn't terribly accurate as it doesn't account for sector
-        /// interleaving, but adds some realism. :-)
-        /// </summary>
-        ulong ComputeRotationalDelay(int sector)
-        {
-            // Todo: move this to HardDisk, or possibly even StorageDevice so
-            // all drive types can use it
-
-            // t = time between pulses (in ns) = rpm / #sectors
-            var t = (long)Conversion.RPMtoNsec(_dib.SelectedDrive.Specs.RPM) /
-                                               _dib.SelectedDrive.Geometry.Sectors;
-
-            // cur = what sector the heads are over now (time now - last pulse) / t
-            var cur = (long)(_system.Scheduler.CurrentTimeNsec - _dib.SelectedDrive.LastIndexPulse) / t;
-
-            // dist = distance from current to desired sector (linear, no account for interleave)
-            var dist = sector - cur;
-            var delay = (ulong)((dist < 0 ? dist + _dib.SelectedDrive.Geometry.Sectors : dist) * t);
-
-            Log.Detail(Category.HardDisk, "Rotational delay from cur={0} to desired={1} is {2}", cur, sector, delay);
-            return delay;
-        }
-
         // Debugging
         public void DumpStatus()
         {
             // Pretty print the register names since they contain useful stuff
-            // In the Micropolis controller, only 12 of 16 are ever used
+            // In the Micropolis controller, only 11 of 16 are ever used
             string[] RN = { "Zero", "Sync", "Unused", "Sector", "CylLo",
                             "LH1lo", "LH2lo", "LH3lo", "Cyl/Hd",
                             "LH1hi", "LH2hi", "LH3hi" };
@@ -806,7 +789,7 @@ namespace PERQemu.IO.DiskDevices
                     throw new InvalidOperationException("MicropolisController only supports 1 disk");
 
                 if (dev.Info.Type != DeviceType.Disk8Inch && dev.Info.Type != DeviceType.DCIOMicrop)
-                    throw new InvalidOperationException($"Device type {dev.Info.Type} not supported by this controller");
+                    throw new InvalidConfigurationException($"Device type {dev.Info.Type} not supported by this controller");
 
                 _disk = dev as HardDisk;
                 _disk.SetSeekCompleteCallback(SeekCompletionCallback);
@@ -879,8 +862,8 @@ namespace PERQemu.IO.DiskDevices
                             _head = (byte)(_latchedData & 0x0f);
                             Log.Debug(Category.HardDisk, "DIB: Cylinder = {0}, Head = {1}", _cylinder, _head);
 
-							// Start the seek!
-							DoSeek();
+                            // Start the seek!
+                            DoSeek();
                         }
                         break;
 
@@ -1094,7 +1077,7 @@ namespace PERQemu.IO.DiskDevices
             M1200Command _command;
             HWStatus _status;
 
-            // Drive(s) attach here!
+            // Officially, only one drive supported :-(
             HardDisk _disk;
         }
     }

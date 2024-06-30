@@ -268,6 +268,7 @@ Added in v0.5.8:
   - PNX 3 is now also confirmed to boot and run (from floppy) with an
     included video patch.  (I may be missing one critical floppy needed
     to complete a full hard disk install, however.  Watch this space.)
+  - Debug pre-release for early Micropolis disk support testing.
 
 
 NOTE: PNX 1 only supports 1MB of memory and will crash if configured with more.
@@ -634,6 +635,7 @@ v0.1 - First public release.
 
 Update history:
 
+6/30/2024 - skeezicsb - v0.6.0 (experiments)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0

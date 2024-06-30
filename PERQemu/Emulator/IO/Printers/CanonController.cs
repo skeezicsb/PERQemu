@@ -19,6 +19,7 @@
 
 using System;
 
+using PERQemu.Processor;
 using PERQemu.Memory;
 
 namespace PERQemu.IO
@@ -112,12 +113,12 @@ namespace PERQemu.IO
 
             if (raise && _irqEnabled && !_irqRaised)
             {
-                _system.CPU.RaiseInterrupt(Processor.InterruptSource.Y);
+                _system.CPU.RaiseInterrupt(InterruptSource.Y);
                 _irqRaised = true;
             }
             else if ((!raise & _irqRaised) | !_irqEnabled)
             {
-                _system.CPU.ClearInterrupt(Processor.InterruptSource.Y);
+                _system.CPU.ClearInterrupt(InterruptSource.Y);
                 _irqRaised = false;
             }
         }

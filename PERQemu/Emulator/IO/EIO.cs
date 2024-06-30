@@ -89,11 +89,11 @@ namespace PERQemu.IO
                      system.Config.GetDrivesOfType(DeviceType.Disk5Inch).Length > 0)
             {
                 // A PERQ-2/T2 or 2/T4
-                _hardDiskController = new MFMDiskController(/* incomplete */);
+                _hardDiskController = new MFMDiskController(system);
             }
             else
             {
-                throw new InvalidOperationException("EIO does not support this disk/chassis configuration");
+                throw new InvalidConfigurationException("EIO does not support this disk/chassis configuration");
             }
 
             // Set up the on-board Ethernet

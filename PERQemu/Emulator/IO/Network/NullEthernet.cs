@@ -25,9 +25,9 @@ using PERQemu.Processor;
 namespace PERQemu.IO.Network
 {
     /// <summary>
-    /// A temporary fake Ethernet controller.  Implement only enough to let
-    /// Accent properly start up its Net/Msg servers.  For now only responds
-    /// to the OIO ports.  To be replaced by a proper Ethernet someday!
+    /// A fake Ethernet controller that does not connect to a host adapter.
+    /// Implements only enough to let Accent properly start up its Net/Msg
+    /// servers but acts as if the machine isn't plugged into the network.
     /// </summary>
     public class NullEthernet : INetworkController
     {

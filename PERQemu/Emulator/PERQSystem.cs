@@ -455,6 +455,7 @@ namespace PERQemu
             // Hand it off to the IO or Option IO board
             switch (drive.Type)
             {
+                case DeviceType.Disk5Inch:
                 case DeviceType.Disk8Inch:
                 case DeviceType.DCIOMicrop:
                 case DeviceType.Disk14Inch:

@@ -146,13 +146,6 @@ namespace PERQemu.IO.DiskDevices
         /// Initiates or continues a Seek by pulsing the Disk Step line.
         /// Direction is >0 for positive steps, or 0 for negative steps.
         /// </summary>
-        /// <remarks>
-        /// Note: we ignore the RateLimit.DiskSpeed option here for Shugart 14"
-        /// hard disks, because the timing of those steps is built into the Z80
-        /// firmware.  For additional drive types (as they are implemented) we
-        /// can optionally clip the seek timings to make the system run faster,
-        /// sacrificing emulation accuracy for speed.
-        /// </remarks>
         public virtual void SeekStep(int direction)
         {
             // Compute and check our new cylinder
@@ -214,7 +207,7 @@ namespace PERQemu.IO.DiskDevices
         /// Seek to the given cylinder.
         /// </summary>
         /// <remarks>
-        /// For 8" or 5.25" drives with embedded controllers, computes the timing
+        /// For 8" Micropolis drives with embedded controllers, computes the timing
         /// for a seek from the current head position to the requested cylinder.
         /// Assumes the controller checks bounds and that it tracks busy status,
         /// not initiating a new seek while one is in progress...
@@ -295,6 +288,28 @@ namespace PERQemu.IO.DiskDevices
 
             _seekComplete = false;
             _stepCount = 0;
+        }
+
+        /// <summary>
+        /// Computes a rotational delay for the start of a sector from the last
+        /// index pulse.  Returns nanoseconds so you don't have to scale it for
+        /// scheduling.  Isn't terribly accurate as it doesn't account for sector
+        /// interleaving, but adds a little extra realism. :-)
+        /// </summary>
+        public ulong ComputeRotationalDelay(ulong now, int sector)
+        {
+            // t = time between pulses (in ns) = rpm / #sectors
+            var t = (long)Conversion.RPMtoNsec(Specs.RPM) / Geometry.Sectors;
+
+            // cur = what sector the heads are over now (time now - last pulse) / t
+            var cur = (long)(now - _lastIndexPulse) / t;
+
+            // dist = distance from current to desired sector (linear, no account for interleave)
+            var dist = sector - cur;
+            var delay = (ulong)((dist < 0 ? dist + Geometry.Sectors : dist) * t);
+
+            Log.Detail(Category.HardDisk, "Rotational delay from cur={0} to desired={1} is {2}", cur, sector, delay);
+            return delay;
         }
 
         /// <summary>
