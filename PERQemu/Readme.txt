@@ -23,10 +23,10 @@ Thanks,
 
 The PERQ is an early microcoded graphical workstation with a high-resolution
 bitmapped display and is arguably one of the first commercially-available
-"workstation" class of computers to meet the "3 M's" criteria: a megabyte of
-memory, a million pixel display, and a MIP of processing power.  Heavily
-influenced by the Xerox PARC "D-machines" and taking inspiration from the DEC
-PDP-11 for some of its performance tricks, it was designed and demonstrated
+"workstation" class computers to meet the "3 M" criteria: a megabyte of RAM,
+a million pixel display, and a million instructions-per-second of processing
+power.  Heavily influenced by the Xerox PARC Alto and taking inspiration from
+the DEC PDP-11 for some of its performance tricks, it was first demonstrated
 in 1979 but not released in production quantities until late 1980.  It is
 estimated that fewer than 5,000 PERQs were built, mostly sold to universities.
 
@@ -35,12 +35,12 @@ The PERQ-1 hardware consists of the following:
     - A custom bit-slice, microcoded CPU with 48-bit microinstruction words
     - 4K (PERQ-1) or 16K (PERQ-1A) of writable control store
     - 512KB to 2MB of RAM (in 16-bit words)
-    - A high resolution bitmapped display at 768x1024 pixels (1bpp)
+    - A high resolution bitmapped display at 768 x 1024 pixels (1bpp)
     - Custom RasterOp hardware to accelerate bitmap operations
 
 The original PERQs feature a standard set of peripherals:
 
-    - A 12 or 24mb Shugart 4000-series hard disk (14" platters)
+    - A 12 or 24mb Shugart SA4000-series hard disk (14" platters)
     - A single 8" Shugart floppy drive
     - A GPIB interface, typically used to interface with a Summagraphics
       BitPadOne digitizer tablet
@@ -53,8 +53,19 @@ Optional IO boards can be fitted, which provide:
     - Canon LBP-10 (or Canon CX) laser printer interface
     - QIC streamer tape connection
 
-A later PERQ-2 series extends the original design in some significant ways
-and adds a number of additional IO options.
+Introduced in 1983, the PERQ-2 series extends the original design in some
+significant ways and adds a number of additional IO options:
+
+    - A landscape display, with 1280 x 1024 pixels (1bpp)
+    - An 8" Micropolis disk (PERQ-2 or PERQ-2/T1) or up to two 5.25" MFM/ST506
+      disks (PERQ-2/T2 or /T4) replace the Shugart 14" hard drive
+    - The standard I/O board incorporates an Ethernet controller and a faster
+      Z80 subsystem with RTC chip, second RS-232 port
+    - A 24-bit version of the 16K CPU extends the memory capacity to 8MB in
+      the rare PERQ-2/T4 model
+
+PERQemu will (soon) emulate all of the standard PERQ-1 and PERQ-2 configurations
+and peripherals.
 
 
 1.2 Current Status
@@ -304,7 +315,8 @@ The following hardware has been implemented in the emulator:
       tested to work with IOB (old Z80) and CIO (new Z80) implementations;
     - The PERQ-2 8" Micropolis 1200-series controller and Disk Interface Board
       is now emulated for use with the PERQ-2/EIO configuration (one drive only);
-    - 5.25" MFM drives will be available as PERQ-2/Tx support is introduced.
+    - One or two 5.25" MFM drives can be configured if the PERQ-2/Tx chassis is
+      selected (now in beta test on the experiments branch).
       
   Floppy disk:
     - Rewritten to work with the new Z80 and floppy disk controller;
@@ -320,7 +332,8 @@ The following hardware has been implemented in the emulator:
     - The standard 768 x 1024 portrait display is available for all models;
     - The 1280 x 1024 landscape display is supported and tested with POS G.7
       and Accent S6!  Although PERQ-1 landscape configurations were very rare,
-      the emulator runs 'em just fine!
+      the emulator runs 'em just fine!  Became standard equipment on most
+      PERQ-2 models.
 
   Z80 I/O Processor:
     - Simulation replaced by a real Z80 emulator running actual PERQ ROM code;
@@ -343,7 +356,8 @@ The following hardware has been implemented in the emulator:
   RS-232:
     - The Z80 SIO chip is implemented to work with the new Z80 emulator;
     - Software running under emulation can control a real physical serial port
-      on the host;
+      on the host; second RS-232 port available with the PERQ-2/EIO models [not
+      yet fully tested];
     - The RSX: pseudo-device for transferring text files from the host to POS
       has been reinstated.
 
@@ -500,8 +514,10 @@ v0.7 - TBD
     serial port, RTC chip, support for two hard disks
   - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
 
-v0.6.0 - Experiments branch
+v0.6.2 - Experiments branch
   - Start of MFM support for PERQ-2/Tx multiple hard disk support
+  - Update to PERQmedia library to allow more robust handling of partial
+    or corrupted IMD-format floppy images
 
 v0.5.8 - Main branch (v0.7.0 pre-release)
   - Micropolis 8" disk (high-level operation works!; low-level formatting
@@ -635,6 +651,7 @@ v0.1 - First public release.
 
 Update history:
 
+8/3/2024 - skeezicsb - v0.6.2 (experiments)
 6/30/2024 - skeezicsb - v0.6.0 (experiments)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)

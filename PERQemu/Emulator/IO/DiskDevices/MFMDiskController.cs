@@ -87,20 +87,11 @@ namespace PERQemu.IO.DiskDevices
             // Reset the status word from the DIB and add state machine code
             var status = _dib.Status.Current | (int)_status;
 
-            // Set the SMSTATUS<3> bit if:
-            //      mid-cycle is enabled,
-            //      an error status is being returned
-            //      block r/w/fmt command is complete
-            // Do NOT set on seeks or other commands!
-            if (_command != SMCommand.Unused &&
-                _command != SMCommand.FixPH &&
-                _command != SMCommand.Idle)
-            {
-                status |= (int)SMStatus.SMInt;
-            }
-
             // Reading clears interrupts
             SetInterrupt(false);
+
+            // And our state machine status?
+            _status = SMStatus.Idle;
 
             Log.Info(Category.HardDisk, "MFM status: 0x{0:x3}", status);
             return status;
@@ -237,15 +228,19 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         bool CheckBlockParameters(ushort cyl, byte head)
         {
-#if DEBUG
+//#if DEBUG
             if (_dib.SelectedDrive == null)
                 throw new InvalidOperationException($"{_command} but no disk selected");
 
-            // Do this here (until debugged)
-            if (_dib.SelectedDrive.CurHead != _dib.Head || _dib.Head != head || head != _registerFile[2])
+            // The 5.25" SYSB code explicitly does NOT use register[2] for the head
+            // select, although it's defined; checking it causes the boot to fail at
+            // DDS 157 even if the OS code programs the value correctly.  Instead the
+            // head is stored in reg[9] as the low 4 bits like the Micropolis does it,
+            // even though that's more work to set up in the microcode.  Sigh.
+            if (_dib.SelectedDrive.CurHead != _dib.Head || _dib.Head != head)
             {
-                Log.Warn(Category.HardDisk, "Wrong head selected: disk={0} DIB={1} regs={2} / {3}",
-                                            _dib.SelectedDrive.CurHead, _dib.Head, head, _registerFile[2]);
+                Log.Warn(Category.HardDisk, "Wrong head selected: disk={0} DIB={1} regs={2}",
+                                            _dib.SelectedDrive.CurHead, _dib.Head, head);
                 return false;
             }
 
@@ -255,7 +250,7 @@ namespace PERQemu.IO.DiskDevices
                                             _dib.SelectedDrive.CurCylinder, _dib.Cylinder, cyl);
                 return false;
             }
-#endif
+//#endif
             return true;
         }
 
@@ -264,7 +259,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         bool CheckLogicalHeaderBytes(byte[] LH)
         {
-#if DEBUG
+//#if DEBUG
             // Check the header bytes against the register file values!  If
             // there are any discrepancies, report the error and abort due to
             // a logical header mismatch.  Realism baybeeee!!!  ALSO, this is
@@ -290,7 +285,7 @@ namespace PERQemu.IO.DiskDevices
                 Console.WriteLine();
                 return false;
             }
-#endif
+//#endif
             return true;
         }
 
@@ -526,7 +521,7 @@ namespace PERQemu.IO.DiskDevices
                 else
                 {
                     // Save the error status
-                    _status = exitCode;
+                    _status = (SMStatus.SMInt | exitCode);
 
                     // Fire off the interrupt
                     SetInterrupt(true);
@@ -542,7 +537,7 @@ namespace PERQemu.IO.DiskDevices
             _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
             {
                 Log.Info(Category.HardDisk, "Command completion: {0}", exitCode);
-                _status = exitCode;
+                _status = (SMStatus.SMInt | exitCode);
                 _busyEvent = null;
 
                 SetInterrupt(true);
@@ -554,14 +549,15 @@ namespace PERQemu.IO.DiskDevices
         /// and the state of the enable flags.  No-ops if no change is required.
         /// </summary>
         /// <remarks>
-        /// There are five possible interrupts from the state machine:
+        /// There are five possible interrupts from the controller:
         ///     * any transition of the Ready line;
         ///     * OnCyl going low (i.e., seek complete);
         ///     * the mid-sector interrupt;
         ///     * end of the sector interrupt (completion).
         /// If the header is in error, the command aborts and the completion
-        /// interrupt is skipped.  All interrupts are cleared by reading the
-        /// status register.
+        /// interrupt is skipped.  The SMInt flag is set for the mid- and end-of-
+        /// sector interrupts, but not for the hardware status line transitions.
+        /// All interrupts are cleared by reading the status register.
         /// </remarks>
         void SetInterrupt(bool raiseInterrupt)
         {

@@ -214,17 +214,20 @@ namespace PERQmedia
             }
 
             //
-            // Save the largest size we've seen so far; this determines
-            // which geometry we set at the end (but it _should_ be the
-            // same for all the tracks on a properly formatted PERQ disk!)
+            // Save the largest size we've seen so far but clip it to 256 bytes;
+            // this determines which geometry we set at the end (but it _should_
+            // be the same for all the tracks on a properly formatted PERQ disk!)
             //
-            if (size > _sectorSize)
+            if (size > _sectorSize && size <= 256)
             {
                 _sectorSize = size;
             }
 
             //
-            // Read the sector data in for the whole track.
+            // Read the sector data in for the whole track.  Use the track size
+            // given so that we read the correct amount; this might help us avoid
+            // exceptions when reading a file where the unformatted or ignored
+            // track 0 has weird values - that data won't be accessed by the PERQ
             //
             for (var i = 0; i < count; i++)
             {
@@ -256,6 +259,7 @@ namespace PERQmedia
 
                     case SectorRecordType.Normal:
                         fs.Read(sector.Data, 0, _sectorSize);
+                        if (size > _sectorSize) fs.Position += (size - _sectorSize);
                         break;
 
                     case SectorRecordType.NormalError:
@@ -263,6 +267,7 @@ namespace PERQmedia
                     case SectorRecordType.DeletedError:
                         // Sector was marked in error but the data exists
                         fs.Read(sector.Data, 0, _sectorSize);
+                        if (size > _sectorSize) fs.Position += (size - _sectorSize);
                         sector.IsBad = true;
                         break;
 
@@ -302,6 +307,8 @@ namespace PERQmedia
         /// </summary>
         public void MapTracksToDevice(StorageDevice dev)
         {
+            bool repair = false;
+
             //
             // This will happen on almost every IMD floppy since the PERQ
             // never formatted track 0... All of the PERQmedia formatters
@@ -312,6 +319,11 @@ namespace PERQmedia
                 Log.Debug(Category.MediaLoader,
                           "Sector count from image {0} doesn't match expected {1}!",
                           _sectors.Count, dev.Geometry.TotalBlocks);
+
+                // If there's a "reasonable" chance that the disk is salvageable,
+                // set the repair flag; say, maybe, got 50% of the expected data?
+                repair = (_sectors.Count > 0 && _sectors.Count < dev.Geometry.TotalBlocks &&
+                          (dev.Geometry.TotalBlocks / _sectors.Count) > 0.5);
             }
 
             Log.Detail(Category.MediaLoader, "Copying {0} sectors", _sectors.Count);
@@ -325,6 +337,29 @@ namespace PERQmedia
                 }
 
                 dev.Write(sec);
+            }
+
+            // Attempt to fill any gaps, if the image seems repairable
+            if (repair)
+            {
+                Log.Debug(Category.MediaLoader, "Adding {0} missing sectors", dev.Geometry.TotalBlocks - _sectors.Count);
+
+                for (ushort c = 0; c < dev.Geometry.Cylinders; c++)
+                {
+                    for (byte h = 0; h < dev.Geometry.Heads; h++)
+                    {
+                        for (ushort s = 0; s < dev.Geometry.Sectors; s++)
+                        {
+                            if (!dev.ReadCheck(c, h, s))
+                            {
+                                // Flag them as "bad" but see if this confuses the
+                                // PERQ more than just having blocks of nulls :-)
+                                dev.Sectors[c, h, s] = new Sector(c, h, s, dev.Geometry.SectorSize, dev.Geometry.HeaderSize, true);
+                                Log.Detail(Category.MediaLoader, "Added bad block at {0}/{1}/{2}", c, h, s);
+                            }
+                        }
+                    }
+                }
             }
 
             // Can free the list now...

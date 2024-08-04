@@ -272,7 +272,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         bool CheckBlockParameters(ushort cyl, byte head)
         {
-#if DEBUG
+//#if DEBUG
             if (_dib.SelectedDrive == null)
                 throw new InvalidOperationException($"{_command} but no disk selected");
 
@@ -290,7 +290,7 @@ namespace PERQemu.IO.DiskDevices
                                             _dib.SelectedDrive.CurCylinder, _dib.Cylinder, cyl);
                 return false;
             }
-#endif
+//#endif
             return true;
         }
 

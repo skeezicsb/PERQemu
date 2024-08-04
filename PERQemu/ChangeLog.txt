@@ -6,6 +6,23 @@ notes moved to ChangeLog-Old.txt.  New entries here will be added at the top, to
 avoid wasting precious time scrolling to the end. :-)
 
 
+August, 2024:
+
+    2. Fixed the MFM disk controller to assert the SMInt status bit at the right
+    times; slight difference in behavior form the Micropolis controller.  Some
+    synchronization issues throw warnings but the T2 with MFM disks is now able
+    to boot POS and Accent.  Testing of dual-drive configurations in progress.
+
+    1. Bumping PERQemu to v0.6.2 to reflect some PERQmedia library patches that
+    improve the ability of PERQemu and PERQdisk to read partial and/or corrupted
+    floppies in IMD format.
+
+
+July, 2024:
+
+    1. Catalogued and organized over 900 floppy images.
+
+
 June, 2024:
 
     2. MFM disk support coming on-line.  Can now configure up the PERQ-2Tx type
@@ -373,4 +390,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Sun Jun 30 13:52:25 PDT 2024
+Last update: skeezics    Sat Aug  3 17:39:04 PDT 2024

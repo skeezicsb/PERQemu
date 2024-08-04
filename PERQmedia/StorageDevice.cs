@@ -87,6 +87,16 @@ namespace PERQmedia
         }
 
         /// <summary>
+        /// See if the requested sector exists before attempting to read it.  This
+        /// is useful to the IMD or other sparse file formats that might have data
+        /// missing so we want to try to load whatever we can salvage.        
+        /// </summary>
+        public virtual bool ReadCheck(ushort cyl, byte head, ushort sec)
+        {
+            return Validate(cyl, head, sec) && Sectors[cyl, head, sec].Data != null;
+        }
+
+        /// <summary>
         /// Unchecked fast write of a sector.  Sets IsModified for the device.
         /// </summary>
         /// <remarks>
