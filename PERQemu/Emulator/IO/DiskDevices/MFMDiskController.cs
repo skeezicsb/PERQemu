@@ -429,7 +429,6 @@ namespace PERQemu.IO.DiskDevices
                       "MFM sector write complete to {0}/{1}/{2}, from memory at 0x{3:x6}",
                       cyl, head, sector, data);
 
-            // Todo: wait, do we do these on WRITES too?  Uh...
             if (_flags.HasFlag(SMControl.InterruptsOn))
             {
                 MidSectorFinish(delay, SMStatus.Idle);
@@ -483,7 +482,6 @@ namespace PERQemu.IO.DiskDevices
             Log.Write(Category.HardDisk,
                       "MFM sector format of {0}/{1}/{2} complete, from memory at 0x{3:x6}",
                       _dib.Cylinder, _dib.Head, _sector, data);
-
         }
 
         #endregion
@@ -810,7 +808,11 @@ namespace PERQemu.IO.DiskDevices
                     return;
                 }
 
+                // Doc says that OnCyl remains asserted until the first step pulse is
+                // issued, but if we're having overruns force the status update a bit early
+                // (OnCyl does NOT trigger an interrupt when de-asserted)
                 _seekState = SeekState.Stepping;
+                UpdateStatus();
 
                 // Set our destination and check it / clip to range
                 if (_seekDir > 0)
@@ -941,6 +943,9 @@ namespace PERQemu.IO.DiskDevices
             /// </summary>
             public void UpdateStatus()
             {
+                var oldReady = _status.UnitReady;
+                var oldOnCyl = _status.OnCylinder;
+
                 _head = _drives[_selected]?.CurHead ?? 0;
                 _cylinder = _drives[_selected]?.CurCylinder ?? 0;
 
@@ -954,8 +959,11 @@ namespace PERQemu.IO.DiskDevices
                 Log.Info(Category.HardDisk, "DIB status change: 0x{0:x3}", _status.Current);
                 Log.Info(Category.HardDisk, "DIB {0}", _status);      // HW status string
 
-                // Ready changes, faults, or OnCylinder asserted trigger an interrupt
-                _control.StatusChange();
+                // Ready changes or OnCylinder asserted trigger an interrupt
+                if (oldReady != _status.UnitReady || (oldOnCyl == false && _status.OnCylinder == true))
+                {
+                    _control.StatusChange();
+                }
             }
 
             /// <summary>
