@@ -515,9 +515,11 @@ v0.7 - TBD
   - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
 
 v0.6.2 - Experiments branch
-  - Start of MFM support for PERQ-2/Tx multiple hard disk support
+  - Basic MFM support for PERQ-2/Tx, multiple 5.25" hard disks
+  - Improved hard disk seek timing
   - Update to PERQmedia library to allow more robust handling of partial
     or corrupted IMD-format floppy images
+  - PERQ-2 backplane S/N PROM added
 
 v0.5.8 - Main branch (v0.7.0 pre-release)
   - Micropolis 8" disk (high-level operation works!; low-level formatting
@@ -651,8 +653,7 @@ v0.1 - First public release.
 
 Update history:
 
-8/3/2024 - skeezicsb - v0.6.2 (experiments)
-6/30/2024 - skeezicsb - v0.6.0 (experiments)
+8/27/2024 - skeezicsb - v0.6.2 (experiments)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0

@@ -41,6 +41,12 @@ namespace PERQemu.IO.Network
             _physAddr = new MachineAddress(_system.Config);
             _physAddr.Low = _system.Config.EtherAddress;
 
+            // Set a random one if not set
+            if (_physAddr.Low == 0)
+            {
+                _physAddr.Low = (ushort)(new Random().Next(5800, 65534));
+            }
+
             // Receive address can be programmed; set to HW initially
             _recvAddr = new MachineAddress(_system.Config);
             _recvAddr.Low = _physAddr.Low;

@@ -53,13 +53,8 @@ namespace PERQemu.IO.DiskDevices
         public void Reset()
         {
             _dib.Reset();
-
-            // Hardware cleared by INIT L
-            _flags = SMFlags.None;
-            _command = SMCommand.Idle;
-
-            // Do a soft reset for the rest?
             ResetFlags();
+
             Log.Info(Category.HardDisk, "Micropolis controller reset");
         }
 
@@ -100,6 +95,7 @@ namespace PERQemu.IO.DiskDevices
             // Reset the status word from the DIB and add state machine code
             var status = _dib.Status.Current | (int)_status;
 
+            /*
             // Set the SMSTATUS<3> bit if:
             //      mid-cycle is enabled,
             //      an error status is being returned
@@ -111,6 +107,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 status |= (int)SMStatus.SMInt;
             }
+            */
 
             // Reading clears interrupts
             SetInterrupt(false);
@@ -272,7 +269,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         bool CheckBlockParameters(ushort cyl, byte head)
         {
-//#if DEBUG
+#if DEBUG
             if (_dib.SelectedDrive == null)
                 throw new InvalidOperationException($"{_command} but no disk selected");
 
@@ -290,7 +287,7 @@ namespace PERQemu.IO.DiskDevices
                                             _dib.SelectedDrive.CurCylinder, _dib.Cylinder, cyl);
                 return false;
             }
-//#endif
+#endif
             return true;
         }
 
@@ -299,7 +296,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         bool CheckLogicalHeaderBytes(byte[] LH)
         {
-//#if DEBUG
+#if DEBUG
             // Check the header bytes against the register file values!  If
             // there are any discrepancies, report the error and abort due to
             // a logical header mismatch.  Realism baybeeee!!!  ALSO, this is
@@ -324,7 +321,7 @@ namespace PERQemu.IO.DiskDevices
                 Console.WriteLine();
                 return false;
             }
-//#endif
+#endif
             return true;
         }
 
@@ -357,7 +354,7 @@ namespace PERQemu.IO.DiskDevices
             // Sanity checks
             if (!CheckBlockParameters(cyl, head))
             {
-                MidSectorFinish(delay, SMStatus.SMError);
+                FinishCommand(delay, SMStatus.SMError);
                 return;
             }
 
@@ -441,7 +438,7 @@ namespace PERQemu.IO.DiskDevices
 
             if (!CheckBlockParameters(cyl, head))
             {
-                MidSectorFinish(delay, SMStatus.SMError);
+                FinishCommand(delay, SMStatus.SMError);
                 return;
             }
 
@@ -542,29 +539,32 @@ namespace PERQemu.IO.DiskDevices
                 Log.Error(Category.HardDisk, "MidSectorFinish called while already busy");
             // but proceed anyway?
 #endif
-            Log.Debug(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
-
-            _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
+            if (exitCode == SMStatus.Idle)
             {
-                Log.Debug(Category.HardDisk, "Mid-sector interrupt firing, code={0}", exitCode);
+                Log.Debug(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
 
-                if (exitCode == SMStatus.Idle)
+                _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
                 {
+                    Log.Debug(Category.HardDisk, "Mid-sector interrupt firing, code={0}", exitCode);
+
+                    // Per disk.doc, mid-sector int sets SMInt, low 3 bits to 1
+                    _status = (SMStatus.SMInt | SMStatus.Busy);
+
                     // Fire mid-sector "DB" interrupt
                     SetInterrupt(true, true);
 
                     // Schedule a normal completion
                     FinishCommand(BlockDelayNsec, exitCode);
-                }
-                else
+                });
+            }
+            else
+            {
+                _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
                 {
-                    // Save the error status
-                    _status = exitCode;
-
-                    // Fire off the interrupt (even if mid-cycle intr is masked)
-                    SetInterrupt(true);
-                }
-            });
+                    // Error out through FinishCommand()
+                    FinishCommand(delay, exitCode);
+                });
+            }
         }
 
         /// <summary>
@@ -575,7 +575,7 @@ namespace PERQemu.IO.DiskDevices
             _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
             {
                 Log.Debug(Category.HardDisk, "Command completion: {0}", exitCode);
-                _status = exitCode;
+                _status = (SMStatus.SMInt | exitCode);
                 _busyEvent = null;
 
                 SetInterrupt(true);

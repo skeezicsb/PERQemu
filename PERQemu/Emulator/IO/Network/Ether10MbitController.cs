@@ -47,9 +47,11 @@ namespace PERQemu.IO.Network
 
             // If not set, generate a random one (to avoid conflicts by having
             // all the PERQs on your local net come up with the same default! :-)
+            // Note: See Docs\Hardware References\serial.memo for more info about
+            // the range of PERQ serial numbers (and MAC addresses).
             if (_physAddr.Low == 0)
             {
-                _physAddr.Low = (ushort)_random.Next(1, 65534);
+                _physAddr.Low = (ushort)(new Random().Next(5800, 65534));
             }
 
             // Receive address can be programmed; set to HW initially
@@ -775,8 +777,6 @@ namespace PERQemu.IO.Network
 
         ushort _bitCount;
         ushort _usecClock;
-
-        static Random _random = new Random();
 
         HostAdapter _nic;
 

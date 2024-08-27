@@ -8,8 +8,27 @@ avoid wasting precious time scrolling to the end. :-)
 
 August, 2024:
 
+    4. Adjust the seek timing to be a bit more realistic.  While a linear ramp
+    isn't great, it's better than the cheesy hack I threw in originally.  Also
+    start to streamline and clean up debugging output in the Microp and MFM hard
+    disk controllers as testing/debugging shows they're behaving pretty well and
+    might be interim-release-ready soon.  More tinkering and testing to do!
+
+    3. A small thing: add the backplane serial number PROM decode to the EIO so
+    that PERQ-2 systems can query it.  Didn't really know much about this before
+    but Docs\Hardware References\serial.memo spells it out pretty clearly.  The
+    old "fewer than 4500 PERQs were made" claim often floated is partially sup-
+    ported by the note that S/N 5787 (decimal) was possibly the highest logged
+    by manufacturing by 1985 when PQS was in their death throes and handing off
+    hardware rights to Varityper.  A curious bit of history is all.  In POS G,
+    the DETAILS program will display the system S/N on a PERQ-2.  Note that this
+    is also the low 16 bits of the Ethernet address. :-)  PERQemu now generates
+    random Ethernet MAC addresses in the range 5800..65534 so that virtual PERQs
+    won't collide with real PERQs on your network, unless you explicitly set the
+    low word (to use software "node locked" to a particular S/N).
+
     2. Fixed the MFM disk controller to assert the SMInt status bit at the right
-    times; slight difference in behavior form the Micropolis controller.  Some
+    times; slight difference in behavior from the Micropolis controller.  Some
     synchronization issues throw warnings but the T2 with MFM disks is now able
     to boot POS and Accent.  Testing of dual-drive configurations in progress.
 
@@ -390,4 +409,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Sat Aug  3 17:39:04 PDT 2024
+Last update: skeezics    Tue Aug 27 15:49:16 PDT 2024

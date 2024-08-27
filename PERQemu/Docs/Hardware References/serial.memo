@@ -1,0 +1,86 @@
+
+
+
+
+
+        TO:   R. Cox
+        FROM: S. Clark
+        DATE: 27 Sep 85
+        
+        RE:   Serial number allocation
+        
+        
+        This memo describes the steps that must be taken to insure
+        correct and unique serial numbers on Perqs made by multiple
+        manufacturers.
+        
+        Serial numbers are assigned in two ways to a Perq.  The
+        T2 backplane has a PAL which contains a 2-byte serial
+        number that can be read on the IO bus.  The EIO or OIO
+        ethernet interface has a 6-byte serial number that can
+        be read by issuing a special command to the interface.
+        
+        The backplane serial number is read on the low 8 bits of
+        the IO bus at the following octal addresses:
+        
+                IOA 70 = low byte
+                    71 = high byte
+                    72 = 0   (constant)
+                    73 = 134 (octal constant)
+        
+        The ethernet serial number consists of the hex bytes:
+
+                02 1C 7C bb ll hh
+        
+        where the first 3 bytes are assigned to Perq by Xerox, the 
+        fourth gives the board type:
+        
+                bb = 0 for OIO
+                   = 1 for EIO rev B (20-bit)
+                   = 2 for EIO rev C (24-bit)
+        
+        and the last two bytes are the board serial number:
+        
+                ll = low byte
+                hh = high byte
+        
+        The program MakeProms generates the contents of the low
+        and high bytes of both the backplane and ethernet serial
+        numbers.  Because serial numbers are allocated sequentially
+        from a single source, all ethernet addresses and backplane
+        serial numbers are unique.
+
+
+
+
+
+        
+        When more than one manufacturer generates serial numbers,
+        there are several special considerations:
+        
+        1) The ethernet addresses are assigned to a specific 
+        manufacturer of ethernet products.  If each manufacturer
+        obtains their own license (therefore their own set of
+        ethernet serial numbers) then there is no problem with
+        uniqueness for ethernet.  This requires a small change to
+        the ethernet PROM code: net6.mas and eionet.v3.mas.
+        
+        2) With the backplane PAL, one of two ways must be chosen
+        to guarantee uniqueness.  Either the constant 0 byte (third
+        byte) could be changed to create a manufacturer code, or
+        a range of backplane numbers could be allocated for each
+        manufacturer.  Note that this is only a problem if Perqs
+        built by different manufacturers could ever be used in a 
+        way likely to cause confusion.
+        
+        
+        For Varityper, the following is recommended:
+        
+        1) Obtain a new Xerox license and change the ethernet code 
+        to use the new numbers.  Start allocating ethernet numbers 
+        at 1 (0 is the unprogrammed master).
+        
+        2) Use a separate backplane serial number file.  Allocate
+        backplane serial numbers starting at 10,000 (decimal).  The
+        attached copy of the last page of the log book shows that 
+        Perq has used serial numbers from 0 to 5787 (decimal).

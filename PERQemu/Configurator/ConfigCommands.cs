@@ -625,9 +625,14 @@ namespace PERQemu.UI
 
             if (PERQemu.Config.HasEthernet(PERQemu.Config.Current))
             {
+                if (address == 0)
+                {
+                    Console.WriteLine("Note: Setting the address to zero (0) will generate a new random address.");
+                }
+
                 if (PERQemu.Controller.State > RunState.Off)
                 {
-                    Console.WriteLine("Note: The running PERQ won't see the change until reset or restart.");
+                    Console.WriteLine("Note: The running PERQ won't see the change until it is restarted.");
                 }
             }
             else

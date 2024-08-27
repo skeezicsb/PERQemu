@@ -727,6 +727,7 @@
     </None>
     <None Include="Docs\Hardware References\EIO_Disk_Quick_Feb83.txt" />
     <None Include="Docs\HardDisks.txt" />
+    <None Include="Docs\Hardware References\serial.memo" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">

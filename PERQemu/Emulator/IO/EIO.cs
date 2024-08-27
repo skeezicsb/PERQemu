@@ -120,6 +120,11 @@ namespace PERQemu.IO
                 }
             }
             RegisterPorts(_etherPorts);
+
+            // Init the serial number PROM (*after* MAC address generation by
+            // the Ethernet board) and register ports
+            SetSerialNumber();
+            RegisterPorts(_snPorts);
         }
 
         public INetworkController Ether => _ethernetController;
@@ -158,6 +163,19 @@ namespace PERQemu.IO
                 case 0x5a:
                 case 0x5b:
                     return _ethernetController?.ReadRegister(port) ?? 0xff;
+
+                // Backplane serial number PROM (T2/T4 only?)
+                case 0x38:
+                    return _snLow;
+
+                case 0x39:
+                    return _snHigh;
+
+                case 0x3a:
+                    return 0x0;
+
+                case 0x3b:
+                    return 0x5c;
 
                 default:
                     throw new UnhandledIORequestException(port);
@@ -246,6 +264,17 @@ namespace PERQemu.IO
         }
 
         /// <summary>
+        /// Sets the serial number from Configuration record (if set), or make
+        /// one up.  It's a minor thing, but it is actually used by some of the
+        /// high-end applications!
+        /// </summary>
+        void SetSerialNumber()
+        {
+            _snLow = (byte)(_sys.Config.EtherAddress & 0xff);
+            _snHigh = (byte)(_sys.Config.EtherAddress >> 8);
+        }
+
+        /// <summary>
         /// Ports handled by the EIO.  (But no Ethernet on NIO.)
         /// </summary>
         byte[] _handledPorts =
@@ -295,6 +324,15 @@ namespace PERQemu.IO
             0xde        // 336 E10EWrUSLow: load usec clock low byte
         };
 
+        byte[] _snPorts =
+        {
+            // Backplane serial number PROM addresses
+            0x38,       // 070 S/N low byte
+            0x39,       // 071 S/N high byte
+            0x3a,       // 072 0 (constant)
+            0x3b        // 073 0x5c (134) (constant)
+        };
+
         /// <remarks>
         /// These EIO registers are not implemented:
         /// 120     50      FPStat          read floating point status
@@ -311,5 +349,8 @@ namespace PERQemu.IO
 
         INetworkController _ethernetController;
         ChannelName _chanSelect;
+
+        byte _snLow;
+        byte _snHigh;
     }
 }

@@ -106,7 +106,7 @@ namespace PERQemu.IO.DiskDevices
                     // Selects the address of next data register to load.
                     //
                     _regSelect = (value & 0xf);
-                    Log.Info(Category.HardDisk, "MFM register file pointer now {0}", _regSelect);
+                    Log.Debug(Category.HardDisk, "MFM register file pointer now {0}", _regSelect);
                     break;
 
                 case 0xd1:      // LD DF DATA L
@@ -120,7 +120,7 @@ namespace PERQemu.IO.DiskDevices
                         _regSelect = 0;
                     }
 
-                    Log.Info(Category.HardDisk, "MFM register file[{0}]=0x{1:x2}",
+                    Log.Detail(Category.HardDisk, "MFM register file[{0}]=0x{1:x2}",
                                                   _regSelect, (byte)~value);
                     _registerFile[_regSelect++] = (byte)~value;
                     break;
@@ -228,7 +228,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         bool CheckBlockParameters(ushort cyl, byte head)
         {
-//#if DEBUG
+#if DEBUG
             if (_dib.SelectedDrive == null)
                 throw new InvalidOperationException($"{_command} but no disk selected");
 
@@ -250,7 +250,7 @@ namespace PERQemu.IO.DiskDevices
                                             _dib.SelectedDrive.CurCylinder, _dib.Cylinder, cyl);
                 return false;
             }
-//#endif
+#endif
             return true;
         }
 
@@ -259,7 +259,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         bool CheckLogicalHeaderBytes(byte[] LH)
         {
-//#if DEBUG
+#if DEBUG
             // Check the header bytes against the register file values!  If
             // there are any discrepancies, report the error and abort due to
             // a logical header mismatch.  Realism baybeeee!!!  ALSO, this is
@@ -285,7 +285,7 @@ namespace PERQemu.IO.DiskDevices
                 Console.WriteLine();
                 return false;
             }
-//#endif
+#endif
             return true;
         }
 
@@ -318,7 +318,7 @@ namespace PERQemu.IO.DiskDevices
             // Sanity checks
             if (!CheckBlockParameters(cyl, head))
             {
-                MidSectorFinish(delay, SMStatus.SMError);
+                FinishCommand(delay, SMStatus.SMError);
                 return;
             }
 
@@ -400,7 +400,7 @@ namespace PERQemu.IO.DiskDevices
 
             if (!CheckBlockParameters(cyl, head))
             {
-                MidSectorFinish(delay, SMStatus.SMError);
+                FinishCommand(delay, SMStatus.SMError);
                 return;
             }
 
@@ -499,14 +499,15 @@ namespace PERQemu.IO.DiskDevices
                 Log.Error(Category.HardDisk, "MidSectorFinish called while already busy");
             // but proceed anyway?
 #endif
-            Log.Info(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
 
-            _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
+            if (exitCode == SMStatus.Idle)
             {
-                Log.Info(Category.HardDisk, "Mid-sector interrupt firing, code={0}", exitCode);
+                Log.Info(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
 
-                if (exitCode == SMStatus.Idle)
+                _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
                 {
+                    Log.Debug(Category.HardDisk, "Mid-sector interrupt firing");
+
                     // Per adap.doc, mid-sector int sets SMInt, low 3 bits to 1
                     _status = (SMStatus.SMInt | SMStatus.Busy);
 
@@ -515,16 +516,16 @@ namespace PERQemu.IO.DiskDevices
 
                     // Schedule a normal completion
                     FinishCommand(BlockDelayNsec, exitCode);
-                }
-                else
+                });
+            }
+            else
+            {
+                // Error out through FinishCommand()
+                _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
                 {
-                    // Save the error status
-                    _status = (SMStatus.SMInt | exitCode);
-
-                    // Fire off the interrupt
-                    SetInterrupt(true);
-                }
-            });
+                    FinishCommand(delay, exitCode);
+                });
+            }
         }
 
         /// <summary>
@@ -579,7 +580,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         void StatusChange()
         {
-            Log.Info(Category.HardDisk, "DIB signaled status change!");
+            Log.Debug(Category.HardDisk, "DIB signaled status change!");
             SetInterrupt(true);
         }
 
