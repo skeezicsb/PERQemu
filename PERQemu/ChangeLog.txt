@@ -6,6 +6,19 @@ notes moved to ChangeLog-Old.txt.  New entries here will be added at the top, to
 avoid wasting precious time scrolling to the end. :-)
 
 
+November, 2024:
+
+    1. ACK!  Time sure flies when you're waiting for civilization to collapse.
+    In the meantime, updated the MFM disk controller to get low-level format
+    operations to work, even though it's not strictly necessary to ever do that
+    with PERQemu.  But it makes the emulation more complete.  Tested with dual
+    Maxtor XT1140s under POS and Accent.  Also streamlined the S/N reporting
+    and made a few more small tweaks to turn down the debug spewage from the
+    hard disk controller.  Micropolis still not quite all there but good enough
+    for daily use.  Still working on assembling some new pre-built images so
+    the PERQ 2 configurations can be used out of the box.  Watch this space.
+
+
 August, 2024:
 
     4. Adjust the seek timing to be a bit more realistic.  While a linear ramp
@@ -409,4 +422,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Tue Aug 27 15:49:16 PDT 2024
+Last update: skeezics    Sat Nov  2 21:17:42 PDT 2024

@@ -23,6 +23,9 @@ using PERQmedia;
 
 namespace PERQemu.IO.DiskDevices
 {
+    // Optional hook fired on index pulses from the drive
+    public delegate void IndexPulseCallback(ulong last);
+
     /// <summary>
     /// Emulates the mechanical operation of a hard disk drive, handling the
     /// timing for seek operations, index pulses, and other basic operations.
@@ -44,10 +47,11 @@ namespace PERQemu.IO.DiskDevices
             _index = false;
             _seekComplete = false;
 
-            _seekCallback = null;
-            _seekEvent = null;
-            _indexEvent = null;
             _startupEvent = null;
+            _seekEvent = null;
+            _seekCallback = null;
+            _indexEvent = null;
+            _indexCallback = null;
 
             _cyl = 0;
             _lastStep = 0;
@@ -62,9 +66,6 @@ namespace PERQemu.IO.DiskDevices
         public virtual bool Index => _index;
         public virtual bool Track0 => (_cyl == 0);
         public virtual bool SeekComplete => _seekComplete;
-
-        // Timing/rotational delay
-        public virtual ulong LastIndexPulse => _lastIndexPulse;
 
         // Debugging/sanity check
         public virtual ushort CurCylinder => _cyl;
@@ -106,7 +107,6 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         public virtual Sector GetSector(ushort sector)
         {
-            // We'll ignore rotational delays... for now.
             return Read(_cyl, _head, sector);
         }
 
@@ -132,6 +132,14 @@ namespace PERQemu.IO.DiskDevices
         public virtual void SetSeekCompleteCallback(SchedulerEventCallback cb)
         {
             _seekCallback = cb;
+        }
+
+        /// <summary>
+        /// Sets the index pulse callback.  Used by the MFM formatter.
+        /// </summary>
+        public virtual void SetIndexPulseCallback(IndexPulseCallback cb)
+        {
+            _indexCallback = cb;
         }
 
         /// <summary>
@@ -388,12 +396,18 @@ namespace PERQemu.IO.DiskDevices
         }
 
         /// <summary>
-        /// Raises the Index signal for the drive's specified duration.
+        /// Raises the Index signal for the drive's specified duration.  Fires the
+        /// IndexPulseCallback if registered.
         /// </summary>
         void IndexPulseStart(ulong skew, object context)
         {
             _index = true;
             _indexEvent = _scheduler.Schedule(_indexPulseDurationNsec, IndexPulseEnd);
+
+            if (_indexCallback != null)
+            {
+                _indexCallback(_lastIndexPulse);
+            }
         }
 
         /// <summary>
@@ -446,6 +460,7 @@ namespace PERQemu.IO.DiskDevices
         ulong _indexPulseDurationNsec;
         ulong _lastIndexPulse;
         SchedulerEvent _indexEvent;
+        IndexPulseCallback _indexCallback;
 
         // Seek timing
         int _stepCount;

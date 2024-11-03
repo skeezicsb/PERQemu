@@ -93,21 +93,7 @@ namespace PERQemu.IO.DiskDevices
         public int ReadStatus()
         {
             // Reset the status word from the DIB and add state machine code
-            var status = _dib.Status.Current | (int)_status;
-
-            /*
-            // Set the SMSTATUS<3> bit if:
-            //      mid-cycle is enabled,
-            //      an error status is being returned
-            //      block r/w/fmt command is complete
-            // Do NOT set on seeks or other commands!
-            if (_command != SMCommand.Unused &&
-                _command != SMCommand.FixPH &&
-                _command != SMCommand.Idle)
-            {
-                status |= (int)SMStatus.SMInt;
-            }
-            */
+            var status = _dib.ReadStatus() | (int)_status;
 
             // Reading clears interrupts
             SetInterrupt(false);
@@ -719,9 +705,9 @@ namespace PERQemu.IO.DiskDevices
         readonly ulong BlockDelayNsec = 749 * Conversion.UsecToNsec;
 
         // Registers
-        SMFlags _flags;
         SMCommand _command;
         SMStatus _status;
+        SMFlags _flags;
 
         byte[] _registerFile;
         int _regSelect;
@@ -752,11 +738,10 @@ namespace PERQemu.IO.DiskDevices
             }
 
             public HardDisk SelectedDrive => _disk;
-            public HWStatus Status => _status;
 
             public byte Unit => _driveSelect;
-            public ushort Cylinder => _cylinder;
             public byte Head => _head;
+            public ushort Cylinder => _cylinder;
 
             public bool BusEnable
             {
@@ -971,6 +956,9 @@ namespace PERQemu.IO.DiskDevices
             /// </summary>
             public void UpdateStatus()
             {
+                var oldReady = _status.UnitReady;
+                var oldOnCyl = _status.OnCylinder;
+
                 _status.UnitReady = (_driveSelect == 0 && _disk.Ready);
                 _status.Index = _disk.Index;
                 _status.DriveFault = _disk.Fault;
@@ -979,7 +967,31 @@ namespace PERQemu.IO.DiskDevices
                 Log.Detail(Category.HardDisk, "DIB {0}", _status);      // HW status string
 
                 // Ready changes, faults, or OnCylinder asserted trigger an interrupt
-                _control.StatusChange();
+                if (oldReady != _status.UnitReady || (oldOnCyl == false && _status.OnCylinder == true))
+                {
+                    _control.StatusChange();
+                }
+            }
+
+            /// <summary>
+            /// Refresh, return the current status.
+            /// </summary>
+            /// <remarks>
+            /// This is necessary since formatting or timing the index pulses (CIO
+            /// Micropolis boot code) requires that the Index flag be accurately set;
+            /// 3RCC acknowledges that reading status too often may potentially result
+            /// in missing an interrupt that's set and then cleared before it can be
+            /// handled, which is a danger here too -- UpdateStatus() may trigger an
+            /// interrupt on a Ready change, but reading SMSTATUS (in the caller) then
+            /// clears it immediately).  We'll see if this is a problem in practice;
+            /// low-level formatting is almost never needed and CIO Micropolis isn't
+            /// yet fully supported yet anyway :-) so if this screws up normal operation
+            /// I'll rethink/redo it.  Applies to MFMController too.
+            /// </remarks>
+            public int ReadStatus()
+            {
+                UpdateStatus();
+                return _status.Current;
             }
 
             /// <summary>

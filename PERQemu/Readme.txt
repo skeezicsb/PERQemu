@@ -464,18 +464,24 @@ PERQ-2/EIO support is still highly experimental, but if you want to try it out
 there are some known quirks/bugs to be aware of:
 
 
-4. PNX 2 (and PNX 3) boot failure at DDS 142.
+4. PNX boot failure at DDS 142.
 
-Symptoms:  Attempting to boot from the PNX 2 or PNX 3 installation floppies
-causes the DDS to stop at 142 and the process to hang.
+Symptoms:  Attempting to boot from the PNX installation floppies causes the DDS
+to stop at 142 and the process to hang.
 
 Workaround:  The version of the VFY microcode included on the available floppies
 contains a bug -- or relies on a quirk of the hardware -- that causes the Victim
-test to fail when a 16K CPU is configured.  When the DDS stops at 142, type
-"debug jump $808" to resume execution, bypassing the failed test.  Note that the
-DDS status will be off for the remainder of the session, and will not stop at
-255 when PNX has completed booting.  A patch to detect and fix this has been
-developed and is included in PERQemu v0.5.8 and beyond.
+test to fail when a 16K CPU is configured.  For PNX versions 2 or 3, when the
+DDS stops at 142, type "debug jump $808" to resume execution, bypassing the
+failed test.  Note that the DDS status will be off for the remainder of the
+session, and will not stop at 255 when PNX has completed booting.  A patch to
+detect and fix this has been developed and is included in PERQemu v0.5.8 and
+beyond.
+
+Update: The PNX 5 boot floppy uses different microcode that fails in the same
+way but in a different location; looking to update the patch or figure out if
+the Victim register implementation needs to be relaxed to allow PNX to run, as
+this busted code DOES work on the actual hardware.  Hmmm.
 
 
 5. PNX video glitches.
@@ -653,7 +659,7 @@ v0.1 - First public release.
 
 Update history:
 
-8/27/2024 - skeezicsb - v0.6.2 (experiments)
+11/2/2024 - skeezicsb - v0.6.2 (experiments)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0

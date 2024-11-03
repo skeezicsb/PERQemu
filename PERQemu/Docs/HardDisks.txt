@@ -121,7 +121,7 @@ with the PERQ-2/T2 model, using a new DIB design.  This has been implemented in
 PERQemu as the "MFMDiskController" class.  It is sufficiently different in 
 subtle but significant ways from the 8" Micropolis DIB to require a separate
 implementation.  Two[*] variants were produced, mainly differing in one PAL and
-the use of one signal line: support for write precompensation as required by some
+the use of one signal line: support for write precompensation required by some
 drives of the class limited those disks to 8 heads.  The more common variant
 used the RWC line as a fourth head select line.  For the purpose of emulation,
 write precomp is irrelevant; one implementation suffices.  The MFM controller
@@ -586,7 +586,7 @@ very low overhead -- just two Scheduler events for each rotation (16-20ms typ).
 This lets me compute the time from the last index to the current time and fake
 up a rotational delay on block operations, AND compute a rough timing for the
 mid-sector interrupt used by the Microp/MFM controllers (Shugart didn't generate
-theses -- it was an EIO thing only).
+these -- it was an EIO thing only).
 
 The MFM DIB supposedly provides 1.1us sector pulses on the cable, by feeding the
 drive INDEX signal through its own counter.  But I haven't seen any reference to
@@ -603,14 +603,46 @@ when rate limiting is turned on.
 Disk Formatting
 ---------------
 
-TBD.  Shugart low-level formatting with DiskTest works; the 8" and 5.25" code
-is incomplete and in debug/test currently.  Because PERQmedia can be used to
-generate blank disk images instantly, ready for partitioning, there's almost no
-reason for a casual user to bother with bare-metal formatting of hard drives.
-But implementing FormatBlock() is an excellent test platform to ensure disk
-emulation is accurate, and to make the emulator as close to the real hardware
-as possible.
+Because PERQmedia can be used to generate blank disk images instantly, ready for
+partitioning, there's almost no reason for a casual user to bother with bare-
+metal formatting of hard drives.  But implementing FormatBlock() is an excellent
+test platform to ensure disk emulation is accurate, and to make the emulator as
+close to the real hardware as possible.
+
+Shugart formatting was handled entirely by the state machine on the IOB, and is
+implemented in the ShugartController's FormatBlock() routine.  It seems to work
+and is sufficiently complete to fool DiskTest and most of the low-level diags.
+
+Micropolis 8" drives are still not fully implemented; still much study of the
+microcode and manuals to figure out how that works.
+
+Formatting a 5.25" drive takes two revolutions of the platters:  First the Idle
+command is issued with the Format bit set in the SMControl word, which causes
+the adapter to write sector marks for the current head/cyl.  While all the PERQ-
+qualified MFM drives use 16 sectors, there are apparently jumpers on the DIB
+that allow other sector counts to be specified!  (We only support 16 sector
+disks for now.)  According to the available documentation, the DIB spaces the
+sector marks evenly around the track, numbered sequentially starting after the
+Index pulse.  The microcode also writes the value for the sync byte into the
+register file which is used as a preamble byte to introduce the logical header,
+but since PERQemu doesn't operate at the level of writing the physical header,
+gaps, checksums (etc), we just zero out the sectors for the selected cylinder.
+
+The second revolution is where the Pascal/ucode issues the Format command to
+state machine to write each sector, initializing the logical header values and
+optionally rewriting the data blocks much like the Shugart formatter does.  In
+fact, this is essentially just a regular Write() command, so we don't duplicate
+the code.
+
+Note that Index bit returned in the status register is synthesized by the EIO.
+It uses the index pulse passed by the DIB from the currently selected drive to
+toggle a flip-flop once per disk revolution.  For a tiny measure of efficiency,
+PERQemu only registers a single callback to be invoked when the drive's index
+pulse event fires, since low-level formatting is so very rarely used (not really
+needed at all with the virtual media in the emulator) and in dual-drive PERQs
+drive select 1 (unit 0) is always present.  This has been tested and confirmed
+with a T2 setup with two MFM drives.
 
 
 --
-Last update: skeezics   Sun Jun 30 13:00:55 PDT 2024 
+Last update: skeezics   Sat Nov  2 19:55:53 PDT 2024 

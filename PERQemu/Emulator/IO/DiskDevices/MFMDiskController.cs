@@ -47,7 +47,7 @@ namespace PERQemu.IO.DiskDevices
             _dib.Reset();
             ResetFlags();
 
-            Log.Info(Category.HardDisk, "MFM controller reset");
+            Log.Debug(Category.HardDisk, "MFM controller reset");
         }
 
         /// <summary>
@@ -85,7 +85,7 @@ namespace PERQemu.IO.DiskDevices
         public int ReadStatus()
         {
             // Reset the status word from the DIB and add state machine code
-            var status = _dib.Status.Current | (int)_status;
+            var status = _dib.ReadStatus() | (int)_status;
 
             // Reading clears interrupts
             SetInterrupt(false);
@@ -93,7 +93,7 @@ namespace PERQemu.IO.DiskDevices
             // And our state machine status?
             _status = SMStatus.Idle;
 
-            Log.Info(Category.HardDisk, "MFM status: 0x{0:x3}", status);
+            Log.Debug(Category.HardDisk, "MFM status: 0x{0:x3}", status);
             return status;
         }
 
@@ -163,26 +163,38 @@ namespace PERQemu.IO.DiskDevices
             _flags = (SMControl)(data & 0xf8);
             _command = (SMCommand)(data & 0x07);
 
-            Log.Info(Category.HardDisk, "MFM control: flags {0}, command {1}", _flags, _command);
+            Log.Debug(Category.HardDisk, "MFM control: flags {0}, command {1}", _flags, _command);
 
             // Assume that disabling the Enable bit performs a Reset, and should
             // supercede (or never be asserted in conjunction with) Format.
             if (!_flags.HasFlag(SMControl.Enable))
             {
-                Log.Info(Category.HardDisk, "MFM controller disabled!");
+                Log.Debug(Category.HardDisk, "MFM controller disabled!");
 
                 // Assume we just bail out here?
                 ResetFlags();
                 return;
             }
 
-            // check status/busy/error etc?
-
+            // Check for the Format bit
             if (_flags.HasFlag(SMControl.Format))
             {
-                Log.Warn(Category.HardDisk, "MFM Format control bit asserted! (command {0})", _command);
-
-                // not sure yet what to do here; maybe just set _command=Format and fall thru?
+                // When the Format bit is set in the control word, hardware on the
+                // DIB itself writes new address marks on the current track (MRKxx
+                // PALs) and the microcode just waits for the next Index pulse to 
+                // know that it's complete.  Here we sanity check that the command is
+                // set to Idle, and if so rewrite it -- the FormatBlock() routine 
+                // checks the control bit and simulates the track format operation.
+                if (_command != SMCommand.Idle)
+                {
+                    Log.Warn(Category.HardDisk, "MFM Format control bit asserted unexpectedly! (command {0})", _command);
+                    _command = SMCommand.Idle;
+                }
+                else
+                {
+                    // Go format the track!
+                    _command = SMCommand.Format;
+                }
             }
 
             switch (_command)
@@ -200,7 +212,12 @@ namespace PERQemu.IO.DiskDevices
                 case SMCommand.Write:
                 case SMCommand.WriteChk:
                     _status = SMStatus.Busy;
-                    WriteBlock();
+                    WriteBlock(_command == SMCommand.Write);
+                    break;
+
+                case SMCommand.Format:
+                    _status = SMStatus.Busy;
+                    FormatBlock(_flags.HasFlag(SMControl.Format));
                     break;
 
                 default:
@@ -271,6 +288,7 @@ namespace PERQemu.IO.DiskDevices
                 (LH[4] != _registerFile[7]) ||
                 (LH[5] != _registerFile[11]))
             {
+                // todo: StringBuilder, log it properly
                 Console.Write("LH mismatch: blk: ");
                 for (int i = 0; i < 6; i++)
                 {
@@ -367,7 +385,7 @@ namespace PERQemu.IO.DiskDevices
                 _system.Memory.StoreWord(data + (i >> 1), (ushort)word);
             }
 
-            Log.Info(Category.HardDisk,
+            Log.Debug(Category.HardDisk,
                       "MFM sector read from {0}/{1}/{2}, to memory at 0x{3:x6}",
                       cyl, head, sector, data);
 
@@ -386,7 +404,7 @@ namespace PERQemu.IO.DiskDevices
         /// Does a write to the cyl/head/sec specified by the controller registers.
         /// Same basic steps as Read/ReadCheck, but the other way around.
         /// </summary>
-        void WriteBlock()
+        void WriteBlock(bool writeHeader)
         {
             var cyl = (ushort)((_registerFile[8] & 0xf0) << 4 | _registerFile[4]);
             var head = (byte)(_registerFile[8] & 0x0f);
@@ -416,16 +434,19 @@ namespace PERQemu.IO.DiskDevices
                 block.Data[i + 1] = (byte)(word >> 8);
             }
 
-            for (int i = 0; i < block.Header.Length; i += 2)
+            if (writeHeader)
             {
-                int word = _system.Memory.FetchWord(header + (i >> 1));
-                block.Header[i] = (byte)(word & 0xff);
-                block.Header[i + 1] = (byte)(word >> 8);
+                for (int i = 0; i < block.Header.Length; i += 2)
+                {
+                    int word = _system.Memory.FetchWord(header + (i >> 1));
+                    block.Header[i] = (byte)(word & 0xff);
+                    block.Header[i + 1] = (byte)(word >> 8);
+                }
             }
 
             _dib.SelectedDrive.SetSector(block);
 
-            Log.Info(Category.HardDisk,
+            Log.Debug(Category.HardDisk,
                       "MFM sector write complete to {0}/{1}/{2}, from memory at 0x{3:x6}",
                       cyl, head, sector, data);
 
@@ -443,45 +464,41 @@ namespace PERQemu.IO.DiskDevices
         /// Does a "format" of the cyl/head/sec specified by the controller
         /// registers.  Does NOT commit to disk, only in memory copy is affected.
         /// </summary>
-        void FormatBlock()
+        /// <remarks>
+        /// MFM formatting is done in two revolutions:  when the Format bit in
+        /// the control register is set the adapter writes 16 sector marks on the
+        /// current track, numbered sequentially and spaced to accommodate the
+        /// size of the PH, LH and DB sections with the appropriate preambles
+        /// and sync patterns, gaps and checksums.  It's also implied that it
+        /// zeroes the data too.  The microcode simply waits for the next Index
+        /// mark to turn off the Format bit -- and does NOT expect any interrupts
+        /// from the hard disk in that time.  
+        /// 
+        /// During the second revolution, the microcode issues a series of Format
+        /// commands to the state machine (like the Shugart controller) where each
+        /// sector's LH bytes are written and the data blocks initialized with a
+        /// pattern - here we just hand that off to WriteBlock() and let the usual
+        /// completion/interrupts happen.
+        /// </remarks>
+        void FormatBlock(bool writeMarks)
         {
-            // Todo: think about how to support spare sectoring and bad block
-            // maps - the PERQ allows rewriting the sector header to effect a
-            // block sparing, so... any changes to the underlying storage dev?
-            // split the phys/log header fields if they aren't already?
-
-            // some format parameters come from the register file, so figure out
-            // how that works
-            var _sector = _registerFile[3];
-            var sec = new Sector(_dib.Cylinder, _dib.Head, _sector,
-                                 _dib.SelectedDrive.Geometry.SectorSize,
-                                 _dib.SelectedDrive.Geometry.HeaderSize);
-
-            var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
-            var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
-
-            // Todo: MFM formatting details in adap.doc?
-            for (int i = 0; i < sec.Data.Length; i += 2)
+            if (writeMarks)
             {
-                int word = _system.Memory.FetchWord(data + (i >> 1));
-                sec.Data[i] = (byte)(word & 0xff);
-                sec.Data[i + 1] = (byte)(word >> 8);
+                // Tell the DIB to format the whole track!  No sector interrupts
+                // generated, all blocks (header and data) zeroed
+                if (_dib.WriteMarks())
+                {
+                    Log.Debug(Category.HardDisk,
+                              "MFM unit {0} track format of cyl {1}/hd {2} complete",
+                              _dib.Unit, _dib.Cylinder, _dib.Head);
+                    
+                    _status = SMStatus.Idle;
+                }
+                return;
             }
 
-            // Write the new header data...
-            for (int i = 0; i < sec.Header.Length; i += 2)
-            {
-                int word = _system.Memory.FetchWord(header + (i >> 1));
-                sec.Header[i] = (byte)(word & 0xff);
-                sec.Header[i + 1] = (byte)(word >> 8);
-            }
-
-            // Write the sector to the disk...
-            _dib.SelectedDrive.SetSector(sec);
-
-            Log.Write(Category.HardDisk,
-                      "MFM sector format of {0}/{1}/{2} complete, from memory at 0x{3:x6}",
-                      _dib.Cylinder, _dib.Head, _sector, data);
+            // Regular Format command: treat it like a normal Write
+            WriteBlock(true);
         }
 
         #endregion
@@ -502,7 +519,7 @@ namespace PERQemu.IO.DiskDevices
 
             if (exitCode == SMStatus.Idle)
             {
-                Log.Info(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
+                Log.Debug(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
 
                 _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
                 {
@@ -535,7 +552,7 @@ namespace PERQemu.IO.DiskDevices
         {
             _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
             {
-                Log.Info(Category.HardDisk, "Command completion: {0}", exitCode);
+                Log.Debug(Category.HardDisk, "Command completion: {0}", exitCode);
                 _status = (SMStatus.SMInt | exitCode);
                 _busyEvent = null;
 
@@ -634,22 +651,6 @@ namespace PERQemu.IO.DiskDevices
         }
 
         /// <summary>
-        /// State machine control register for 5.25" interface.  Bits [2:0] are
-        /// the F (function) bits.  Bit 6 is the only bit that directly affects
-        /// the DIB; see "adap.doc" for more info.
-        /// </summary>
-        [Flags]
-        enum SMControl
-        {
-            None = 0x0,
-            Enable = 0x08,          // Enable controller when H (Reset when L)
-            InterruptsOn = 0x10,    // Disk Interrupt Enable when H
-            T = 0x20,               // T bit: ?
-            Format = 0x40,          // Write sector marks on the track when H
-            T2 = 0x80               // T2 bit: ?
-        }
-
-        /// <summary>
         /// Disk command bits [2:0] go to the hard disk state machine.  Again,
         /// there are way too many conflicting and contradictory sources and no
         /// single, definitive command set, so this list is the best guess and
@@ -665,6 +666,22 @@ namespace PERQemu.IO.DiskDevices
             Read = 5,               // Read Data - Read Header
             Unused = 6,             // Unused (Feb83)
             ReadChk = 7             // Read Data - Check Header
+        }
+
+        /// <summary>
+        /// State machine control register for 5.25" interface.  Bits [2:0] are
+        /// the F (function) bits.  Bit 6 is the only bit that directly affects
+        /// the DIB; see "adap.doc" for more info.
+        /// </summary>
+        [Flags]
+        enum SMControl
+        {
+            None = 0x0,
+            Enable = 0x08,          // Enable controller when H (Reset when L)
+            InterruptsOn = 0x10,    // Disk Interrupt Enable when H
+            T = 0x20,               // T bit: ?
+            Format = 0x40,          // Write sector marks on the track when H
+            T2 = 0x80               // T2 bit: ?
         }
 
         /// <summary>
@@ -684,9 +701,9 @@ namespace PERQemu.IO.DiskDevices
         // sectors.  See ShugartController.cs for information about computing this.
         readonly ulong BlockDelayNsec = 845 * Conversion.UsecToNsec;
 
+        SMCommand _command;
         SMStatus _status;
         SMControl _flags;
-        SMCommand _command;
 
         bool _interrupting;
 
@@ -716,7 +733,6 @@ namespace PERQemu.IO.DiskDevices
             }
 
             public HardDisk SelectedDrive => _drives[_selected];
-            public HWStatus Status => _status;
 
             public int Unit => _selected;
             public byte Head => _head;
@@ -726,6 +742,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 // Stop any seek in progress
                 _control._system.Scheduler.Cancel(_seekEvent);
+                _seekEvent = null;
                 _seekState = SeekState.Idle;
 
                 foreach (var disk in _drives)
@@ -734,8 +751,9 @@ namespace PERQemu.IO.DiskDevices
                 }
 
                 _selected = 0;
+                _fakeIndex = false;
 
-                Log.Info(Category.HardDisk, "MFM DIB reset");
+                Log.Debug(Category.HardDisk, "MFM DIB reset");
             }
 
             /// <summary>
@@ -758,7 +776,13 @@ namespace PERQemu.IO.DiskDevices
                     throw new InvalidConfigurationException($"Device type {dev.Info.Type} not supported by this controller");
 
                 _drives[unit] = dev as HardDisk;
-                _drives[unit].SetSeekCompleteCallback(SeekCompletionCallback);
+                _drives[unit].SetSeekCompleteCallback(SeekComplete);
+
+                // Only register one, even in multiple drive systems
+                if (unit == 0)
+                {
+                    _drives[unit].SetIndexPulseCallback(IndexPulse);
+                }
 
                 // A small detail
                 _status.DriveType = (int)DeviceType.Disk5Inch;
@@ -774,7 +798,7 @@ namespace PERQemu.IO.DiskDevices
                 if (unit != _selected && _drives[unit] != null)
                 {
                     _selected = unit;
-                    Log.Info(Category.HardDisk, "DIB: Unit {0} selected", _selected);
+                    Log.Debug(Category.HardDisk, "DIB: Unit {0} selected", _selected);
 
                     if (_seekState != SeekState.Idle)
                         Log.Warn(Category.HardDisk, "Unit select change while seek {0}!?", _seekState);
@@ -826,7 +850,7 @@ namespace PERQemu.IO.DiskDevices
                     _cylinder = (ushort)Math.Max(_drives[_selected].CurCylinder - _seekCount, 0);
                 }
 
-                Log.Info(Category.HardDisk, "MFM unit {0} starting seek from {1} to {2} ({3} steps)",
+                Log.Debug(Category.HardDisk, "MFM unit {0} starting seek from {1} to {2} ({3} steps)",
                                             _selected, _drives[_selected].CurCylinder, _cylinder, _seekCount);
 
                 _seekEvent = _control._system.Scheduler.Schedule(StepRate, SeekStepPulse);
@@ -859,19 +883,72 @@ namespace PERQemu.IO.DiskDevices
                     _seekState = SeekState.WaitingForSeekComplete;
                 }
 
-                Log.Info(Category.HardDisk, "MFM unit {0} seek count {1} ({2})",
+                Log.Detail(Category.HardDisk, "MFM unit {0} seek count {1} ({2})",
                                             _selected, _seekCount, _seekState);
             }
 
             /// <summary>
             // Seek completion for the MFM controller.
             /// </summary>
-            public void SeekCompletionCallback(ulong skewNsec, object context)
+            public void SeekComplete(ulong skewNsec, object context)
             {
                 _seekState = SeekState.Idle;
-                Log.Info(Category.HardDisk, "MFM unit {0} seek complete ({1})",
+                Log.Debug(Category.HardDisk, "MFM unit {0} seek complete ({1})",
                                             _selected, _seekState);
                 UpdateStatus();
+            }
+
+            /// <summary>
+            /// Fired on the leading edge of a drive's index pulse transition.
+            /// </summary>
+            /// <remarks>
+            /// For 5.25" disk formatting, the EIO uses the Index pulse coming
+            /// from the selected drive to toggle a flip flop once per rotation.
+            /// The microcode uses this when formatting!  The DIB passes the
+            /// buffered but unmodified Index bit from the currently selected
+            /// drive, so I only register one callback when drive 0 is loaded.
+            /// It's close enough.  99.999% of PERQemu users will likely never
+            /// attempt to run DiskTest to low-level format a drive. :-)
+            /// </remarks>
+            public void IndexPulse(ulong last)
+            {
+                _fakeIndex = !_fakeIndex;
+                Log.Detail(Category.HardDisk, "EIO fake Index pulse {0} last {1}ns", _fakeIndex, last);
+            }
+
+            /// <summary>
+            /// Simulate formatting a track by writing new sector marks and zeroes
+            /// to the LH and DB sections of the current drive/head/cylinder.
+            /// </summary>
+            public bool WriteMarks()
+            {
+                // Sanity checks
+                if (SelectedDrive == null)
+                {
+                    Log.Error(Category.HardDisk, "MFM Format request but drive not mounted (unit {0})", _selected);
+                    return false;
+                }
+
+                if (_seekState != SeekState.Idle)
+                {
+                    Log.Error(Category.HardDisk, "MFM Format while {0} (unit {1})", _seekState, _selected);
+                    return false;
+                }
+
+                Log.Detail(Category.HardDisk, "DIB: Writing sector marks to unit {0}: cyl {1}/hd {2}",
+                                            _selected, _cylinder, _head);
+
+                // Just blast all the sectors on the track
+                for (ushort sec = 0; sec < SelectedDrive.Geometry.Sectors; sec++)
+                {
+                    // We could just rewrite them in place but low-level formatting
+                    // is an extremely rare operation and I'm being lazy
+                    SelectedDrive.SetSector(new Sector(_cylinder, _head, sec,
+                                                       _drives[_selected].Geometry.SectorSize,
+                                                       _drives[_selected].Geometry.HeaderSize));
+                }
+
+                return true;
             }
 
             /// <summary>
@@ -901,13 +978,13 @@ namespace PERQemu.IO.DiskDevices
                         if (_rwc > 0 && _drives[_selected].Geometry.Heads > 7)
                         {
                             _head = (byte)(val & 0x0f);
-                            Log.Info(Category.HardDisk, "MFM disk control: unit {0}, dir {1}, head {2}",
+                            Log.Debug(Category.HardDisk, "MFM disk control: unit {0}, dir {1}, head {2}",
                                                         _selected, _seekDir, _head);
                         }
                         else
                         {
                             _head = (byte)(val & 0x07);
-                            Log.Info(Category.HardDisk, "MFM disk control: unit {0}, dir {1}, rwc {2}, head {3}",
+                            Log.Debug(Category.HardDisk, "MFM disk control: unit {0}, dir {1}, rwc {2}, head {3}",
                                                         _selected, _seekDir, _rwc, _head);
                         }
 
@@ -917,12 +994,12 @@ namespace PERQemu.IO.DiskDevices
 
                     case RegSelect.SeekHiReg:
                         _seekCount = (val & 0x3f) << 6;
-                        Log.Info(Category.HardDisk, "DIB: seek count (high): 0x{0:x}", _seekCount);
+                        Log.Detail(Category.HardDisk, "DIB: seek count (high): 0x{0:x}", _seekCount);
                         break;
 
                     case RegSelect.SeekLowReg:
                         _seekCount |= (val & 0x3f);
-                        Log.Info(Category.HardDisk, "DIB: seek count (low): 0x{0:x} ({1})", (val & 0x3f), _seekCount);
+                        Log.Detail(Category.HardDisk, "DIB: seek count (low): 0x{0:x} ({1})", (val & 0x3f), _seekCount);
 
                         StartSeek();
                         break;
@@ -947,24 +1024,33 @@ namespace PERQemu.IO.DiskDevices
                 var oldReady = _status.UnitReady;
                 var oldOnCyl = _status.OnCylinder;
 
-                _head = _drives[_selected]?.CurHead ?? 0;
-                _cylinder = _drives[_selected]?.CurCylinder ?? 0;
+                _head = SelectedDrive?.CurHead ?? 0;
+                _cylinder = SelectedDrive?.CurCylinder ?? 0;
 
-                _status.UnitReady = _drives[_selected]?.Ready ?? false;
-                _status.DriveFault = _drives[_selected]?.Fault ?? true;
-                _status.Index = _drives[_selected]?.Index ?? false;
+                _status.UnitReady = SelectedDrive?.Ready ?? false;
+                _status.DriveFault = SelectedDrive?.Fault ?? true;
+                _status.Index = SelectedDrive != null ? _fakeIndex : false;
 
                 _status.OnCylinder = _status.UnitReady && (_seekState == SeekState.Idle);
                 _status.Track0 = (_cylinder == 0);
 
-                Log.Info(Category.HardDisk, "DIB status change: 0x{0:x3}", _status.Current);
-                Log.Info(Category.HardDisk, "DIB {0}", _status);      // HW status string
+                Log.Detail(Category.HardDisk, "DIB status change: 0x{0:x3}", _status.Current);
+                Log.Debug(Category.HardDisk, "DIB {0}", _status);      // HW status string
 
                 // Ready changes or OnCylinder asserted trigger an interrupt
                 if (oldReady != _status.UnitReady || (oldOnCyl == false && _status.OnCylinder == true))
                 {
                     _control.StatusChange();
                 }
+            }
+
+            /// <summary>
+            /// Refresh and return the status for the current selected drive.
+            /// </summary>
+            public int ReadStatus()
+            {
+                UpdateStatus();
+                return _status.Current;
             }
 
             /// <summary>
@@ -1008,7 +1094,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 Console.WriteLine("MFM DIB status:");
                 Console.WriteLine($"  {_status}");
-                Console.WriteLine($"  Unit: {_selected}  Head: {_head}  Cyl: {_cylinder}  RWC: {_rwc}");
+                Console.WriteLine($"  Unit: {_selected}  Cyl: {_cylinder}  Head: {_head}  Idx: {_fakeIndex}  RWC: {_rwc}");
                 Console.WriteLine($"  Seek dir: {_seekDir}  Seek count: {_seekCount}  State: {_seekState}");
                 Console.WriteLine();
 
@@ -1048,6 +1134,7 @@ namespace PERQemu.IO.DiskDevices
             int _rwc;
             byte _head;
             ushort _cylinder;
+            bool _fakeIndex;
 
             int _seekDir;
             int _seekCount;
@@ -1056,6 +1143,7 @@ namespace PERQemu.IO.DiskDevices
 
             MFMDiskController _control;
             HWStatus _status;
+
 
             // Drives attach here!
             HardDisk[] _drives;

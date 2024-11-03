@@ -89,16 +89,10 @@ namespace PERQemu.IO.Network
 
         public void Reset()
         {
-            if (_timer != null)
-            {
-                _system.Scheduler.Cancel(_timer);
-            }
+            _system.Scheduler.Cancel(_timer);
             _timer = null;
 
-            if (_response != null)
-            {
-                _system.Scheduler.Cancel(_response);
-            }
+            _system.Scheduler.Cancel(_response);
             _response = null;
 
             if (_clockInterrupt || _netInterrupt)

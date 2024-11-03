@@ -121,9 +121,7 @@ namespace PERQemu.IO
             }
             RegisterPorts(_etherPorts);
 
-            // Init the serial number PROM (*after* MAC address generation by
-            // the Ethernet board) and register ports
-            SetSerialNumber();
+            // Register ports to access the serial number PROM
             RegisterPorts(_snPorts);
         }
 
@@ -166,10 +164,10 @@ namespace PERQemu.IO
 
                 // Backplane serial number PROM (T2/T4 only?)
                 case 0x38:
-                    return _snLow;
+                    return _ethernetController?.MACAddress.GetAddressBytes()[5] ?? 0;
 
                 case 0x39:
-                    return _snHigh;
+                    return _ethernetController?.MACAddress.GetAddressBytes()[4] ?? 0;
 
                 case 0x3a:
                     return 0x0;
@@ -264,17 +262,6 @@ namespace PERQemu.IO
         }
 
         /// <summary>
-        /// Sets the serial number from Configuration record (if set), or make
-        /// one up.  It's a minor thing, but it is actually used by some of the
-        /// high-end applications!
-        /// </summary>
-        void SetSerialNumber()
-        {
-            _snLow = (byte)(_sys.Config.EtherAddress & 0xff);
-            _snHigh = (byte)(_sys.Config.EtherAddress >> 8);
-        }
-
-        /// <summary>
         /// Ports handled by the EIO.  (But no Ethernet on NIO.)
         /// </summary>
         byte[] _handledPorts =
@@ -350,7 +337,5 @@ namespace PERQemu.IO
         INetworkController _ethernetController;
         ChannelName _chanSelect;
 
-        byte _snLow;
-        byte _snHigh;
     }
 }

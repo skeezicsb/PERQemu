@@ -145,7 +145,7 @@ namespace PERQemu.IO.DiskDevices
                     // Added to the CIO board but ignored by the Shugart controller
                     // May initially log things to see that it's always being set to 0
                     if (value != 0)
-                        Log.Warn(Category.HardDisk, "CIOShugart write of 0x{0:x} to MicropSec ignored!", value);
+                        Log.Warn(Category.HardDisk, "Shugart write of 0x{0:x} to (CIO)MicropSec ignored!", value);
                     break;
 
                 default:
