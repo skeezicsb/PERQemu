@@ -278,7 +278,7 @@ namespace PERQemu.IO.Z80
             IZ80Registers regs = _cpu.Registers;
 
 #if DEBUG
-            // For now: debugging; future: actual InterruptEncoder as a bus device?
+            // Debugging; print transitions
             _bus.ActiveInterrupts();
 
             // This is hugely expensive so only call it if selected

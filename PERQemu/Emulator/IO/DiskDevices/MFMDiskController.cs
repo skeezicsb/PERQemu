@@ -1144,7 +1144,6 @@ namespace PERQemu.IO.DiskDevices
             MFMDiskController _control;
             HWStatus _status;
 
-
             // Drives attach here!
             HardDisk[] _drives;
         }
