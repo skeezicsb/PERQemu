@@ -106,12 +106,11 @@ namespace PERQemu.IO.Z80
             else
             {
                 // Control register
-                Log.Detail(Category.CTC, "Control word: {0:x2}", value);
+                Log.Detail(Category.CTC, "Control word: 0x{0:x2}", value);
 
                 var mode = (value & 0x0e) >> 1;
                 var rwCommand = (value & 0x30) >> 4;
                 var counter = (value & 0xc0) >> 6;
-
 #if DEBUG
                 if ((value & 0x01) != 0)
                 {
@@ -216,7 +215,7 @@ namespace PERQemu.IO.Z80
                 {
                     _counter = value;       // Zaps the value?
                     _writeLSB = false;
-                    Log.Debug(Category.CTC, _ID + "counter now {0}", _counter);
+                    Log.Debug(Category.CTC, _ID + "counter now 0x{0:x4} ({1})", _counter, _counter);
 
                     // In mode 3, if we're reloading JUST the LSB then alert
                     // the client that the baud rate has changed; none of the
@@ -232,7 +231,7 @@ namespace PERQemu.IO.Z80
                 {
                     _counter = (ushort)((value << 8) | (_counter & 0xff));
                     _writeMSB = false;
-                    Log.Debug(Category.CTC, _ID + "counter now {0}", _counter);
+                    Log.Debug(Category.CTC, _ID + "counter now 0x{0:x4} ({1})", _counter, _counter);
 
                     if (_mode == 3)
                     {

@@ -339,8 +339,8 @@ The following hardware has been implemented in the emulator:
     - Simulation replaced by a real Z80 emulator running actual PERQ ROM code;
     - Runs asynchronously on its own thread to improve performance;
     - Allows different ROMs to be loaded to support CIO and EIO boards;
-    - New register-level interface written to support Z80 DMA, CTC, SIO, FDC
-      and GPIB controller chips;
+    - New register-level interface written to support Z80 DMA, CTC, SIO, PIT,
+      FDC and GPIB controller chips;
     - Z80 Debugger support includes single stepping and source code display
       (for the current v8.7 ROMs; v100.017 source disassembly for EIO is now
       complete, CIO in progress).
@@ -520,7 +520,7 @@ v0.7 - TBD
     serial port, RTC chip, support for two hard disks
   - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
 
-v0.6.2 - Experiments branch
+v0.6.4 - Experiments branch
   - Basic MFM support for PERQ-2/Tx, multiple 5.25" hard disks
   - Improved hard disk seek timing
   - Update to PERQmedia library to allow more robust handling of partial
@@ -659,7 +659,7 @@ v0.1 - First public release.
 
 Update history:
 
-11/2/2024 - skeezicsb - v0.6.2 (experiments)
+11/18/2024 - skeezicsb - v0.6.4 (experiments)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0

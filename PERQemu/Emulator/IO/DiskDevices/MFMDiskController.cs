@@ -751,7 +751,7 @@ namespace PERQemu.IO.DiskDevices
                 }
 
                 _selected = 0;
-                _fakeIndex = false;
+                _latchedIndex = false;
 
                 Log.Debug(Category.HardDisk, "MFM DIB reset");
             }
@@ -912,8 +912,9 @@ namespace PERQemu.IO.DiskDevices
             /// </remarks>
             public void IndexPulse(ulong last)
             {
-                _fakeIndex = !_fakeIndex;
-                Log.Detail(Category.HardDisk, "EIO fake Index pulse {0} last {1}ns", _fakeIndex, last);
+                _latchedIndex = !_latchedIndex;
+                Log.Detail(Category.HardDisk, "EIO latched Index pulse {0} last {1}ns",
+                                              _latchedIndex, last);
             }
 
             /// <summary>
@@ -1029,7 +1030,7 @@ namespace PERQemu.IO.DiskDevices
 
                 _status.UnitReady = SelectedDrive?.Ready ?? false;
                 _status.DriveFault = SelectedDrive?.Fault ?? true;
-                _status.Index = SelectedDrive != null ? _fakeIndex : false;
+                _status.Index = SelectedDrive != null ? _latchedIndex : false;
 
                 _status.OnCylinder = _status.UnitReady && (_seekState == SeekState.Idle);
                 _status.Track0 = (_cylinder == 0);
@@ -1094,7 +1095,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 Console.WriteLine("MFM DIB status:");
                 Console.WriteLine($"  {_status}");
-                Console.WriteLine($"  Unit: {_selected}  Cyl: {_cylinder}  Head: {_head}  Idx: {_fakeIndex}  RWC: {_rwc}");
+                Console.WriteLine($"  Unit: {_selected}  Cyl: {_cylinder}  Head: {_head}  Idx: {_latchedIndex}  RWC: {_rwc}");
                 Console.WriteLine($"  Seek dir: {_seekDir}  Seek count: {_seekCount}  State: {_seekState}");
                 Console.WriteLine();
 
@@ -1134,7 +1135,7 @@ namespace PERQemu.IO.DiskDevices
             int _rwc;
             byte _head;
             ushort _cylinder;
-            bool _fakeIndex;
+            bool _latchedIndex;
 
             int _seekDir;
             int _seekCount;

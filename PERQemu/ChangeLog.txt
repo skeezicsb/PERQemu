@@ -8,6 +8,39 @@ avoid wasting precious time scrolling to the end. :-)
 
 November, 2024:
 
+    4. Added support for the floppy ReadID command.  POS G and Accent support
+    this but I can't find any code that uses it; it's possible that some obscure
+    utility for duplicating floppies might try to read the interleave pattern
+    by issuing a series of ReadID commands and noting the sector address marks
+    as they go by.  For now, PERQemu/PERQmedia just flattens out the interleave
+    on all disk types, but that could be an interesting enhancement to add in a
+    future release.  (Disk accesses are probably still a wee bit too fast in
+    emulation.)
+
+    Also, Micropolis 8" disk formatting now seems to work.  Still some general
+    EIO hard disk tweaks and testing to do before I'm satisfied it's ready for
+    a release build, but with some new pre-built images (8" and 5.25") and User
+    Guide updates I hope to push out a new release before the end of the year.
+    Bumped version to v0.6.4 and pushed for platform testing.
+
+    3. Implemented the i8254 (mode 3) for EIO baud rate generation.  The PERQ
+    doesn't use most of the features of this chip so I didn't go crazy -- just
+    a shell to capture and pass along baud rate updates.  Pushed for platform
+    testing.
+
+    2. Al Kossow is graciously hosting the massive trove of PERQ floppy images
+    that he, Josh Dersch and others have archived over the years.  These are
+    the images as scanned in IMD format, with their original names, but with
+    most duplicates and incomplete/defective images removed.  All of the old DMK
+    format images from Bitsavers were converted to IMD to make them more readily
+    usable with a GoTek floppy emulator on the real PERQ hardware.  Nearly every
+    image has at least a text label to help identify the contents.  See the PERQ
+    section at bitsavers.org.  NOTE:  Over time I'll be curating complete media
+    sets for each OS, major applications, demos, fonts and games, documentation
+    and interesting experimental stuff and organizing it in PRQM format on the
+    PERQmedia Github repository.  These will be verified and tested, with some
+    extra documentation about their contents with installation notes, etc.
+
     1. ACK!  Time sure flies when you're waiting for civilization to collapse.
     In the meantime, updated the MFM disk controller to get low-level format
     operations to work, even though it's not strictly necessary to ever do that
@@ -422,4 +455,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Sat Nov  2 21:17:42 PDT 2024
+Last update: skeezics    Mon Nov 18 15:34:36 PST 2024
