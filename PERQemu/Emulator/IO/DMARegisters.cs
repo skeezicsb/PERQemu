@@ -208,8 +208,8 @@ namespace PERQemu.IO
                 Name = chan;
 
                 // Should be 20 bits for IOB/CIO, 20 or 24 bits for EIO!
-                HeaderAddr = new ExtendedRegister(CPU.CPUBits - 16, 16);
-                DataAddr = new ExtendedRegister(CPU.CPUBits - 16, 16);
+                HeaderAddr = new ExtendedRegister(CPUBoard.CPUBits - 16, 16);
+                DataAddr = new ExtendedRegister(CPUBoard.CPUBits - 16, 16);
 
                 // For EIO, bits <7:4> of the high header address are the complement
                 // of the (quad) word count.  Provided for convenience :-)

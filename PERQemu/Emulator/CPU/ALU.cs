@@ -57,7 +57,7 @@ namespace PERQemu.Processor
             public override string ToString()
             {
                 return string.Format("C{0}={1} Cry={2} Ovf={3} Leq={4} Lss={5} Geq={6} Gtr={7} Neq={8} Eql={9}",
-                                    (_bits - 1), CarryH, Cry, Ovf, Leq, Lss, Geq, Gtr, Neq, Eql);
+                                    (CPUBoard.CPUBits - 1), CarryH, Cry, Ovf, Leq, Lss, Geq, Gtr, Neq, Eql);
             }
         }
 
@@ -79,6 +79,9 @@ namespace PERQemu.Processor
 
             public ALU()
             {
+                _bits = CPUBoard.CPUBits;
+                _mask = CPUBoard.CPUMask;
+
                 _r = new ExtendedRegister((_bits - 16), 16);
                 _oldR = new ExtendedRegister((_bits - 16), 16);
                 _flags = new ALUFlags();
@@ -407,6 +410,9 @@ namespace PERQemu.Processor
             ExtendedRegister _oldR;
             ALUFlags _flags;
             ALUFlags _oldFlags;
+
+            int _bits;
+            int _mask;
 
             static ALUFlags[] _palFlags;
         }

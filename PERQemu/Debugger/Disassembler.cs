@@ -440,7 +440,7 @@ namespace PERQemu.Debugger
                     break;
 
                 case Condition.CarryH:  // C19 or C23
-                    jump = (CPU.CPUBits == 20) ? "If C19, {0}" : "If C23, {0}";
+                    jump = (CPUBoard.CPUBits == 20) ? "If C19, {0}" : "If C23, {0}";
                     break;
 
                 case Condition.BPC3:    // Opfile empty
@@ -594,7 +594,7 @@ namespace PERQemu.Debugger
         static string CalcAddress(CPU.Instruction uOp)
         {
             // Always clip, to remove any ambiguity?
-            var addr = uOp.NextAddress & CPU.WCSMask;
+            var addr = uOp.NextAddress & CPUBoard.WCSMask;
 
             if (addr != uOp.NextAddress)
                 throw new UnimplementedInstructionException($"addr={addr:x4} != uop={uOp.NextAddress:x4}");
@@ -606,7 +606,7 @@ namespace PERQemu.Debugger
                     return $"{addr:x4}";
 
                 case 1:     // Short (4K) or Leap / Shift as addr source (16K)
-                    return (!CPU.Is4K && uOp.SF == 6) ? "Shift" : $"{addr:x4}";
+                    return (!CPUBoard.Is4K && uOp.SF == 6) ? "Shift" : $"{addr:x4}";
 
                 default:
                     // throw new UnimplementedInstructionException("Error: F value does not specify a jump");

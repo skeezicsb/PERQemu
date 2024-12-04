@@ -24,7 +24,6 @@ namespace PERQemu.Processor
 {
     public partial class CPU
     {
-
         public enum ControlStoreWord
         {
             Low = 0,
@@ -41,8 +40,9 @@ namespace PERQemu.Processor
             public ControlStore()
             {
                 // For now, the only difference is size: 4K or 16K
-                _microcode = new ulong[_wcsSize];
-                _microcodeCache = new Instruction[_wcsSize];
+                _microcode = new ulong[CPUBoard.WCSSize];
+                _microcodeCache = new Instruction[CPUBoard.WCSSize];
+                _wcsMask = (ushort)CPUBoard.WCSMask;
 
                 // This is currently fixed; PERQ-1 and PERQ-2 use 512 x 48 bits
                 // of ROM, although the ROM overlays the low 2K of address space
@@ -50,13 +50,13 @@ namespace PERQemu.Processor
                 _rom = new ulong[_romSize];
 
                 Log.Debug(Category.Microstore, "Allocated {0}K RAM, {1:n}K ROM",
-                                               _wcsSize / 1024, _romSize / 1024f);
+                                               CPUBoard.WCSSize / 1024, _romSize / 1024f);
             }
 
             public void Reset()
             {
                 // Clear the RAMs and the cache
-                for (int i = 0; i < _wcsSize; i++)
+                for (int i = 0; i < _microcode.Length; i++)
                 {
                     _microcode[i] = 0;
                     _microcodeCache[i] = null;
@@ -111,7 +111,7 @@ namespace PERQemu.Processor
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public Instruction GetInstruction(ushort addr)
             {
-                addr &= (ushort)WCSMask;
+                addr &= _wcsMask;
 
                 // Return the precomputed microcode, unless it has yet to be cached
                 if (_microcodeCache[addr] == null)
@@ -154,7 +154,7 @@ namespace PERQemu.Processor
             /// </summary>
             public void WriteControlStore(ControlStoreWord word, ushort addr, ushort data)
             {
-                addr &= (ushort)WCSMask;
+                addr &= _wcsMask;
 
                 ulong cs = _microcode[addr];
 
@@ -307,6 +307,8 @@ namespace PERQemu.Processor
                 return word;
             }
 
+
+            ushort _wcsMask;
 
             // Writable control store, 48-bit words
             ulong[] _microcode;

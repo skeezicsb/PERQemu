@@ -147,15 +147,8 @@ namespace PERQemu.Processor
         /// </summary>
         public void WidRasterOp(int value)
         {
-            if (CPU.Is4K)
-            {
-                _muldivInst = 0;
-            }
-            else
-            {
-                _muldivInst = (MulDivCommand)((value & 0xc0) >> 6);
-            }
-            _widthExtraWords = (value & 0x30) >> 4;
+            _muldivInst = (MulDivCommand)((value >> 6) & 0x03);
+            _widthExtraWords = ((value >> 4) & 0x03);
             _widthExtraBits = (value & 0xf);
 
             // Loading the width register clears the FIFOs

@@ -38,11 +38,11 @@ namespace PERQemu.Processor
                 _cpu = parent;
 
                 // Gotta keep 'em separated in case low bits overflow?
-                _s = new ExtendedRegister((_wcsBits - 12), 12);
-                _pc = new ExtendedRegister((_wcsBits - 12), 12);
+                _s = new ExtendedRegister((CPUBoard.WCSBits - 12), 12);
+                _pc = new ExtendedRegister((CPUBoard.WCSBits - 12), 12);
 
                 // Victim is a latch; treat as a single 12-14 bit value
-                _victim = new ExtendedRegister(0, _wcsBits);
+                _victim = new ExtendedRegister(0, CPUBoard.WCSBits);
 
                 _callStack = new CallStack();
             }

@@ -32,6 +32,7 @@ namespace PERQemu.Processor
             public ExpressionStack()
             {
                 _stack = new int[16];
+                _mask = CPUBoard.CPUMask;
             }
 
             /// <summary>
@@ -65,7 +66,7 @@ namespace PERQemu.Processor
                 get { return _stack[_stackPointer]; }
                 set
                 {
-                    _stack[_stackPointer] = value & CPUMask;
+                    _stack[_stackPointer] = value & _mask;
                     Log.Debug(Category.EStack, "TOS set to {0:x6}", value);
                 }
             }
@@ -97,7 +98,7 @@ namespace PERQemu.Processor
                     _stackPointer = 0;
                 }
 
-                _stack[_stackPointer] = value & CPUMask;    // TOS = value;
+                _stack[_stackPointer] = value & _mask;    // TOS = value;
 
                 Log.Debug(Category.EStack, "Pushed {0:x6}, pointer now {1}",
                                           _stack[_stackPointer], _stackPointer);
@@ -136,6 +137,7 @@ namespace PERQemu.Processor
 
             int[] _stack;
             int _stackPointer;
+            int _mask;
         }
     }
 }

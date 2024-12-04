@@ -6,6 +6,16 @@ notes moved to ChangeLog-Old.txt.  New entries here will be added at the top, to
 avoid wasting precious time scrolling to the end. :-)
 
 
+December, 2024:
+
+    1. A bit of refactoring for the CPUBoard/CPU to make it a tiny bit less
+    weird.  Working on updates to get a next release together, hopefully before
+    the end of CY2024.   Also, oh by the way, nearly got a successful floppy
+    boot running the 24-bit CPU and a 20-bit installation of Accent S6 actually
+    sort of ran (in 20 bit mode :-) so we might actually get to a 1.0 release
+    with "PERQ 4" support way sooner than anticipated!
+
+
 November, 2024:
 
     4. Added support for the floppy ReadID command.  POS G and Accent support
@@ -455,4 +465,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Mon Nov 18 15:34:36 PST 2024
+Last update: skeezics    Tue Dec  3 22:40:49 PST 2024

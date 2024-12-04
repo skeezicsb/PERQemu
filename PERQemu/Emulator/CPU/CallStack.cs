@@ -40,7 +40,7 @@ namespace PERQemu.Processor
                 _loStack = new ushort[StackSize];
                 _hiStack = new ushort[StackSize];
 
-                _wcsHiMask = (_wcsMask - 0xfff);    // just the high bits
+                _wcsHiMask = (CPUBoard.WCSMask - 0xfff);    // just the high bits
             }
 
             public void Reset()
@@ -111,7 +111,7 @@ namespace PERQemu.Processor
                 _loStack[_loStackPtr] = (ushort)(address & 0xfff);
                 _hiStack[_hiStackPtr] = (ushort)(address & _wcsHiMask);
 
-                Log.Debug(Category.Sequencer, "Pushed {0:x4} onto call stack", address & _wcsMask);
+                Log.Debug(Category.Sequencer, "Pushed {0:x4} onto call stack", address & CPUBoard.WCSMask);
             }
 
             /// <summary>
@@ -144,7 +144,7 @@ namespace PERQemu.Processor
             /// </summary>
             public void DumpContents()
             {
-                if (Is4K)
+                if (CPUBoard.Is4K)
                 {
                     // Just the low 12 bits
                     Console.WriteLine("CStack Pointer={0}.  Contents:", _loStackPtr);
