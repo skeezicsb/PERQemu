@@ -21,8 +21,6 @@ using System;
 using System.Threading;
 using System.Runtime.CompilerServices;
 
-using PERQemu.Config;
-
 namespace PERQemu.Processor
 {
     /// <summary>
@@ -59,18 +57,21 @@ namespace PERQemu.Processor
 
         public static string Name => _name;
         public static string Description => _desc;
+
+        public static ulong MicroCycleTime => _cycleTime;
+
         public static int CPUBits => _bits;
         public static int CPUMask => _mask;
         public static int WCSBits => _wcsBits;
         public static int WCSSize => _wcsSize;
         public static int WCSMask => _wcsMask;
-        public static ulong MicroCycleTime => _cycleTime;
+
         public static bool Is4K => (_wcsSize == 4096);
+        public bool SupportsAsync => true;
 
         public CPU Processor => _processor;
         public Scheduler Scheduler => _scheduler;
 
-        public bool SupportsAsync => true;
 
         public void Reset()
         {
@@ -262,6 +263,8 @@ namespace PERQemu.Processor
         protected static string _name;
         protected static string _desc;
 
+        protected static ulong _cycleTime;
+
         protected static int _bits;
         protected static int _mask;
 
@@ -269,12 +272,12 @@ namespace PERQemu.Processor
         protected static int _wcsSize;
         protected static int _wcsMask;
 
-        protected static ulong _cycleTime;
-
-        CPU _processor;
-        Scheduler _scheduler;
+        // Parent
         PERQSystem _system;
 
+        // Common to all board types
+        CPU _processor;
+        Scheduler _scheduler;
         SystemTimer _heartbeat;
 
         Thread _asyncThread;

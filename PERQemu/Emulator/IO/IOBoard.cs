@@ -32,8 +32,8 @@ namespace PERQemu.IO
     /// <remarks>
     /// Each PERQ requires one IO board which contains (at minimum) a Z80 sub-
     /// system and hard disk controller.  The EIO board introduced with the PERQ-2
-    /// series adds an on-board Ethernet controller and possibly an i8087 floating
-    /// point chip (which never made it into production and is not emulated).
+    /// series adds an on-board Ethernet controller.  We also provide a set of DMA
+    /// registers, which are part of the PERQ's distributed DMA state machine.
     /// </remarks>
     public abstract class IOBoard : IIODevice
     {
@@ -63,8 +63,8 @@ namespace PERQemu.IO
         public IStorageController DiskController => _hardDiskController;
         public DMARegisterFile DMARegisters => _dmaRegisters;
 
-        public bool SupportsAsync => _z80System.SupportsAsync;
         public bool IsEIO => _isEIO;
+        public bool SupportsAsync => _z80System.SupportsAsync;
 
         public bool HandlesPort(byte port)
         {
@@ -194,6 +194,7 @@ namespace PERQemu.IO
         protected static bool _isEIO;
 
         protected static ulong _z80CycleTime;
+
         protected static int _z80RamSize;
         protected static int _z80RamAddr;
         protected static int _z80RomSize;
@@ -205,8 +206,6 @@ namespace PERQemu.IO
         // Devices required by all I/O boards
         protected Z80System _z80System;
         protected IStorageController _hardDiskController;
-
-        // DMA register file
         protected DMARegisterFile _dmaRegisters;
 
         // I/O port map for this board

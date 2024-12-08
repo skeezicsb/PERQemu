@@ -64,8 +64,8 @@ significant ways and adds a number of additional IO options:
     - A 24-bit version of the 16K CPU extends the memory capacity to 8MB in
       the rare PERQ-2/T4 model
 
-PERQemu will (soon) emulate all of the standard PERQ-1 and PERQ-2 configurations
-and peripherals.
+PERQemu will emulate all of the standard PERQ-1 and PERQ-2 configurations and
+peripherals.
 
 
 1.2 Current Status
@@ -91,7 +91,9 @@ Accent S6 and PNX 2 and 3 to boot.  There are still a number of rough edges and
 missing pieces, but this interim development snapshot is reliable enough to let
 it into the wild for testing from skeezicsb/main.
 
-Full PERQ-2 and 2/Tx support is underway; see the (tentative) roadmap below.
+PERQemu v0.6.5 delivers nearly complete PERQ-2 and 2/Tx support; at this point
+only the 24-bit PERQ-2/T4 is unfinished (but in testing).
+
 Please check back often for updates!
 
 
@@ -316,7 +318,7 @@ The following hardware has been implemented in the emulator:
     - The PERQ-2 8" Micropolis 1200-series controller and Disk Interface Board
       is now emulated for use with the PERQ-2/EIO configuration (one drive only);
     - One or two 5.25" MFM drives can be configured if the PERQ-2/Tx chassis is
-      selected (now in beta test on the experiments branch).
+      selected.
       
   Floppy disk:
     - Rewritten to work with the new Z80 and floppy disk controller;
@@ -343,7 +345,7 @@ The following hardware has been implemented in the emulator:
       FDC and GPIB controller chips;
     - Z80 Debugger support includes single stepping and source code display
       (for the current v8.7 ROMs; v100.017 source disassembly for EIO is now
-      complete, CIO in progress).
+      complete, CIO in progress).  Limited breakpoint support is available.
 
   Keyboard:
     - Now uses the SDL2 interface so no more horrible hacks required for MacOS;
@@ -520,15 +522,16 @@ v0.7 - TBD
     serial port, RTC chip, support for two hard disks
   - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
 
-v0.6.4 - Experiments branch
-  - Basic MFM support for PERQ-2/Tx, multiple 5.25" hard disks
+v0.6.5 - Main branch (v0.7 pre-release)
+  - MFM support for PERQ-2/Tx, multiple 5.25" hard disks
+  - Low-level formatting for 8" and 5.25" hard disks works
   - Improved hard disk seek timing
   - Update to PERQmedia library to allow more robust handling of partial
     or corrupted IMD-format floppy images
   - PERQ-2 backplane S/N PROM added
 
-v0.5.8 - Main branch (v0.7.0 pre-release)
-  - Micropolis 8" disk (high-level operation works!; low-level formatting
+v0.5.8 - Main branch (v0.7 pre-release)
+  - Micropolis 8" disk (high-level operation works! low-level formatting
     support is incomplete/untested)
   - EIO Z80 ROM source code formatted for use with the debugger
   - EIO Z80 peripherals added:  RTC chip, VT100-style keyboard, Am9519 IRQ
@@ -536,7 +539,7 @@ v0.5.8 - Main branch (v0.7.0 pre-release)
   - Kriz tablet and GPIB updated for EIO; PNX Vfy bug workaround devised
   - Ethernet drivers updated for EIO (no new functionality, yet)
 
-v0.5.5 - Main branch (v0.7.0 pre-release)
+v0.5.5 - Main branch (v0.7 pre-release)
   - Ethernet running (but requires root/admin access)
   - Patch for Turkish keyboard in CLI
   - Limited Micropolis 8" disk support
@@ -659,7 +662,7 @@ v0.1 - First public release.
 
 Update history:
 
-12/3/2024 - skeezicsb - v0.6.4 (experiments)
+12/8/2024 - skeezicsb - v0.6.5 (main)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0

@@ -8,6 +8,11 @@ avoid wasting precious time scrolling to the end. :-)
 
 December, 2024:
 
+    2. Updated the UserGuide.pdf to reflect changes/updates since v0.5.5.
+    Bumped the version to v0.6.5 to roll out a final pre-release to main; after
+    more extensive platform testing the v0.7.x release will include a set of
+    new bundled hard disk images for use with the PERQ-2 models!
+
     1. A bit of refactoring for the CPUBoard/CPU to make it a tiny bit less
     weird.  Working on updates to get a next release together, hopefully before
     the end of CY2024.   Also, oh by the way, nearly got a successful floppy
@@ -465,4 +470,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Tue Dec  3 22:40:49 PST 2024
+Last update: skeezics    Sun Dec  8 14:41:27 PST 2024
