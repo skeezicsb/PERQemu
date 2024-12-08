@@ -248,17 +248,17 @@ namespace PERQemu.IO.DiskDevices
         /// </remarks>
         void LoadCommandRegister(int data)
         {
-            var command = (Command)(data & 0x07);
+            _command = (Command)(data & 0x07);
             var nibCommand = (NibbleSelect)(data & 0x78);
 
             Log.Write(Category.HardDisk, "Micropolis command: 0x{0:x4} (SM {1}, Latch {2})",
-                                          data, command, nibCommand);
+                                          data, _command, nibCommand);
 
             // Check the nibble command
             NibbleOnThis(nibCommand);
 
             // Look at the command bits
-            switch (command)
+            switch (_command)
             {
                 case Command.Idle:
                     // Clear the busy status and the interrupt
@@ -294,7 +294,7 @@ namespace PERQemu.IO.DiskDevices
                     break;
 
                 default:
-                    Log.Error(Category.HardDisk, "Unhandled Micropolis command {0}", command);
+                    Log.Error(Category.HardDisk, "Unhandled Micropolis command {0}", _command);
                     break;
             }
         }

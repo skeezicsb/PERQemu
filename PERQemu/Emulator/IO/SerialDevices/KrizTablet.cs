@@ -41,8 +41,8 @@ namespace PERQemu.IO.SerialDevices
 
         public void Reset()
         {
-            // CIO and EIO use different sync characters!  Set this up
-            // once we know _system is fully initialized
+            // CIO and EIO use different sync characters (since one inverts and the
+            // other doesn't).  Set this once we know _system is fully initialized
             _sync = (byte)(_system.IOB.IsEIO ? 0x7e : 0x81);
             
             // Schedule the first data event, which runs once every 1/60th of
@@ -112,8 +112,8 @@ namespace PERQemu.IO.SerialDevices
             _rxDelegate(0);
 
             // Log the Tablet update
-            Log.Info(Category.Tablet, "Kriz sampled: x={0} y={1} button={2}",
-                      tabX, tabY, (tab3 >> 5));
+            Log.Debug(Category.Tablet, "Kriz sampled: x={0} y={1} button={2}",
+                                        tabX, tabY, (tab3 >> 5));
 
             // Wait 1/60th of a second and do it again
             _sendEvent = _scheduler.Schedule(_dataInterval, SendData);

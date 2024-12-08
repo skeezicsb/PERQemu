@@ -26,23 +26,11 @@ using PERQemu.Debugger;
 
 namespace PERQemu.Processor
 {
-
     /// <summary>
     /// Implements the PERQ's custom microengine.
     /// </summary>
     public partial class CPU
     {
-        static CPU()
-        {
-            // Our derived classes customize themselves in the static
-            // constructor, setting various word sizes, masks, etc.
-        }
-
-        public CPU()
-        {
-            // Empty, for testing
-        }
-
         public CPU(PERQSystem system)
         {
             _system = system;
@@ -94,7 +82,7 @@ namespace PERQemu.Processor
             _mq = 0;
             _mqEnabled = false;
 
-            Log.Info(Category.CPU, "{0} processor reset", _name);
+            Log.Info(Category.CPU, "{0} processor reset", CPUBoard.Name);
         }
 
 
@@ -251,26 +239,19 @@ namespace PERQemu.Processor
 
         #region Properties
 
-        public static string Name => _name;
-        public static string Description => _desc;
-        public static int CPUBits => _bits;
-        public static int CPUMask => _mask;
-        public static int WCSBits => _wcsBits;
-        public static int WCSSize => _wcsSize;
-        public static int WCSMask => _wcsMask;
-        public static ulong MicroCycleTime => _cycleTime;
-        public static bool Is4K => (_wcsSize == 4096);
-
-        public bool OpFileEmpty => (BPC > 7);
-        public bool IncrementBPC => _incrementBPC;
         public ulong Clocks => _clocks;
 
         public ControlStore WCS => _ustore;             // Debugging/temporary?
         public RasterOp RasterOp => _rasterOp;
 
+        public bool OpFileEmpty => (BPC > 7);
+        public bool IncrementBPC => _incrementBPC;
+        public ushort LastOpcode => _lastOpcode;
+
         #endregion
 
         #region Debugger properties
+
         /// <summary>
         /// Returns the current DDS value.  (Not really a register, but useful! :-)
         /// </summary>
@@ -325,11 +306,6 @@ namespace PERQemu.Processor
             get { return _usequencer.ExtendedOp; }
         }
 
-        public ushort LastOpcode
-        {
-            get { return _lastOpcode; }
-        }
-
         /// <summary>
         /// The microstate register (20-bit).
         /// </summary>
@@ -364,8 +340,14 @@ namespace PERQemu.Processor
         /// FYI: can't attach the DebugProperty to a virtual method, so we add
         /// those separately above.  Mild, as hackish workarounds go.
         /// </remarks>
-        public virtual int ReadMicrostateRegister(byte h)
+        public int ReadMicrostateRegister(byte h)
         {
+            // On PERQ24, uState1 is the upper 8 Bmux bits
+            if (CPUBoard.CPUBits == 24 && h == 1)
+            {
+                return ((~_lastBmux) >> 16) & 0xff;
+            }
+
             // On the 20-bit CPUs, there's only one microstate register:
             return BPC |
                     (_alu.Flags.Ovf ? 0x0010 : 0x0) |
@@ -561,7 +543,7 @@ namespace PERQemu.Processor
                     break;
 
                 case AField.MDX:
-                    amux = (_memory.MDI & (_bits == 24 ? 0x00ff : 0x000f)) << 16;
+                    amux = (_memory.MDI & (CPUBoard.CPUBits == 24 ? 0x00ff : 0x000f)) << 16;
 #if DEBUG
                     // Watched address?
                     if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MADR))
@@ -682,7 +664,7 @@ namespace PERQemu.Processor
                         case 0x9:   // WidRasterOp := (R)
                             _rasterOp.WidRasterOp(_alu.R.Lo);
 
-                            if (!Is4K)
+                            if (!CPUBoard.Is4K)
                             {
                                 //
                                 // The hardware multiply/divide support is enabled or disabled by
@@ -787,7 +769,7 @@ namespace PERQemu.Processor
 
                     if (uOp.SF <= 7)
                     {
-                        if (Is4K)
+                        if (CPUBoard.Is4K)
                         {
                             // The 4K CPU doesn't have hardware to execute F=1, SF=0-7
                             // but some microcode actually uses this to determine what
@@ -1043,20 +1025,6 @@ namespace PERQemu.Processor
 
         #endregion
 
-        //
-        // Configurables set by derived classes
-        //
-        protected static string _name;
-        protected static string _desc;
-
-        protected static int _bits;
-        protected static int _mask;
-
-        protected static int _wcsBits;
-        protected static int _wcsSize;
-        protected static int _wcsMask;
-
-        protected static ulong _cycleTime;
 
         // Major components, common to all CPU types
         RasterOp _rasterOp;
@@ -1081,11 +1049,11 @@ namespace PERQemu.Processor
         //
 
         // Byte Program Counter
-        protected int _bpc;
-        protected bool _incrementBPC;
+        int _bpc;
+        bool _incrementBPC;
 
         // Note that the Op file is only 8 bytes, but BPC is a 4-bit counter...
-        protected byte[] _opFile = new byte[16];
+        byte[] _opFile = new byte[16];
 
         // Flag if LoadOp is requested (hardware assisted refill of the 8x8 OpFile)
         bool _refillOp;
@@ -1103,15 +1071,15 @@ namespace PERQemu.Processor
         //
         // Housekeeping
         //
-        protected ulong _clocks;
-        protected bool _break;
+        ulong _clocks;
+        bool _break;
 
         // Diagnostic counter
         int _dds;
 
         // Copy of Bmux bits in microstate register
         // for mysterious, if not nefarious purposes
-        protected int _lastBmux;
+        int _lastBmux;
 
         // Trace/debugging support
         ushort _lastPC;

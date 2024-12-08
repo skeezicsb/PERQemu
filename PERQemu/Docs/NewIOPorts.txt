@@ -108,10 +108,11 @@ oct     hex     Name            Function                            Source
 334     DC/5C   E10EWrUSCR      Load usec clock control             ioe10
 335     DD/5D   E10EWrUSHgh     Load usec clock high byte           ioe10
 336     DE/5E   E10EWrUSLow     Load usec clock low byte            ioe10
-346     E6/66   *               "Put ones on the IOB"               diagnostics
+346     E6/66   *               "Put ones on the IOB"               diagnostics, m1140
 
 * Unnamed diagnostic function?  Several files use iob(346) to "put ones on the iob" for testing;
-others seem to allow poking directly at the Ethernet state machine and/or scratchpad RAM?
+the 5.25" disk formatter also uses this.  Logically it belongs in the MEM board decode block.
+Others seem to allow poking directly at the Ethernet state machine and/or scratchpad RAM?
 
 ------
 

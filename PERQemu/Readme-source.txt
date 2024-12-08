@@ -49,10 +49,19 @@ could use yet another rewrite...]
 1.2  Version History
 --------------------
 
-The next major release will incorporate expanded functionality as support for
-PERQ-2 configurations starts to come together.  The first steps have been taken
-to bring up the EIO board and new Z80 subsystem with larger/faster hard drives.
-This is currently in development on the "experiments" branch as PERQemu v0.5.6.
+The next major release will incorporate all of the changes since v0.5.0 to add
+PERQ-2 configurations, along with an expanded library of pre-built, bundled
+hard disk images.  This is currently in development on the "experiments" branch
+and is slated to be released to main as PERQemu v0.7.5, hopefully by the end of
+2024 or early in 2025.
+
+PERQemu v0.6.5 incorporates all of the changes since v0.5.5 to bring up the EIO
+board and new Z80 subsystem.  All of the PERQ-2/EIO 20-bit configurations are
+now configurable, with 8" Micropolis or 5.25" MFM hard disks.  This pre-release
+does not yet include additional bundled disk images.
+
+PERQemu v0.5.8 is an interim release to allow access to early EIO/Micropolis
+hard disk support.
 
 PERQemu v0.5.5 is a feature release, rolling up fixes and features added since
 v0.5.0 (Canon, Ethernet).  This is a pre-release to the main branch only.
@@ -329,8 +338,10 @@ IOB and the new EIO:
       by CIOZ80 and use the Z80's WAIT line to assist with flow control;
 
     - The PERQ-2/2Tx (EIO) uses actual 16-byte FIFOs and the programming model
-      changed; thus, new implementations are being develeoped (PERQtoZ80Fifo.cs,
-      Z80ToPERQFifo.cs) for the EIOZ80.
+      changed; thus, the EIOZ80 uses PERQtoZ80Fifo.cs and Z80ToPERQFifo.cs and
+      hooks these into the DMA controllers.  In the EIO, PERQ <=> Z80 transfers
+      through the FIFOs use DMA -> FIFO -> DMA to move the data, and it's about
+      as janky as you'd expect.
 
 Numerous interfaces are defined (ISIODevice.cs, IZ80Device.cs, ICTCDevice.cs
 and IDMADevice.cs) to glue parts of the Z80 I/O system together.  These are
@@ -378,14 +389,23 @@ Support for the EIO requires several new controller chips:
       battery-backed clock lets the PERQ set the time automatically at bootup;
 
     - The "Am9519" class is the new interrupt controller for EIO, in a hybrid
-      arrangement with the two SIO chips;                    [Testing/debugging]
+      arrangement with the two SIO chips;
       
     - New Intel i8237 (DMAC) and i8254 (PIT) chips replace the Zilog DMA and
-      CTC chips used on the original IOB;                          [In progress]
+      CTC chips used on the original IOB;
 
     - The "PERQDMA" class is a simulation of the EIO hardware that provides two
       _more_ FIFOs between the PERQ DMA engine and the Z80 DMAC.  Seriously,
-      there are over 20 74S225s on this board!?                    [In progress]
+      there are over 20 74S225s on this board!?
+
+Currently all PERQ DMA operations use scheduling tricks to simulate the delays
+(very approximately) when moving data to and from the IO board/devices, and the
+underlying distributed DMA state machine is not accurately modeled.  Z80 DMA is
+also a close approximation, but neither processor actually stalls due to memory
+contention/stolen bus cycles from active DMA transfers.  This may lead to a
+negligible inaccuracy in emulation speed, but the actual DMA transfer rates are
+reasonably close to the real hardware.  A side-by-side comparison of real-time
+performance between a real PERQ and an emulated one would be illustrative!
 
 
 2.3.2  Serial Devices
@@ -406,8 +426,8 @@ these into the Emulator/IO/SerialDevices folder.
     - The "KrizTablet" class emulates the Three Rivers custom "Kriz tablets",
       which use the SIO chip to transmit mouse coordinates;
 
-    - "SerialKeyboard" will contain the driver for the PERQ-2's "VT100-style"
-      keyboard, attached to the EIO board;                             [Testing]
+    - "SerialKeyboard" contains the driver for the PERQ-2's "VT100-style"
+      keyboard, attached to the EIO board;
 
     - The "Speech" class will emulate the PERQ's CVSD chip to provide "telephone
       quality" (8Khz, mono) audio output.  This class will provide the glue to
@@ -460,10 +480,10 @@ Emulator/IO/DiskDevices:
       (the "Disk14Inch" class of drives) common to all PERQ-1 configurations.
       It works with the Z80's HardDiskSeek device to manage stepping the heads;
 
-    - The "MicropolisDiskController" class is in development.  This supports
-      Micropolis 1200-series hard disks (Disk8Inch class) that were originally
-      introduced with the PERQ-2 and PERQ-2/T1.  This version works with the
-      EIO board only;
+    - The "MicropolisDiskController" class supports Micropolis 1200-series hard
+      disks (Disk8Inch class) that were originally introduced with the PERQ-2
+      and PERQ-2/T1.  This version works with the EIO board only; due to PERQ
+      software limitations, only one drive is supported;
 
     - The "CIOMicropolisDiskController" class may be revisited after the EIO
       version is complete; this rare device may/will allow a PERQ-1 CIO board
@@ -471,8 +491,12 @@ Emulator/IO/DiskDevices:
       own class.  Limited software support means this is low on the priority
       list, as source code and schematics are unavailable;
 
-    - The "MFMDiskController" and "SMDController" classes will someday provide
-      support for Disk5Inch and DiskSMD devices (on PERQ-2/T2 and T4 models).
+    - The "MFMDiskController" class emulates the MFM Disk Interface Board and
+      updates to the EIO hard disk state machine to connect two 5.25" ST-506/
+      MFM drives to PERQ-2/T2 and T4 models;
+
+    - An "SMDController" class will someday provide support for a wide range
+      of DiskSMD devices connected to the MLO board.
 
 Several tape drives will also be supported, but PERQemu does not yet emulate
 the controllers for these.  Tape media will be accessed through the PERQmedia
@@ -509,8 +533,9 @@ files are loaded from the PROM directory at startup:
     - CPU:  The original PERQ-1/1A "boot.rom" contains the microcode to boot
       the 4K or 16K CPUs in a PERQ-1 with an IOB and a Shugart hard disk.
       When a CIO board is installed (IOB with "new Z80" firmware) the file
-      "cioboot.rom" is loaded instead.  Additional boot ROM images will be
-      included when the PERQ-2/EIO support is completed.
+      "cioboot.rom" is loaded instead.  Two versions of the boot ROM are used
+      for EIO, depending on the disk type:  "eioboot.rom" for 8" Micropolis
+      in the PERQ2 chassis, or "eio5boot.rom" for 5.25" MFM drives (PERQ2Tx).
 
       NOTE: these are the actual ROM dumps, but with their address lines
       "unscrambled".  See PROM/Unscrambler.cs if you're not squeamish.
@@ -524,8 +549,15 @@ files are loaded from the PROM directory at startup:
     - Z80:  oioz80.bin and oioz80.lst are new files used by the "real" Z80.
       The .bin file is loaded into the Z80's memory map, while the .lst file
       is a source code listing enhanced to allow the Z80 debugger to map ROM
-      addresses to the actual source.  Slick!  The CIO versions are included
-      now as well.
+      addresses to the actual source.  Slick!  The CIO files are cioz80.bin
+      and cioz80.lst (incomplete) while EIO (fully annotated) is in eioz80.bin.
+
+      NOTE: once booted, Z80 code is loaded by the PERQ into the Z80's RAM and
+      the ROM code jumps to it -- effectively running from RAM until the next
+      reboot reinitializes from ROM.  At this time there is no easy or obvious
+      way to dynamically disassemble the Z80 RAM contents to map source lines
+      in the debugger.  This would be an interesting project to consider if or
+      when the Z80 emulation is rewritten from scratch.
 
 
 2.3.6  Display and UI
@@ -546,17 +578,15 @@ class (UI/SDL/InputDevices.cs).  Input events are filtered and funneled to the
 appropriate emulated I/O device.
 
 Mappings from SDL2 to either the PERQ-1 or PERQ-2 keyboard codes are provided
-by the KeyboardMap class, in UI/SDL/KeyboardMap.cs.  Testing for the PERQ-2's
-"VT100-style" keyboard is incomplete, pending the development of the EIO and
-Z80 enhancements for the PERQ-2 line.  There are several fixed mappings for
-some special PERQ-specific keys that must be made configurable somehow, or a
-graphical keyboard provided so that a variety of host keyboards can be better
-accommodated -- including mappings for non-US/English locales.
+by the KeyboardMap class, in UI/SDL/KeyboardMap.cs.  There are several fixed
+mappings for some special PERQ-specific keys that must be made configurable
+somehow, or a graphical keyboard provided so that a variety of host keyboards
+can be better accommodated -- including mappings for non-US/English locales.
 
 Caps-lock, num-lock and scroll-lock tracking hasn't been tested under SDL2;
 the use of the Alt key (Option on Mac) to simulate the "mouse off tablet"
 condition (for relative-mode mouse tracking) has been restored but has not
-been exhaustively tested.
+been exhaustively tested [but seems to work just fine].
 
 
 2.3.7  Scheduler
@@ -619,8 +649,8 @@ There's a TON more information about this in Docs/Network.txt.
 2.3.9  Printers
 ---------------
 
-The Canon laser printer interface lives here now.  There are extensive notes and
-ramblings about the details of its implementation in Docs/LaserCanon.txt.
+The Canon laser printer interface lives here now.  There are extensive notes
+and ramblings about the details of its implementation in Docs/LaserCanon.txt.
 
 Getting this working wasn't a high priority, but I had an itch to scratch.  The
 output drivers should allow simulations of a bunch of other classic dot-matrix
@@ -754,6 +784,7 @@ PERQ info and lore.  More to come!
 
 Update history:
 
+v2.4 - 12/8/2024 - skeezics - updated for the v0.6.5 interim release
 v2.3 - 3/25/2024 - skeezics
 v2.2 - 2/18/2024 - skeezics - updated for the v0.5.5 interim release
 v2.1 - 3/8/2023 - skeezics

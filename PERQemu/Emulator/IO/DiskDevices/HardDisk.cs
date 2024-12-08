@@ -23,6 +23,9 @@ using PERQmedia;
 
 namespace PERQemu.IO.DiskDevices
 {
+    // Optional hook fired on index pulses from the drive
+    public delegate void IndexPulseCallback(ulong last);
+
     /// <summary>
     /// Emulates the mechanical operation of a hard disk drive, handling the
     /// timing for seek operations, index pulses, and other basic operations.
@@ -44,10 +47,11 @@ namespace PERQemu.IO.DiskDevices
             _index = false;
             _seekComplete = false;
 
-            _seekCallback = null;
-            _seekEvent = null;
-            _indexEvent = null;
             _startupEvent = null;
+            _seekEvent = null;
+            _seekCallback = null;
+            _indexEvent = null;
+            _indexCallback = null;
 
             _cyl = 0;
             _lastStep = 0;
@@ -62,9 +66,6 @@ namespace PERQemu.IO.DiskDevices
         public virtual bool Index => _index;
         public virtual bool Track0 => (_cyl == 0);
         public virtual bool SeekComplete => _seekComplete;
-
-        // Timing/rotational delay
-        public virtual ulong LastIndexPulse => _lastIndexPulse;
 
         // Debugging/sanity check
         public virtual ushort CurCylinder => _cyl;
@@ -106,7 +107,6 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         public virtual Sector GetSector(ushort sector)
         {
-            // We'll ignore rotational delays... for now.
             return Read(_cyl, _head, sector);
         }
 
@@ -135,6 +135,14 @@ namespace PERQemu.IO.DiskDevices
         }
 
         /// <summary>
+        /// Sets the index pulse callback.  Used by the MFM formatter.
+        /// </summary>
+        public virtual void SetIndexPulseCallback(IndexPulseCallback cb)
+        {
+            _indexCallback = cb;
+        }
+
+        /// <summary>
         /// Set the current head from the Head Select lines.
         /// </summary>
         public virtual void HeadSelect(byte head)
@@ -146,13 +154,6 @@ namespace PERQemu.IO.DiskDevices
         /// Initiates or continues a Seek by pulsing the Disk Step line.
         /// Direction is >0 for positive steps, or 0 for negative steps.
         /// </summary>
-        /// <remarks>
-        /// Note: we ignore the RateLimit.DiskSpeed option here for Shugart 14"
-        /// hard disks, because the timing of those steps is built into the Z80
-        /// firmware.  For additional drive types (as they are implemented) we
-        /// can optionally clip the seek timings to make the system run faster,
-        /// sacrificing emulation accuracy for speed.
-        /// </remarks>
         public virtual void SeekStep(int direction)
         {
             // Compute and check our new cylinder
@@ -165,48 +166,52 @@ namespace PERQemu.IO.DiskDevices
                 _cyl = Math.Min((ushort)(_cyl - 1), _cyl);      // Don't underflow yer ushorts!
             }
 
-            ulong start = _scheduler.CurrentTimeNsec;
-            var delay = (ulong)Specs.MinimumSeek;
+            var seekStart = _scheduler.CurrentTimeNsec;
+            var seekEnd = (ulong)Specs.MinimumSeek;
 
             // Schedule the time delay based on drive specifications
             if (_seekEvent == null)
             {
                 // Starting a new seek
-                _lastStep = start;
+                _lastStep = seekStart;
                 _stepCount = 1;
 
-                Log.Detail(Category.HardDisk, "Initial step to cyl {0}, seek {1}ms", _cyl, delay);
+                Log.Detail(Category.HardDisk, "Initial step to cyl {0}, seek {1}ms", _cyl, seekEnd);
 
-                _seekEvent = _scheduler.Schedule(delay * Conversion.MsecToNsec, SeekCompletion, start);
+                _seekEvent = _scheduler.Schedule(seekEnd * Conversion.MsecToNsec, SeekCompletion, seekStart);
             }
             else
             {
                 // Seek in progress, so buffer the step by extending the delay
                 _stepCount++;
 
+                // Get our start time from the event context...
+                seekStart = (ulong)_seekEvent.Context;
+
+                // Recompute our total expected seek time based on the number of
+                // step pulses received so far.  This is a rough linear approximation
+                // rather than a per-drive ramp function but is accurate enough :-)
+                var seekTime = (_stepCount * _rampStep) + Specs.MinimumSeek;
+
                 // How long since the last step?  Technically there are tight specs
                 // for the duration of and time between pulses but we can only assume
-                // that the microcode/controller will adhere to them...
+                // that the microcode/controller will adhere to them... (computing
+                // this is mostly to see how the microcode/DIB implementation behaves
+                // and can eventually be removed as unneeded overhead)
                 var interval = (_scheduler.CurrentTimeNsec - _lastStep) * Conversion.NsecToMsec;
                 _lastStep = _scheduler.CurrentTimeNsec;
 
-                // Get our start time from the event context...
-                start = (ulong)_seekEvent.Context;
+                // How long since the start of this seek (in ms)?
+                var elapsed = (_lastStep - seekStart) * Conversion.NsecToMsec;
 
-                // Extend our completion time based on the number of steps received
-                // minus the time elapsed so far.  This is quick and crude and should
-                // be a nice smooth ramp function but for now just clamped based on
-                // drive specs for full-stroke seek times (expressed in milliseconds
-                // or months-of-sundays, take your pick)
-                var tmp = Math.Min(_stepCount * Specs.MinimumSeek, Specs.MaximumSeek);
-                delay = ((ulong)tmp * Conversion.MsecToNsec) - (_lastStep - start);
+                seekEnd = (ulong)((seekTime - elapsed) * Conversion.MsecToNsec);
 
                 Log.Detail(Category.HardDisk,
-                          "Buffered step to cyl {0}, total seek now {1}ms (step interval={2:n}ms)",
-                          _cyl, delay * Conversion.NsecToMsec, interval);
+                           "Buffered step to cyl {0} (interval={1:n}ms), total seek now {2:n}ms ({3:n}ms elapsed, {4:n}ms remaining)",
+                          _cyl, interval, seekTime, elapsed, seekEnd * Conversion.NsecToMsec);
 
                 // Update the seek event with the new delay time
-                _seekEvent = _scheduler.ReSchedule(_seekEvent, delay);
+                _seekEvent = _scheduler.ReSchedule(_seekEvent, seekEnd);
             }
         }
 
@@ -214,7 +219,7 @@ namespace PERQemu.IO.DiskDevices
         /// Seek to the given cylinder.
         /// </summary>
         /// <remarks>
-        /// For 8" or 5.25" drives with embedded controllers, computes the timing
+        /// For 8" Micropolis drives with embedded controllers, computes the timing
         /// for a seek from the current head position to the requested cylinder.
         /// Assumes the controller checks bounds and that it tracks busy status,
         /// not initiating a new seek while one is in progress...
@@ -226,12 +231,12 @@ namespace PERQemu.IO.DiskDevices
             // that the microcode can potentially catch the state machine's idle
             // to busy transition (which some versions explicitly check for).
 
-            var delay = Specs.MinimumSeek;
+            double delay = Specs.MinimumSeek;
             _stepCount = Math.Abs(_cyl - cyl);
 
             if (Settings.Performance.HasFlag(RateLimit.DiskSpeed) && _stepCount > 0)
             {
-                delay = Math.Min(_stepCount * Specs.MinimumSeek, Specs.MaximumSeek);
+                delay += (_stepCount * _rampStep);
             }
 
             Log.Debug(Category.HardDisk, "Drive seek to cyl {0} from {1}, {2} steps in {3:n}ms",
@@ -295,6 +300,28 @@ namespace PERQemu.IO.DiskDevices
 
             _seekComplete = false;
             _stepCount = 0;
+        }
+
+        /// <summary>
+        /// Computes a rotational delay for the start of a sector from the last
+        /// index pulse.  Returns nanoseconds so you don't have to scale it for
+        /// scheduling.  Isn't terribly accurate as it doesn't account for sector
+        /// interleaving, but adds a little extra realism. :-)
+        /// </summary>
+        public ulong ComputeRotationalDelay(ulong now, int sector)
+        {
+            // t = time between pulses (in ns) = rpm / #sectors
+            var t = (long)Conversion.RPMtoNsec(Specs.RPM) / Geometry.Sectors;
+
+            // cur = what sector the heads are over now (time now - last pulse) / t
+            var cur = (long)(now - _lastIndexPulse) / t;
+
+            // dist = distance from current to desired sector (linear, no account for interleave)
+            var dist = sector - cur;
+            var delay = (ulong)((dist < 0 ? dist + Geometry.Sectors : dist) * t);
+
+            Log.Detail(Category.HardDisk, "Rotational delay from cur={0} to desired={1} is {2}", cur, sector, delay);
+            return delay;
         }
 
         /// <summary>
@@ -369,12 +396,18 @@ namespace PERQemu.IO.DiskDevices
         }
 
         /// <summary>
-        /// Raises the Index signal for the drive's specified duration.
+        /// Raises the Index signal for the drive's specified duration.  Fires the
+        /// IndexPulseCallback if registered.
         /// </summary>
         void IndexPulseStart(ulong skew, object context)
         {
             _index = true;
             _indexEvent = _scheduler.Schedule(_indexPulseDurationNsec, IndexPulseEnd);
+
+            if (_indexCallback != null)
+            {
+                _indexCallback(_lastIndexPulse);
+            }
         }
 
         /// <summary>
@@ -403,6 +436,9 @@ namespace PERQemu.IO.DiskDevices
                      Info.Name, _indexPulseDurationNsec / 1000.0,
                      _discRotationTimeNsec * Conversion.NsecToMsec);
 
+            // Compute the per-seek-step time (simple linear ramp for now)
+            _rampStep = (Specs.MaximumSeek - Specs.MinimumSeek) / (double)Geometry.Cylinders;
+
             base.OnLoad();
         }
 
@@ -424,10 +460,12 @@ namespace PERQemu.IO.DiskDevices
         ulong _indexPulseDurationNsec;
         ulong _lastIndexPulse;
         SchedulerEvent _indexEvent;
+        IndexPulseCallback _indexCallback;
 
         // Seek timing
         int _stepCount;
         ulong _lastStep;
+        double _rampStep;
         SchedulerEvent _seekEvent;
         SchedulerEventCallback _seekCallback;
 

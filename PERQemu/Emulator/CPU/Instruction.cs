@@ -100,16 +100,16 @@ namespace PERQemu.Processor
 
                         if (SF == 0x7)
                         {
-                            if (!Is4K)
+                            if (!CPUBoard.Is4K)
                             {
                                 // Leap (14 bits) on 16K
-                                NextAddress = (ushort)(((Y << 8) | NotZ) & _wcsMask);
+                                NextAddress = (ushort)(((Y << 8) | NotZ) & CPUBoard.WCSMask);
                             }
                             else
                             {
                                 Log.Warn(Category.Instruction,
                                         "Leap not implemented on the 4K CPU.  Jump to {0:x4} instead, not {1:x4}",
-                                         NextAddress, (((Y << 8) | NotZ) & _wcsMask));
+                                         NextAddress, (((Y << 8) | NotZ) & CPUBoard.WCSMask));
                             }
                         }
                         break;
@@ -132,7 +132,7 @@ namespace PERQemu.Processor
                 // selects the 16-bit constant and pushes the result onto TOS.
                 //
                 if ((IsSpecialFunction && SF == 0) ||       // Long Const
-                    (!Is4K && F == 1 && SF == 5))           // Push Long Const
+                    (!CPUBoard.Is4K && F == 1 && SF == 5))           // Push Long Const
                 {
                     BMuxInput = LongConstant;
                 }

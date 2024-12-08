@@ -60,7 +60,26 @@ namespace PERQemu
             _mem = new MemoryBoard(this);
 
             // Instantiate the CPU board
-            _cpu = new CPUBoard(this);
+            switch (_conf.CPU)
+            {
+                case CPUType.PERQ1:
+                    _cpu = new PERQ1(this);
+                    break;
+
+                case CPUType.PERQ1A:
+                    _cpu = new PERQ1A(this);
+                    break;
+
+                case CPUType.PERQ24:
+                    _cpu = new PERQ24(this);
+                    break;
+
+                case CPUType.PERQ24A:
+                    throw new UnimplementedHardwareException("Sorry, PERQ24A CPU is not implemented");
+
+                default:
+                    throw new InvalidConfigurationException($"No such CPU board type '{_conf.CPU}'");
+            }
 
             // Fire up the IO board (which will set up the Z80).  Once the
             // board type is selected, load the appropriate CPU boot ROMs!
@@ -455,6 +474,7 @@ namespace PERQemu
             // Hand it off to the IO or Option IO board
             switch (drive.Type)
             {
+                case DeviceType.Disk5Inch:
                 case DeviceType.Disk8Inch:
                 case DeviceType.DCIOMicrop:
                 case DeviceType.Disk14Inch:

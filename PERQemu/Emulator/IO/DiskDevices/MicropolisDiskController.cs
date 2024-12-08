@@ -20,6 +20,7 @@
 using System;
 
 using PERQmedia;
+using PERQemu.Config;
 using PERQemu.Processor;
 
 namespace PERQemu.IO.DiskDevices
@@ -42,8 +43,8 @@ namespace PERQemu.IO.DiskDevices
         {
             _system = system;
 
-            _registerFile = new byte[16];
             _dib = new DiskInterfaceBoard(this);
+            _registerFile = new byte[16];
         }
 
         /// <summary>
@@ -52,13 +53,8 @@ namespace PERQemu.IO.DiskDevices
         public void Reset()
         {
             _dib.Reset();
-
-            // Hardware cleared by INIT L
-            _flags = SMFlags.None;
-            _command = SMCommand.Idle;
-
-            // Do a soft reset for the rest?
             ResetFlags();
+
             Log.Info(Category.HardDisk, "Micropolis controller reset");
         }
 
@@ -97,19 +93,7 @@ namespace PERQemu.IO.DiskDevices
         public int ReadStatus()
         {
             // Reset the status word from the DIB and add state machine code
-            var status = _dib.Status.Current | (int)_status;
-
-            // Set the SMSTATUS<3> bit if:
-            //      mid-cycle is enabled,
-            //      an error status is being returned
-            //      block r/w/fmt command is complete
-            // Do NOT set on seeks or other commands!
-            if (_command != SMCommand.Unused &&
-                _command != SMCommand.FixPH &&
-                _command != SMCommand.Idle)
-            {
-                status |= (int)SMStatus.SMInt;
-            }
+            var status = _dib.ReadStatus() | (int)_status;
 
             // Reading clears interrupts
             SetInterrupt(false);
@@ -219,6 +203,7 @@ namespace PERQemu.IO.DiskDevices
 
                 case SMCommand.Write:
                 case SMCommand.WriteChk:
+                case SMCommand.Format:
                     _status = SMStatus.Busy;
                     WriteBlock();
                     break;
@@ -304,21 +289,21 @@ namespace PERQemu.IO.DiskDevices
             // a logical header mismatch.  Realism baybeeee!!!  ALSO, this is
             // only an error condition if the T2 bit isn't set, right? :-)
             if ((LH[0] != _registerFile[5]) ||
-                (LH[1] != _registerFile[11]) ||
+                (LH[1] != _registerFile[9]) ||
                 (LH[2] != _registerFile[6]) ||
-                (LH[3] != _registerFile[12]) ||
+                (LH[3] != _registerFile[10]) ||
                 (LH[4] != _registerFile[7]) ||
-                (LH[5] != _registerFile[13]))
+                (LH[5] != _registerFile[11]))
             {
                 Console.Write("LH mismatch: blk: ");
                 for (int i = 0; i < 6; i++)
                 {
                     Console.Write($"  {i}={LH[i]:x2}");
                 }
-                Console.WriteLine("\n  register file:  ");
+                Console.Write("\n   register file:  ");
                 for (int i = 5; i < 8; i++)
                 {
-                    Console.Write($"  {i}={_registerFile[i]:x2}  {i + 6}={_registerFile[i + 6]:x2}");
+                    Console.Write($"  {i}={_registerFile[i]:x2}  {i + 4}={_registerFile[i + 4]:x2}");
                 }
                 Console.WriteLine();
                 return false;
@@ -343,14 +328,20 @@ namespace PERQemu.IO.DiskDevices
             // aren't modeling accurate disk timings.  We'll say that 100usec
             // is a reasonable minimum to the mid-sector point in case we bug
             // out on a header error (or fire the DB interrupt on a good read)
-            var delay = Settings.Performance.HasFlag(RateLimit.DiskSpeed) ?
-                                ComputeRotationalDelay(sector) :    // Accurate
-                                100 * Conversion.UsecToNsec;        // Fast
+
+            // Fast...
+            var delay = 100 * Conversion.UsecToNsec;
+
+            // ...or accurate?
+            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
+            {
+                delay = _dib.SelectedDrive.ComputeRotationalDelay(_system.Scheduler.CurrentTimeNsec, sector);
+            }
 
             // Sanity checks
             if (!CheckBlockParameters(cyl, head))
             {
-                MidSectorFinish(delay, SMStatus.SMError);
+                FinishCommand(delay, SMStatus.SMError);
                 return;
             }
 
@@ -420,19 +411,37 @@ namespace PERQemu.IO.DiskDevices
         /// Does a write to the cyl/head/sec specified by the controller registers.
         /// Same basic steps as Read/ReadCheck, but the other way around.
         /// </summary>
+        /// <remarks>
+        /// Formatting notes, SWAGs and rampant speculation:
+        /// The hard-sectored 1220 controller supported spare sectoring by keeping
+        /// one spare per track, with a special sector address mark to ID it.  The
+        /// 3RCC DIB likely used the extra block to accommodate the PERQ-standard
+        /// 528-byte sector size -- so the 24 sector geometry shown on the spec
+        /// sheet still applies.  I have not found _any_ mention in any code of
+        /// using the drive's extra sector for sparing, so I'll continue to operate
+        /// under the assumption that the DIB + 120x drive / soft sectored is what
+        /// we're actually emulating here, and that the EIO's state machine is doing
+        /// the formatting of these drives like the original Shugart does.  Thus, a
+        /// FormatBlock() is basically the same as a WriteChk().  We'll see if this
+        /// is sufficient; it's highly unlikely anyone will care to take the time to
+        /// run DiskTest to low-level format a new Microp drive when "storage create"
+        /// basically does that step in half a second. :-)
+        /// </remarks>
         void WriteBlock()
         {
             var cyl = (ushort)((_registerFile[8] & 0xf0) << 4 | _registerFile[4]);
             var head = (byte)(_registerFile[8] & 0x0f);
             var sector = _registerFile[3];
+            var delay = 100 * Conversion.UsecToNsec;
 
-            var delay = Settings.Performance.HasFlag(RateLimit.DiskSpeed) ?
-                                ComputeRotationalDelay(sector) :    // Accurate
-                                100 * Conversion.UsecToNsec;        // Fast
+            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
+            {
+                delay = _dib.SelectedDrive.ComputeRotationalDelay(_system.Scheduler.CurrentTimeNsec, sector);
+            }
 
             if (!CheckBlockParameters(cyl, head))
             {
-                MidSectorFinish(delay, SMStatus.SMError);
+                FinishCommand(delay, SMStatus.SMError);
                 return;
             }
 
@@ -441,18 +450,23 @@ namespace PERQemu.IO.DiskDevices
             var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
 
+            // Data me up, before you go go
             for (int i = 0; i < block.Data.Length; i += 2)
             {
                 int word = _system.Memory.FetchWord(data + (i >> 1));
                 block.Data[i] = (byte)(word & 0xff);
-                block.Data[i + 1] = (byte)((word & 0xff00) >> 8);
+                block.Data[i + 1] = (byte)(word >> 8);
             }
 
-            for (int i = 0; i < block.Header.Length; i += 2)
+            // Write the LH?
+            if (_command == SMCommand.WriteChk || _command == SMCommand.Format)
             {
-                int word = _system.Memory.FetchWord(header + (i >> 1));
-                block.Header[i] = (byte)(word & 0xff);
-                block.Header[i + 1] = (byte)((word & 0xff00) >> 8);
+                for (int i = 0; i < block.Header.Length; i += 2)
+                {
+                    int word = _system.Memory.FetchWord(header + (i >> 1));
+                    block.Header[i] = (byte)(word & 0xff);
+                    block.Header[i + 1] = (byte)(word >> 8);
+                }
             }
 
             _dib.SelectedDrive.SetSector(block);
@@ -471,53 +485,6 @@ namespace PERQemu.IO.DiskDevices
             }
         }
 
-        /// <summary>
-        /// Does a "format" of the cyl/head/sec specified by the controller
-        /// registers.  Does NOT commit to disk, only in memory copy is affected.
-        /// </summary>
-        void FormatBlock()
-        {
-            // Todo: think about how to support spare sectoring and bad block
-            // maps - the PERQ allows rewriting the sector header to effect a
-            // block sparing, so... any changes to the underlying storage dev?
-            // split the phys/log header fields if they aren't already?
-
-            // some format parameters come from the register file, so figure out
-            // how that works
-            var _sector = _registerFile[3];
-            var sec = new Sector(_dib.Cylinder, _dib.Head, _sector,
-                                 _dib.SelectedDrive.Geometry.SectorSize,
-                                 _dib.SelectedDrive.Geometry.HeaderSize);
-
-            var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
-            var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
-
-            // For Microp I think these get synthesized by the DIB or drive?
-            for (int i = 0; i < sec.Data.Length; i += 2)
-            {
-                int word = _system.Memory.FetchWord(data + (i >> 1));
-                sec.Data[i] = (byte)(word & 0xff);
-                sec.Data[i + 1] = (byte)((word & 0xff00) >> 8);
-            }
-
-            // Write the new header data...
-            for (int i = 0; i < sec.Header.Length; i += 2)
-            {
-                int word = _system.Memory.FetchWord(header + (i >> 1));
-                sec.Header[i] = (byte)(word & 0xff);
-                sec.Header[i + 1] = (byte)((word & 0xff00) >> 8);
-            }
-
-            // Write the sector to the disk...
-            _dib.SelectedDrive.SetSector(sec);
-
-            Log.Write(Category.HardDisk,
-                      "Micropolis sector format of {0}/{1}/{2} complete, from memory at 0x{3:x6}",
-                      _dib.Cylinder, _dib.Head, _sector, data);
-
-            //SetBusyState(false, true);
-        }
-
         #endregion
 
         #region Completion and Interrupts
@@ -533,29 +500,32 @@ namespace PERQemu.IO.DiskDevices
                 Log.Error(Category.HardDisk, "MidSectorFinish called while already busy");
             // but proceed anyway?
 #endif
-            Log.Debug(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
-
-            _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
+            if (exitCode == SMStatus.Idle)
             {
-                Log.Debug(Category.HardDisk, "Mid-sector interrupt firing, code={0}", exitCode);
+                Log.Debug(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
 
-                if (exitCode == SMStatus.Idle)
+                _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
                 {
+                    Log.Debug(Category.HardDisk, "Mid-sector interrupt firing, code={0}", exitCode);
+
+                    // Per disk.doc, mid-sector int sets SMInt, low 3 bits to 1
+                    _status = (SMStatus.SMInt | SMStatus.Busy);
+
                     // Fire mid-sector "DB" interrupt
                     SetInterrupt(true, true);
 
                     // Schedule a normal completion
                     FinishCommand(BlockDelayNsec, exitCode);
-                }
-                else
+                });
+            }
+            else
+            {
+                _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
                 {
-                    // Save the error status
-                    _status = exitCode;
-
-                    // Fire off the interrupt (even if mid-cycle intr is masked)
-                    SetInterrupt(true);
-                }
-            });
+                    // Error out through FinishCommand()
+                    FinishCommand(delay, exitCode);
+                });
+            }
         }
 
         /// <summary>
@@ -566,7 +536,7 @@ namespace PERQemu.IO.DiskDevices
             _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
             {
                 Log.Debug(Category.HardDisk, "Command completion: {0}", exitCode);
-                _status = exitCode;
+                _status = (SMStatus.SMInt | exitCode);
                 _busyEvent = null;
 
                 SetInterrupt(true);
@@ -610,37 +580,11 @@ namespace PERQemu.IO.DiskDevices
 
         #endregion
 
-        /// <summary>
-        /// Computes a rotational delay for the start of a sector from the last
-        /// index pulse.  Returns nanoseconds so you don't have to scale it for
-        /// scheduling.  Isn't terribly accurate as it doesn't account for sector
-        /// interleaving, but adds some realism. :-)
-        /// </summary>
-        ulong ComputeRotationalDelay(int sector)
-        {
-            // Todo: move this to HardDisk, or possibly even StorageDevice so
-            // all drive types can use it
-
-            // t = time between pulses (in ns) = rpm / #sectors
-            var t = (long)Conversion.RPMtoNsec(_dib.SelectedDrive.Specs.RPM) /
-                                               _dib.SelectedDrive.Geometry.Sectors;
-
-            // cur = what sector the heads are over now (time now - last pulse) / t
-            var cur = (long)(_system.Scheduler.CurrentTimeNsec - _dib.SelectedDrive.LastIndexPulse) / t;
-
-            // dist = distance from current to desired sector (linear, no account for interleave)
-            var dist = sector - cur;
-            var delay = (ulong)((dist < 0 ? dist + _dib.SelectedDrive.Geometry.Sectors : dist) * t);
-
-            Log.Detail(Category.HardDisk, "Rotational delay from cur={0} to desired={1} is {2}", cur, sector, delay);
-            return delay;
-        }
-
         // Debugging
         public void DumpStatus()
         {
             // Pretty print the register names since they contain useful stuff
-            // In the Micropolis controller, only 12 of 16 are ever used
+            // In the Micropolis controller, only 11 of 16 are ever used
             string[] RN = { "Zero", "Sync", "Unused", "Sector", "CylLo",
                             "LH1lo", "LH2lo", "LH3lo", "Cyl/Hd",
                             "LH1hi", "LH2hi", "LH3hi" };
@@ -736,9 +680,9 @@ namespace PERQemu.IO.DiskDevices
         readonly ulong BlockDelayNsec = 749 * Conversion.UsecToNsec;
 
         // Registers
-        SMFlags _flags;
         SMCommand _command;
         SMStatus _status;
+        SMFlags _flags;
 
         byte[] _registerFile;
         int _regSelect;
@@ -769,11 +713,10 @@ namespace PERQemu.IO.DiskDevices
             }
 
             public HardDisk SelectedDrive => _disk;
-            public HWStatus Status => _status;
 
             public byte Unit => _driveSelect;
-            public ushort Cylinder => _cylinder;
             public byte Head => _head;
+            public ushort Cylinder => _cylinder;
 
             public bool BusEnable
             {
@@ -788,13 +731,14 @@ namespace PERQemu.IO.DiskDevices
                 _command = M1200Command.None;
                 _busEnable = false;
                 _latchedBusEnable = false;
+                _latchedIndex = false;
                 _latchedNibble = 0;
                 _latchedData = 0;
                 _driveSelect = 0;
                 _cylinder = 0;
                 _head = 0;
 
-                Log.Info(Category.HardDisk, "Micropolis DIB reset");
+                Log.Debug(Category.HardDisk, "Micropolis DIB reset");
             }
 
             /// <summary>
@@ -806,10 +750,11 @@ namespace PERQemu.IO.DiskDevices
                     throw new InvalidOperationException("MicropolisController only supports 1 disk");
 
                 if (dev.Info.Type != DeviceType.Disk8Inch && dev.Info.Type != DeviceType.DCIOMicrop)
-                    throw new InvalidOperationException($"Device type {dev.Info.Type} not supported by this controller");
+                    throw new InvalidConfigurationException($"Device type {dev.Info.Type} not supported by this controller");
 
                 _disk = dev as HardDisk;
-                _disk.SetSeekCompleteCallback(SeekCompletionCallback);
+                _disk.SetSeekCompleteCallback(SeekComplete);
+                _disk.SetIndexPulseCallback(IndexPulse);
 
                 // A small detail
                 _status.DriveType = (int)DeviceType.Disk8Inch;
@@ -879,8 +824,8 @@ namespace PERQemu.IO.DiskDevices
                             _head = (byte)(_latchedData & 0x0f);
                             Log.Debug(Category.HardDisk, "DIB: Cylinder = {0}, Head = {1}", _cylinder, _head);
 
-							// Start the seek!
-							DoSeek();
+                            // Start the seek!
+                            DoSeek();
                         }
                         break;
 
@@ -945,7 +890,7 @@ namespace PERQemu.IO.DiskDevices
                 {
                     Log.Warn(Category.HardDisk, "Bad head or cylinder on seek!");
                     _status.SeekError = true;
-                    SeekCompletionCallback(0U, null);
+                    SeekComplete(0U, null);
                     return;
                 }
 
@@ -971,14 +916,23 @@ namespace PERQemu.IO.DiskDevices
             /// <summary>
             // Seek completion for the Micropolis.
             /// </summary>
-            public void SeekCompletionCallback(ulong skewNsec, object context)
+            public void SeekComplete(ulong skewNsec, object context)
             {
-                // Update hardware status
-                _status.OnCylinder = (_disk.CurCylinder == _cylinder);
-                _status.SeekError = !_status.OnCylinder;
+                // Set SeekError if we didn't end up where we were supposed to
+                _status.SeekError = (_cylinder != _disk.CurCylinder);
 
-                // Report OnCylinder change / seek completion
+                // Update the rest of the status bits
                 UpdateStatus();
+            }
+
+            /// <summary>
+            /// Fired on the leading edge of a drive's index pulse transition.
+            /// </summary>
+            public void IndexPulse(ulong last)
+            {
+                _latchedIndex = !_latchedIndex;
+                Log.Detail(Category.HardDisk, "EIO latched Index pulse {0} last {1}ns",
+                                              _latchedIndex, last);
             }
 
             /// <summary>
@@ -988,15 +942,44 @@ namespace PERQemu.IO.DiskDevices
             /// </summary>
             public void UpdateStatus()
             {
+                var oldReady = _status.UnitReady;
+                var oldOnCyl = _status.OnCylinder;
+
+                // Update hardware status
                 _status.UnitReady = (_driveSelect == 0 && _disk.Ready);
-                _status.Index = _disk.Index;
+                _status.OnCylinder = (_disk.CurCylinder == _cylinder);
                 _status.DriveFault = _disk.Fault;
+                _status.Index = _latchedIndex;
 
                 Log.Debug(Category.HardDisk, "DIB status change: 0x{0:x3}", _status.Current);
                 Log.Detail(Category.HardDisk, "DIB {0}", _status);      // HW status string
 
                 // Ready changes, faults, or OnCylinder asserted trigger an interrupt
-                _control.StatusChange();
+                if (oldReady != _status.UnitReady || (oldOnCyl == false && _status.OnCylinder == true))
+                {
+                    _control.StatusChange();
+                }
+            }
+
+            /// <summary>
+            /// Refresh, return the current status.
+            /// </summary>
+            /// <remarks>
+            /// This is necessary since formatting or timing the index pulses (CIO
+            /// Micropolis boot code) requires that the Index flag be accurately set;
+            /// 3RCC acknowledges that reading status too often may potentially result
+            /// in missing an interrupt that's set and then cleared before it can be
+            /// handled, which is a danger here too -- UpdateStatus() may trigger an
+            /// interrupt on a Ready change, but reading SMSTATUS (in the caller) then
+            /// clears it immediately).  We'll see if this is a problem in practice;
+            /// low-level formatting is almost never needed and CIO Micropolis isn't
+            /// yet fully supported yet anyway :-) so if this screws up normal operation
+            /// I'll rethink/redo it.  Applies to MFMController too.
+            /// </remarks>
+            public int ReadStatus()
+            {
+                UpdateStatus();
+                return _status.Current;
             }
 
             /// <summary>
@@ -1041,8 +1024,8 @@ namespace PERQemu.IO.DiskDevices
                 Console.WriteLine("Micropolis DIB status:");
                 Console.WriteLine($"  {_status}");
                 Console.WriteLine($"  Command byte: {_command}");
-                Console.WriteLine($"  Current Cyl:  {_cylinder}  Head: {_head}  BusEn: {BusEnable}");
-                Console.WriteLine($"  Latched byte: 0x{_latchedData:x2}  Latched BusEn: {_latchedBusEnable}");
+                Console.WriteLine($"  Current Cyl:  {_cylinder}  Head: {_head}  Idx: {_latchedIndex}");
+                Console.WriteLine($"  Latched byte: 0x{_latchedData:x2}  BusEn: {BusEnable}  Latched BusEn: {_latchedBusEnable}");
                 Console.WriteLine();
                 Console.WriteLine("Drive mechanical status:");
                 Console.WriteLine($"  Index: {_disk.Index}  Ready: {_disk.Ready}  Trk0: {_disk.Track0}  Fault: {_disk.Fault}");
@@ -1082,6 +1065,7 @@ namespace PERQemu.IO.DiskDevices
             byte _driveSelect;
             ushort _cylinder;
             byte _head;
+            bool _latchedIndex;
 
             // Nibble in progress
             RegSelect _regSelect;
@@ -1094,7 +1078,7 @@ namespace PERQemu.IO.DiskDevices
             M1200Command _command;
             HWStatus _status;
 
-            // Drive(s) attach here!
+            // Officially, only one drive supported :-(
             HardDisk _disk;
         }
     }

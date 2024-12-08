@@ -145,7 +145,7 @@ namespace PERQemu.IO.DiskDevices
                     // Added to the CIO board but ignored by the Shugart controller
                     // May initially log things to see that it's always being set to 0
                     if (value != 0)
-                        Log.Warn(Category.HardDisk, "CIOShugart write of 0x{0:x} to MicropSec ignored!", value);
+                        Log.Warn(Category.HardDisk, "Shugart write of 0x{0:x} to (CIO)MicropSec ignored!", value);
                     break;
 
                 default:
@@ -475,9 +475,12 @@ namespace PERQemu.IO.DiskDevices
             _controllerBusy = true;
 
             // Compute the delay for a block operation...
-            var delay = Settings.Performance.HasFlag(RateLimit.DiskSpeed) ?
-                                BlockDelayNsec :                // Accurate
-                                100 * Conversion.UsecToNsec;    // Fast
+            var delay = 100 * Conversion.UsecToNsec;
+
+            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
+            {
+                delay = BlockDelayNsec + _disk.ComputeRotationalDelay(_system.Scheduler.CurrentTimeNsec, _sector);
+            }
 
             // Idle doesn't set busy to begin with; Reset should be quick (but
             // do a minimal delay so the microcode can see the Busy transition
@@ -614,11 +617,11 @@ namespace PERQemu.IO.DiskDevices
         // the drive itself (seek, head settling, but not rotational latency);
         // this accounts for the time to DMA the sector header and data (since
         // we don't actually model that, currently).  The absolute best case at
-        // 100% utilization is 528 bytes (66 quads) * 680ns or 44.88usec, but
+        // 100% utilization is 528 bytes (66 quads) * 1360ns or 89.76usec, but
         // the drive's specified 7Mbits/sec (875KB/sec) max transfer rate means
-        // at full tilt we could transfer a full block every ~585usec.  We can
+        // at full tilt we could transfer a full block every ~603usec.  We can
         // fiddle with this to make it more realistic.
-        readonly ulong BlockDelayNsec = 585 * Conversion.UsecToNsec;
+        readonly ulong BlockDelayNsec = 603 * Conversion.UsecToNsec;
 
         readonly PERQSystem _system;
     }

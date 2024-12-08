@@ -33,6 +33,7 @@ namespace PERQemu.Processor
             public RegisterFile()
             {
                 _registers = new int[256];
+                _mask = CPUBoard.CPUMask;
             }
 
             public void Reset()
@@ -82,7 +83,7 @@ namespace PERQemu.Processor
             public void WriteRegister(byte addr, int val)
             {
                 // Clip to 20 or 24 bits
-                val &= CPUMask;
+                val &= _mask;
 
                 if (addr < 0x40)
                 {
@@ -101,6 +102,8 @@ namespace PERQemu.Processor
 
             // Base register
             byte _registerBase;
+
+            int _mask;
         }
     }
 }

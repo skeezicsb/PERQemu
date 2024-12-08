@@ -23,7 +23,7 @@ namespace PERQemu.Processor
     /// This is the rare 24-bit, 16K CPU.  It is available when the
     /// "PERQ-2/T4" (aka "PERQ-4" or "PQ4000") configuration is selected.
     /// </summary>
-    public sealed class PERQ24 : CPU
+    public sealed class PERQ24 : CPUBoard
     {
         static PERQ24()
         {
@@ -41,18 +41,6 @@ namespace PERQemu.Processor
 
         public PERQ24(PERQSystem system) : base(system)
         {
-        }
-
-        public override int ReadMicrostateRegister(byte h)
-        {
-            if (h == 1)
-            {
-                // On PERQ24, uState1 is the upper 8 Bmux bits
-                return ((~_lastBmux) >> 16) & 0xff;
-            }
-
-            // Return the usual 20-bit uState
-            return base.ReadMicrostateRegister(h);
         }
     }
 }

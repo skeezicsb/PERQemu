@@ -158,24 +158,25 @@ namespace PERQemu
                 return;
             }
 
-            // We have a system!  Listen for events
-            PERQemu.Sys.DDSChanged += PressBootKey;
-            PERQemu.Sys.PowerDownRequested += SoftPowerOff;
-
             // Load the configured storage devices
             if (!_system.LoadAllMedia())
             {
                 Console.WriteLine("Storage initialization failed.");
                 // Give an opportunity to try again
-                SetState(RunState.Halted);
+                //SetState(RunState.Halted);
+                _system = null;
                 return;
             }
 
             // Restart the SDL machinery
             PERQemu.GUI.InitializeSDL();
 
-            // Set the initial state
-            SetState(RunState.WarmingUp);
+            // We have a system!  Listen for events
+            PERQemu.Sys.DDSChanged += PressBootKey;
+            PERQemu.Sys.PowerDownRequested += SoftPowerOff;
+
+			// Set the initial state
+			SetState(RunState.WarmingUp);
 
             // Save as the default config for next time we launch
             if (PERQemu.Config.Current.Name != "default")

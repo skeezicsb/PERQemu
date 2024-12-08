@@ -23,10 +23,10 @@ Thanks,
 
 The PERQ is an early microcoded graphical workstation with a high-resolution
 bitmapped display and is arguably one of the first commercially-available
-"workstation" class of computers to meet the "3 M's" criteria: a megabyte of
-memory, a million pixel display, and a MIP of processing power.  Heavily
-influenced by the Xerox PARC "D-machines" and taking inspiration from the DEC
-PDP-11 for some of its performance tricks, it was designed and demonstrated
+"workstation" class computers to meet the "3 M" criteria: a megabyte of RAM,
+a million pixel display, and a million instructions-per-second of processing
+power.  Heavily influenced by the Xerox PARC Alto and taking inspiration from
+the DEC PDP-11 for some of its performance tricks, it was first demonstrated
 in 1979 but not released in production quantities until late 1980.  It is
 estimated that fewer than 5,000 PERQs were built, mostly sold to universities.
 
@@ -35,12 +35,12 @@ The PERQ-1 hardware consists of the following:
     - A custom bit-slice, microcoded CPU with 48-bit microinstruction words
     - 4K (PERQ-1) or 16K (PERQ-1A) of writable control store
     - 512KB to 2MB of RAM (in 16-bit words)
-    - A high resolution bitmapped display at 768x1024 pixels (1bpp)
+    - A high resolution bitmapped display at 768 x 1024 pixels (1bpp)
     - Custom RasterOp hardware to accelerate bitmap operations
 
 The original PERQs feature a standard set of peripherals:
 
-    - A 12 or 24mb Shugart 4000-series hard disk (14" platters)
+    - A 12 or 24mb Shugart SA4000-series hard disk (14" platters)
     - A single 8" Shugart floppy drive
     - A GPIB interface, typically used to interface with a Summagraphics
       BitPadOne digitizer tablet
@@ -53,8 +53,19 @@ Optional IO boards can be fitted, which provide:
     - Canon LBP-10 (or Canon CX) laser printer interface
     - QIC streamer tape connection
 
-A later PERQ-2 series extends the original design in some significant ways
-and adds a number of additional IO options.
+Introduced in 1983, the PERQ-2 series extends the original design in some
+significant ways and adds a number of additional IO options:
+
+    - A landscape display, with 1280 x 1024 pixels (1bpp)
+    - An 8" Micropolis disk (PERQ-2 or PERQ-2/T1) or up to two 5.25" MFM/ST506
+      disks (PERQ-2/T2 or /T4) replace the Shugart 14" hard drive
+    - The standard I/O board incorporates an Ethernet controller and a faster
+      Z80 subsystem with RTC chip, second RS-232 port
+    - A 24-bit version of the 16K CPU extends the memory capacity to 8MB in
+      the rare PERQ-2/T4 model
+
+PERQemu will emulate all of the standard PERQ-1 and PERQ-2 configurations and
+peripherals.
 
 
 1.2 Current Status
@@ -80,7 +91,9 @@ Accent S6 and PNX 2 and 3 to boot.  There are still a number of rough edges and
 missing pieces, but this interim development snapshot is reliable enough to let
 it into the wild for testing from skeezicsb/main.
 
-Full PERQ-2 and 2/Tx support is underway; see the (tentative) roadmap below.
+PERQemu v0.6.5 delivers nearly complete PERQ-2 and 2/Tx support; at this point
+only the 24-bit PERQ-2/T4 is unfinished (but in testing).
+
 Please check back often for updates!
 
 
@@ -268,6 +281,7 @@ Added in v0.5.8:
   - PNX 3 is now also confirmed to boot and run (from floppy) with an
     included video patch.  (I may be missing one critical floppy needed
     to complete a full hard disk install, however.  Watch this space.)
+  - Debug pre-release for early Micropolis disk support testing.
 
 
 NOTE: PNX 1 only supports 1MB of memory and will crash if configured with more.
@@ -303,7 +317,8 @@ The following hardware has been implemented in the emulator:
       tested to work with IOB (old Z80) and CIO (new Z80) implementations;
     - The PERQ-2 8" Micropolis 1200-series controller and Disk Interface Board
       is now emulated for use with the PERQ-2/EIO configuration (one drive only);
-    - 5.25" MFM drives will be available as PERQ-2/Tx support is introduced.
+    - One or two 5.25" MFM drives can be configured if the PERQ-2/Tx chassis is
+      selected.
       
   Floppy disk:
     - Rewritten to work with the new Z80 and floppy disk controller;
@@ -319,17 +334,18 @@ The following hardware has been implemented in the emulator:
     - The standard 768 x 1024 portrait display is available for all models;
     - The 1280 x 1024 landscape display is supported and tested with POS G.7
       and Accent S6!  Although PERQ-1 landscape configurations were very rare,
-      the emulator runs 'em just fine!
+      the emulator runs 'em just fine!  Became standard equipment on most
+      PERQ-2 models.
 
   Z80 I/O Processor:
     - Simulation replaced by a real Z80 emulator running actual PERQ ROM code;
     - Runs asynchronously on its own thread to improve performance;
     - Allows different ROMs to be loaded to support CIO and EIO boards;
-    - New register-level interface written to support Z80 DMA, CTC, SIO, FDC
-      and GPIB controller chips;
+    - New register-level interface written to support Z80 DMA, CTC, SIO, PIT,
+      FDC and GPIB controller chips;
     - Z80 Debugger support includes single stepping and source code display
       (for the current v8.7 ROMs; v100.017 source disassembly for EIO is now
-      complete, CIO in progress).
+      complete, CIO in progress).  Limited breakpoint support is available.
 
   Keyboard:
     - Now uses the SDL2 interface so no more horrible hacks required for MacOS;
@@ -342,7 +358,8 @@ The following hardware has been implemented in the emulator:
   RS-232:
     - The Z80 SIO chip is implemented to work with the new Z80 emulator;
     - Software running under emulation can control a real physical serial port
-      on the host;
+      on the host; second RS-232 port available with the PERQ-2/EIO models [not
+      yet fully tested];
     - The RSX: pseudo-device for transferring text files from the host to POS
       has been reinstated.
 
@@ -449,18 +466,24 @@ PERQ-2/EIO support is still highly experimental, but if you want to try it out
 there are some known quirks/bugs to be aware of:
 
 
-4. PNX 2 (and PNX 3) boot failure at DDS 142.
+4. PNX boot failure at DDS 142.
 
-Symptoms:  Attempting to boot from the PNX 2 or PNX 3 installation floppies
-causes the DDS to stop at 142 and the process to hang.
+Symptoms:  Attempting to boot from the PNX installation floppies causes the DDS
+to stop at 142 and the process to hang.
 
 Workaround:  The version of the VFY microcode included on the available floppies
 contains a bug -- or relies on a quirk of the hardware -- that causes the Victim
-test to fail when a 16K CPU is configured.  When the DDS stops at 142, type
-"debug jump $808" to resume execution, bypassing the failed test.  Note that the
-DDS status will be off for the remainder of the session, and will not stop at
-255 when PNX has completed booting.  A patch to detect and fix this has been
-developed and is included in PERQemu v0.5.8 and beyond.
+test to fail when a 16K CPU is configured.  For PNX versions 2 or 3, when the
+DDS stops at 142, type "debug jump $808" to resume execution, bypassing the
+failed test.  Note that the DDS status will be off for the remainder of the
+session, and will not stop at 255 when PNX has completed booting.  A patch to
+detect and fix this has been developed and is included in PERQemu v0.5.8 and
+beyond.
+
+Update: The PNX 5 boot floppy uses different microcode that fails in the same
+way but in a different location; looking to update the patch or figure out if
+the Victim register implementation needs to be relaxed to allow PNX to run, as
+this busted code DOES work on the actual hardware.  Hmmm.
 
 
 5. PNX video glitches.
@@ -499,11 +522,16 @@ v0.7 - TBD
     serial port, RTC chip, support for two hard disks
   - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
 
-v0.6.0 - Experiments branch
-  - Start of MFM support for PERQ-2/Tx multiple hard disk support
+v0.6.5 - Main branch (v0.7 pre-release)
+  - MFM support for PERQ-2/Tx, multiple 5.25" hard disks
+  - Low-level formatting for 8" and 5.25" hard disks works
+  - Improved hard disk seek timing
+  - Update to PERQmedia library to allow more robust handling of partial
+    or corrupted IMD-format floppy images
+  - PERQ-2 backplane S/N PROM added
 
-v0.5.8 - Main branch (v0.7.0 pre-release)
-  - Micropolis 8" disk (high-level operation works!; low-level formatting
+v0.5.8 - Main branch (v0.7 pre-release)
+  - Micropolis 8" disk (high-level operation works! low-level formatting
     support is incomplete/untested)
   - EIO Z80 ROM source code formatted for use with the debugger
   - EIO Z80 peripherals added:  RTC chip, VT100-style keyboard, Am9519 IRQ
@@ -511,7 +539,7 @@ v0.5.8 - Main branch (v0.7.0 pre-release)
   - Kriz tablet and GPIB updated for EIO; PNX Vfy bug workaround devised
   - Ethernet drivers updated for EIO (no new functionality, yet)
 
-v0.5.5 - Main branch (v0.7.0 pre-release)
+v0.5.5 - Main branch (v0.7 pre-release)
   - Ethernet running (but requires root/admin access)
   - Patch for Turkish keyboard in CLI
   - Limited Micropolis 8" disk support
@@ -634,6 +662,7 @@ v0.1 - First public release.
 
 Update history:
 
+12/8/2024 - skeezicsb - v0.6.5 (main)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)
 1/24/2023 - jdersch - v0.5.0

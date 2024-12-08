@@ -21,8 +21,6 @@ using System;
 using System.Threading;
 using System.Runtime.CompilerServices;
 
-using PERQemu.Config;
-
 namespace PERQemu.Processor
 {
     /// <summary>
@@ -30,45 +28,50 @@ namespace PERQemu.Processor
     /// always execute in lock step, in either synchronous or asynchronous
     /// mode.  The processor is also responsible for clocking the memory.
     /// </summary>
-    public sealed class CPUBoard
+    public abstract class CPUBoard
     {
-        public CPUBoard(PERQSystem sys)
+        static CPUBoard()
+        {
+            // Our derived classes customize themselves in the static
+            // constructor, setting various word sizes, masks, etc.
+        }
+
+        protected CPUBoard()
+        {
+            // For the (minimal) Unscrambler
+        }
+
+        protected CPUBoard(PERQSystem sys)
         {
             _system = sys;
 
-            // Instantiate our CPU
-            switch (sys.Config.CPU)
-            {
-                case CPUType.PERQ1:
-                    _processor = new PERQ1(sys);
-                    break;
-
-                case CPUType.PERQ1A:
-                    _processor = new PERQ1A(sys);
-                    break;
-
-                case CPUType.PERQ24:
-                    _processor = new PERQ24(sys);
-                    break;
-
-                case CPUType.PERQ24A:
-                    throw new UnimplementedHardwareException("Sorry, PERQ24A CPU is not implemented");
-
-                default:
-                    throw new InvalidConfigurationException($"No such CPU board type '{sys.Config.CPU}'");
-            }
+            // The beating heart
+            _processor = new CPU(_system);
 
             // Create the system scheduler
-            _scheduler = new Scheduler(CPU.MicroCycleTime);
+            _scheduler = new Scheduler(_cycleTime);
 
             // Rate limiter
-            _heartbeat = new SystemTimer(50d, CPU.MicroCycleTime);
+            _heartbeat = new SystemTimer(50d, _cycleTime);
         }
+
+        public static string Name => _name;
+        public static string Description => _desc;
+
+        public static ulong MicroCycleTime => _cycleTime;
+
+        public static int CPUBits => _bits;
+        public static int CPUMask => _mask;
+        public static int WCSBits => _wcsBits;
+        public static int WCSSize => _wcsSize;
+        public static int WCSMask => _wcsMask;
+
+        public static bool Is4K => (_wcsSize == 4096);
+        public bool SupportsAsync => true;
 
         public CPU Processor => _processor;
         public Scheduler Scheduler => _scheduler;
 
-        public bool SupportsAsync => true;
 
         public void Reset()
         {
@@ -254,10 +257,27 @@ namespace PERQemu.Processor
             }
         }
 
-        CPU _processor;
-        Scheduler _scheduler;
+        //
+        // Configurables set by derived classes
+        //
+        protected static string _name;
+        protected static string _desc;
+
+        protected static ulong _cycleTime;
+
+        protected static int _bits;
+        protected static int _mask;
+
+        protected static int _wcsBits;
+        protected static int _wcsSize;
+        protected static int _wcsMask;
+
+        // Parent
         PERQSystem _system;
 
+        // Common to all board types
+        CPU _processor;
+        Scheduler _scheduler;
         SystemTimer _heartbeat;
 
         Thread _asyncThread;

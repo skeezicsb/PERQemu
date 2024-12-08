@@ -59,7 +59,7 @@ namespace PERQemu.IO.Z80
                 new CommandData(Command.ReadData, 0x1f, 9, ReadDataExecutor),
                 new CommandData(Command.ReadTrack, 0x9f, 9, StubExecutor),
                 new CommandData(Command.ReadDeletedData, 0x1f, 9, StubExecutor),
-                new CommandData(Command.ReadId, 0xbf, 2, StubExecutor),
+                new CommandData(Command.ReadId, 0xbf, 2, ReadIdExecutor),
                 new CommandData(Command.WriteData, 0x3f, 9, WriteDataExecutor),
                 new CommandData(Command.FormatTrack, 0xbf, 6, FormatExecutor),
                 new CommandData(Command.WriteDeletedData, 0x3f, 9, StubExecutor),
@@ -110,6 +110,7 @@ namespace PERQemu.IO.Z80
             _writeDataReady = false;
             _unitSelect = 0;
             _headSelect = 0;
+            _lastSector = 0;
             _seekEnd = false;
             _byteTimeNsec = FMByteTimeNsec;
 
@@ -200,6 +201,32 @@ namespace PERQemu.IO.Z80
                 SelectedUnit.HeadSelect = (byte)_headSelect;
             }
         }
+
+        /// <summary>
+        /// Return the next sector on the current cylinder based on the last one
+        /// read or written, accounting for interleave [not yet implemented].
+        /// </summary>
+        ushort NextSector(ushort last)
+        {
+            //
+            // The HardDisk was modified to keep track of the index pulse in order
+            // to compute rotational latency; we could use the same approach for
+            // floppies, along with an interleave table to be able to accurately
+            // reproduce (or fake convincingly) the physical sector ordering.  It
+            // appears that floppy formatting DOES use an interleave factor, but
+            // the default value may change from one OS or program to another and
+            // often it's just a prompt for the user.  A future enhancement would
+            // be to store the interleave factor in the DeviceInfo struct, using
+            // the upper 8 bits of the Flags word so it doesn't take up any extra
+            // space or introduce any major incompatibilities; bumping the Version
+            // of PRQM would change the interpretation of 8 unused flag bits that
+            // aren't currently referenced in any way.  For now, just return the
+            // next sector (1:1 interleave), accounting for wraparound.
+            //
+            last++;
+            return (last > SelectedUnit.Geometry.Sectors) ? (ushort)1 : last;
+        }
+
 
         //
         // IZ80Device implementation (Read & Write)
@@ -554,6 +581,66 @@ namespace PERQemu.IO.Z80
             FinishCommand(false);
         }
 
+
+        /// <summary>
+        /// Read the next sector ID.  Implemented on the EIO, but is it ever used?
+        /// </summary>
+        void ReadIdExecutor(ulong skewNsec, object context)
+        {
+            // Set up for a transfer
+            _transfer = new TransferRequest();
+            _transfer.Type = _currentCommand.Command;
+
+            // Pull data from command regs:
+            var commandByte = _commandData.Dequeue();
+            _transfer.MultiTrack = false;                   // ignored for ReadId
+            _transfer.MFM = (commandByte & 0x40) != 0;
+            _transfer.SkipDeletedAM = false;                // ignored for ReadId
+            SelectUnitHead(_commandData.Dequeue());
+
+            // If no drive/media, go no further
+            if (!SelectedUnitIsReady)
+            {
+                // Post drive not ready (EquipChk doesn't cause Floppy to seize)
+                _transfer.ST0 = SetErrorStatus(StatusRegister0.AbnormalTermination);
+                _transfer.ST0 |= StatusRegister0.EquipChk;
+                _transfer.ST1 = StatusRegister1.None;
+                _transfer.ST2 = StatusRegister2.None;
+
+                // Post the failure:
+                FinishTransfer(_transfer);
+                return;
+            }
+
+            // Read ID just looks for the next sector mark that comes around on
+            // the current unit/head/cyl.  All we do here is compute the sector
+            // number we expect will come next, based on the last one (since the
+            // floppy doesn't actually simulate the index pulse like hard drives
+            // do).  This is kinda cheesy.
+
+            _transfer.Cylinder = SelectedUnit.Cylinder;
+            _transfer.Head = SelectedUnit.HeadSelect;
+            _transfer.Sector = NextSector(_lastSector);
+            _transfer.Number = SelectedUnit.IsDoubleDensity ? 256 : 128;
+            _transfer.EndOfTrack = _transfer.Sector;        // only do once and finish
+            _transfer.Aborted = true;                       // short-circuit DMA, etc.
+
+            Log.Info(Category.FloppyDisk,
+                      "ReadID for unit {0}, current C/H/S {1}/{2}/{3} (expecting {4})",
+                      _unitSelect,
+                      _transfer.Cylinder,
+                      _transfer.Head,
+                      _lastSector,
+                      _transfer.Sector);
+
+            PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, true);
+
+            // Schedule a normal read, which should take care of sector timing
+            // and handle the result phase, turn off the blinky icon, etc.
+            _scheduler.Schedule(SectorTimeNsec, SectorTransferCallback);
+        }
+
+
         #endregion
 
         #region Reads, Writes
@@ -685,6 +772,13 @@ namespace PERQemu.IO.Z80
                 return;
             }
 
+            // Just reading the ID?  Then skip to the end -- no data transfer
+            if (_transfer.Type == Command.ReadId)
+            {
+                FinishSectorTransfer();
+                return;
+            }
+
             // Readin' or writin'?
             if (IsWriteType(_transfer.Type))
             {
@@ -733,7 +827,7 @@ namespace PERQemu.IO.Z80
             else if (IsWriteType(_transfer.Type))
             {
                 // If writing, request the first byte now, then queue the callback
-                // to give DMA time to ship it to over
+                // to give DMA time to ship it over
                 _writeDataReady = true;
                 _scheduler.Schedule(ByteTimeNsec, SectorByteWriteCallback);
             }
@@ -807,6 +901,7 @@ namespace PERQemu.IO.Z80
         void FinishSectorTransfer()
         {
             Log.Debug(Category.FloppyDisk, "Sector {0} transfer complete", _transfer.Sector);
+            _lastSector = _transfer.Sector;
 
             // Should only get here when a complete sector transfer has completed
             // so commit the new data if writing.  Prevents partial writes...
@@ -1330,6 +1425,7 @@ namespace PERQemu.IO.Z80
 
         int _unitSelect;
         int _headSelect;
+        ushort _lastSector;
 
         Status _status;
         State _state;
@@ -1402,7 +1498,7 @@ namespace PERQemu.IO.Z80
     needed eventually.
 
     The head loading/settling/unloading times given in the Specify command are
-    actually set by the firmware and by Accent's floppy drive, though there's
+    actually set by the firmware and by Accent's floppy driver, though there's
     little-to-no benefit to using them; the default 3ms head settling value is
     set in the DevicePerformance record and the FloppyDisk could reference it
     just to make floppy operations that much more agonizingly accurate. :-)

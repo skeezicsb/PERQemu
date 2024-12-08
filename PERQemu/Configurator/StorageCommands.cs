@@ -238,7 +238,7 @@ namespace PERQemu.UI
             if (PERQemu.Controller.State > RunState.Off &&
                 PERQemu.Controller.State < RunState.Halted)
             {
-                Console.WriteLine("Cannot add or remove hard drives while the PERQ is running.");
+                Console.WriteLine("Cannot add or remove fixed hard drives while the PERQ is running.");
                 Console.WriteLine("Please power off the emulation to reconfigure storage devices.");
                 return false;
             }
@@ -247,13 +247,13 @@ namespace PERQemu.UI
         }
 
         [Command("load harddisk", "Load a hard disk image")]
-        void LoadHardDisk(string filename)  // todo: int unit = 1
+        void LoadHardDisk(string filename, int unit = 1)
         {
             if (!OKtoLoad()) return;
 
             try
             {
-                LoadInternal(1, filename);
+                LoadInternal(unit, filename);
             }
             catch (Exception e)
             {
@@ -261,7 +261,7 @@ namespace PERQemu.UI
             }
         }
 
-        [Command("unload harddisk", "Unload a hard disk [unit #]")]
+        [Command("unload harddisk", "Unload a hard disk image")]
         void UnloadHardDisk(int unit = 1)
         {
             if (!OKtoLoad()) return;
@@ -276,18 +276,18 @@ namespace PERQemu.UI
             }
         }
 
-        [Command("save harddisk", "Save the hard disk")]
-        void SaveHardDisk()
+        [Command("save harddisk", "Save a hard disk")]
+        void SaveHardDisk(int unit = 1)
         {
-            SaveHardDiskAs("");     // Yeah, silly.
+            SaveHardDiskAs("", unit);     // Yeah, silly.
         }
 
-        [Command("save harddisk as", "Save the hard disk with a new name")]
-        void SaveHardDiskAs(string filename)
+        [Command("save harddisk as", "Save a hard disk with a new name")]
+        void SaveHardDiskAs(string filename, int unit = 1)
         {
             try
             {
-                SaveInternal(1, filename);
+                SaveInternal(unit, filename);
             }
             catch (Exception e)
             {
@@ -295,8 +295,8 @@ namespace PERQemu.UI
             }
         }
 
-        [Command("save harddisk as", "Save the hard disk with a new name and format")]
-        void SaveHardDiskWith(string filename, Formatters format)
+        [Command("save harddisk as", "Save a hard disk with a new name and format")]
+        void SaveHardDiskWith(string filename, Formatters format, int unit = 1)
         {
             if (format == Formatters.Unknown)
             {
@@ -306,7 +306,7 @@ namespace PERQemu.UI
 
             try
             {
-                SaveInternal(1, filename, format);
+                SaveInternal(unit, filename, format);
             }
             catch (Exception e)
             {
@@ -673,7 +673,8 @@ namespace PERQemu.UI
             // make the drive bootable.  This is a hack. :-)  We could get fancy and
             // instantiate an appropriate controller and fake up a device-specific format
             // but what's the fun in that?
-            if (newDrive.Info.Type == DeviceType.Disk8Inch)
+            if (newDrive.Info.Type == DeviceType.Disk8Inch ||
+                newDrive.Info.Type == DeviceType.Disk5Inch)
             {
                 Console.Write("injecting bad cookie... ");
 

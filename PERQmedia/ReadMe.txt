@@ -225,8 +225,30 @@ implementation detail about the IMDFormatter, but here it is for posterity:
     on it to write out to a real 8" diskette and stick it in a real PERQ, and
     that is a little hardcore (even for me).
 
+Changes to IMD formatter:
+
+    Some small corrections to the IMD reader help avoid throwing exceptions
+    when loading imperfectly archived disk images.  The reader now fills in
+    missing sectors and flags them as "bad" (since PERQemu doesn't distinguish
+    between missing data, deleted or errored sectors like IMD does).  It also
+    now quietly truncates large sectors that are not valid or expected by the
+    PERQ; several of the floppies in the archive were formatted with 8 sectors
+    of 1KB each (double sided) while the user zeroed just one side with 256 byte
+    sectors for PERQ use.  While technically the low-level IO microcode and Z80
+    firmware let a programmer access the uPD765's registers to create floppies
+    with different sector sizes, no known software actually does this.  (3RCC
+    could have, for example, just formatted POS "filesystem floppies" with 512
+    byte sectors and avoided a ton of headaches, but alas.)
+
+    These two changes allow PERQdisk (and PERQemu) to read these IMD images
+    without throwing exceptions that previously prevented loading.  The old
+    unpublished workaround (a custom modification to "imd2raw" that produced
+    PFD files with the same fixes applied) is no longer needed; going forward
+    the full PERQ software archive will be saved in PRQM format alongside the
+    original IMD captures.
+
 --
-Last update: skeezics   Sat Dec 17 23:22:34 PST 2022
+Last update: skeezics   Sun Jul  7 21:45:22 PDT 2024
 
 
  

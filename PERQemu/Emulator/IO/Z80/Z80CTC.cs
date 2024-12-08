@@ -232,36 +232,37 @@ namespace PERQemu.IO.Z80
             public Channel(int num, Z80CTC parent)
             {
                 _ctc = parent;
-                Number = num;
+                _number = num;
                 TimerClient = null;
 
-                Log.Debug(Category.CTC, "Channel {0} initialized", Number);
+                Log.Debug(Category.CTC, "Channel {0} initialized", _number);
             }
 
             public void Reset()
             {
                 Control = 0;
                 TimeConstant = 1;
-                Counter = 0;
-                Running = false;
                 InterruptRequested = false;
 
-                Trigger = null;
+                _counter = 0;
+                _running = false;
+                _trigger = null;
 
-                Log.Debug(Category.CTC, "Channel {0} reset", Number);
+                Log.Debug(Category.CTC, "Channel {0} reset", _number);
             }
 
             public ControlFlags Control;
-            public int Number;
             public int TimeConstant;
-            public int Counter;
-            public bool Running;
             public bool InterruptRequested;
 
             public ICTCDevice TimerClient;
 
-            SchedulerEvent Trigger;
+            int _number;
+            int _counter;
+            bool _running;
+
             Z80CTC _ctc;
+            SchedulerEvent _trigger;
 
 
             /// <summary>
@@ -269,12 +270,12 @@ namespace PERQemu.IO.Z80
             /// </summary>
             public void Start(bool pulse = false)
             {
-                if (!Running)
+                if (!_running)
                 {
                     // In Counter mode?
                     if (Control.HasFlag(ControlFlags.CounterMode))
                     {
-                        Running = true;
+                        _running = true;
                     }
                     else
                     {
@@ -283,12 +284,12 @@ namespace PERQemu.IO.Z80
                         if ((pulse && Control.HasFlag(ControlFlags.TimerTrigger)) ||
                                      !Control.HasFlag(ControlFlags.TimerTrigger))
                         {
-                            Running = true;
+                            _running = true;
                             QueueTimerTick();
                         }
                     }
 
-                    Log.Debug(Category.CTC, "Channel {0} started (running={1})", Number, Running);
+                    Log.Debug(Category.CTC, "Channel {0} started (running={1})", _number, _running);
                 }
             }
 
@@ -301,22 +302,22 @@ namespace PERQemu.IO.Z80
             {
                 if (Control.HasFlag(ControlFlags.CounterMode))
                 {
-                    if (Running)
+                    if (_running)
                     {
-                        if (Counter > 0) Counter--;
+                        if (_counter > 0) _counter--;
 
                         // Reached TC?  Request an interrupt (if configured)
-                        InterruptRequested = (Counter == 0);
+                        InterruptRequested = (_counter == 0);
 
                         if (InterruptRequested) _ctc.AssertInterrupt();
                     }
                 }
                 else
                 {
-                    if (!Running) Start(true);
+                    if (!_running) Start(true);
                 }
 
-                return Counter;
+                return _counter;
             }
 
             /// <summary>
@@ -325,16 +326,16 @@ namespace PERQemu.IO.Z80
             /// </summary>
             public void Stop()
             {
-                if (Running)
+                if (_running)
                 {
-                    Running = false;
+                    _running = false;
                     InterruptRequested = false;
                     _ctc.AssertInterrupt();
 
-                    _ctc._scheduler.Cancel(Trigger);
-                    Trigger = null;
+                    _ctc._scheduler.Cancel(_trigger);
+                    _trigger = null;
 
-                    Log.Debug(Category.CTC, "Channel {0} stopped", Number);
+                    Log.Debug(Category.CTC, "Channel {0} stopped", _number);
                 }
             }
 
@@ -344,19 +345,19 @@ namespace PERQemu.IO.Z80
             public void ResetCounter()
             {
                 // Counting or timing
-                Counter = TimeConstant;
+                _counter = TimeConstant;
 
                 // Apply the prescaler value if in Timer mode
                 if (!Control.HasFlag(ControlFlags.CounterMode))
                 {
-                    Counter *= (Control.HasFlag(ControlFlags.Prescaler) ? 256 : 16);
+                    _counter *= (Control.HasFlag(ControlFlags.Prescaler) ? 256 : 16);
                 }
 
                 // If we had previously asserted an interrupt, clear it?
                 InterruptRequested = false;
                 _ctc.AssertInterrupt();
 
-                Log.Debug(Category.CTC, "Channel {0} counter reset ({1})", Number, Counter);
+                Log.Debug(Category.CTC, "Channel {0} counter reset ({1})", _number, _counter);
             }
 
             /// <summary>
@@ -366,7 +367,7 @@ namespace PERQemu.IO.Z80
             {
                 if (Control.HasFlag(ControlFlags.CounterMode))
                 {
-                    Log.Warn(Category.CTC, "Ignoring timer tick for counter {0}", Number);
+                    Log.Warn(Category.CTC, "Ignoring timer tick for counter {0}", _number);
                     return;
                 }
 
@@ -383,12 +384,12 @@ namespace PERQemu.IO.Z80
                 // clock (on channel 0), which is programmed in x16 mode.  Thus, the
                 // SIO bit rate is 104.192usec @ 9600baud, or 1.042ms per char.
                 //
-                var interval = _ctc._scheduler.TimeStepNsec * (ulong)Counter;
+                var interval = _ctc._scheduler.TimeStepNsec * (ulong)_counter;
 
-                Trigger = _ctc._scheduler.Schedule(interval, TimerTickCallback, Number);
+                _trigger = _ctc._scheduler.Schedule(interval, TimerTickCallback, _number);
 
                 Log.Debug(Category.CTC, "Channel {0} timer scheduled ({1}) at {2}",
-                                        Number, interval, _ctc._scheduler.CurrentTimeNsec);
+                                        _number, interval, _ctc._scheduler.CurrentTimeNsec);
             }
 
             /// <summary>
@@ -402,7 +403,7 @@ namespace PERQemu.IO.Z80
 
                 var oldIntr = InterruptRequested;
 
-                if (Running && Control.HasFlag(ControlFlags.Interrupt))
+                if (_running && Control.HasFlag(ControlFlags.Interrupt))
                 {
                     // Poke the Z80
                     InterruptRequested = true;
@@ -416,22 +417,18 @@ namespace PERQemu.IO.Z80
                     // This is an efficiency measure; the CTC on the IOB generates bit clocks
                     // for RS-232 and speech on channels 0 & 1; they don't interrupt and our
                     // simulated devices aren't clocking actual bit streams fercryinoutloud.
-                    Trigger = null;
+                    _trigger = null;
                     InterruptRequested = false;
                     Log.Debug(Category.CTC, "[Channel {0} timer not renewed]", context);
 
                     // HOWEVER, for baud rate generation we DO want to inform the "real"
                     // device (if registered) that the timer's rate has changed/been enabled
                     // so that it can compute and set a baud rate for the external device...
-                    if (TimerClient != null)
-                    {
-                        TimerClient.NotifyRateChange(Number, Counter);
-                    }
+                    TimerClient?.NotifyRateChange(_number, _counter);
                 }
 
                 // Rescan if status changed
-                if (InterruptRequested != oldIntr)
-                    _ctc.AssertInterrupt();
+                if (InterruptRequested != oldIntr) _ctc.AssertInterrupt();
             }
         }
     }

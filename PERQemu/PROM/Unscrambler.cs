@@ -36,7 +36,7 @@ namespace PERQemu
     /// extended to replace the silly Perl script hacks used to rebuild other
     /// synthesized ROMs, though this is typically one-time, "fire and forget".
     /// </remarks>
-    public sealed class Unscrambler : CPU
+    public sealed class Unscrambler : CPUBoard
     {
         static Unscrambler()
         {
@@ -54,7 +54,7 @@ namespace PERQemu
 
         public Unscrambler()
         {
-            _wcs = new ControlStore();
+            _wcs = new CPU.ControlStore();
             _wcs.DisableROM();
         }
 
@@ -222,7 +222,7 @@ namespace PERQemu
         }
 
         // Just create our own private (temporary) WCS!
-        private ControlStore _wcs;
+        CPU.ControlStore _wcs;
     }
 }
 
