@@ -8,6 +8,16 @@ avoid wasting precious time scrolling to the end. :-)
 
 December, 2024:
 
+    3. Sigh.  It finally became necessary to upgrade my "ancient" MacPro3,1 to
+    Mac OS X 10.13, as the number of things that were no longer supported but
+    still working inevitably slid into not working well enough to still get by.
+    I am relieved to report that the trickery used to upgrade in place was
+    successful, and the venerable old beast is still intact -- so far no issues
+    or incompatibilities with the PERQemu development environment.  The baseline
+    for testing on Mac OS is now Mono 6.12.0.206 on High Sierra.  Documentation
+    updates will follow as I prepare to push out a new release with all of the
+    new PERQ-2 disk images.  Real Soon Now.
+
     2. Updated the UserGuide.pdf to reflect changes/updates since v0.5.5.
     Bumped the version to v0.6.5 to roll out a final pre-release to main; after
     more extensive platform testing the v0.7.x release will include a set of
