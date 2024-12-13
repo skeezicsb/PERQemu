@@ -123,7 +123,7 @@ namespace PERQemu.IO.Z80
                 }
                 else
                 {
-                    var rsb = new PhysicalPort(this, Settings.RSADevice, Settings.RSASettings, "B");
+                    var rsb = new PhysicalPort(this, Settings.RSBDevice, Settings.RSBSettings, "B");
                     _z80sioB.AttachPortDevice(0, rsb);
                     _timerB.AttachDevice(0, rsb);
                 }

@@ -8,6 +8,12 @@ avoid wasting precious time scrolling to the end. :-)
 
 December, 2024:
 
+    4. Some quality-of-life updates.  Gracefully handle the case where a host
+    serial port throws an exception by unassigning the port and continuing.  Try
+    to unwedge the Windows console by reverting to the Buffer* vs Window* stuff
+    (works for PERQdisk) and test it without "legacy mode" to see if it behaves
+    a little better.
+
     3. Sigh.  It finally became necessary to upgrade my "ancient" MacPro3,1 to
     Mac OS X 10.13, as the number of things that were no longer supported but
     still working inevitably slid into not working well enough to still get by.
@@ -480,4 +486,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Sun Dec  8 14:41:27 PST 2024
+Last update: skeezics    Thu Dec 12 18:55:03 PST 2024

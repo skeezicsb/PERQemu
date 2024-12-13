@@ -18,8 +18,8 @@
 //
 
 using System;
-using System.Collections.Generic;
 using System.Text;
+using System.Collections.Generic;
 
 namespace PERQemu.UI
 {
@@ -39,8 +39,8 @@ namespace PERQemu.UI
 
             _prompt = "";
 
-            _lastWidth = Console.WindowWidth;
-            _lastHeight = Console.WindowHeight;
+            _lastWidth = Console.BufferWidth;
+            _lastHeight = Console.BufferHeight;
 
             InitEditKeyMap();
             InitIntlKeyMap();
@@ -253,15 +253,19 @@ namespace PERQemu.UI
         /// </summary>
         bool UpdateOrigin()
         {
-            if (Console.WindowHeight != _lastHeight || Console.WindowWidth != _lastWidth)
+            // Snapshot these to avoid a possible race condition
+            var bh = Console.BufferHeight;
+            var bw = Console.BufferWidth;
+
+            if (bh != _lastHeight || bw != _lastWidth)
             {
                 // Origin row is "sticky" relative to the bottom of the window
-                _originRow = Math.Max(0, Console.WindowHeight - (_lastHeight - _originRow));
-                _originRow = Math.Min(Console.WindowHeight - 1, _originRow);
+                _originRow = Math.Max(0, bh - (_lastHeight - _originRow));
+                _originRow = Math.Min(bh - 1, _originRow);
                 Console.SetCursorPosition(_originColumn, _originRow);
 
-                _lastWidth = Console.WindowWidth;
-                _lastHeight = Console.WindowHeight;
+                _lastWidth = bw;
+                _lastHeight = bh;
                 return true;
             }
 
@@ -275,16 +279,18 @@ namespace PERQemu.UI
         bool UpdateCursor(int col, int row)
         {
             var changed = false;
+            var bh = Console.BufferHeight;
+            var bw = Console.BufferWidth;
 
             // Check if the cursor is out of bounds
-            if (col < 0 || col > (Console.WindowWidth - 1) ||
-                row < 0 || row > (Console.WindowHeight - 1))
+            if (col < 0 || col > (bw - 1) ||
+                row < 0 || row > (bh - 1))
             {
                 col = Math.Max(0, col);
-                col = Math.Min(Console.WindowWidth - 1, col);
+                col = Math.Min(bw - 1, col);
 
                 row = Math.Max(0, row);
-                row = Math.Min(Console.WindowHeight - 1, row);
+                row = Math.Min(bh - 1, row);
                 changed = true;
             }
 
@@ -311,6 +317,9 @@ namespace PERQemu.UI
                 DisplayPrompt();
             }
 
+            var bh = Console.BufferHeight;
+            var bw = Console.BufferWidth;
+
             // Current input string is shorter than the last?  Overprint with
             // spaces to erase, and always add one extra to account for cursor
             // when a long input line wraps
@@ -322,19 +331,19 @@ namespace PERQemu.UI
             // Compute new cursor position
             int col = _originColumn + _textPosition;
             int row = _originRow;
-            int lines = ((_originColumn + Math.Max(_input.Length, _lastInputLength)) / Console.WindowWidth) + 1;
+            int lines = ((_originColumn + Math.Max(_input.Length, _lastInputLength)) / bw) + 1;
 
             // Has input wrapped at the bottom of the screen?
-            if (row + lines > Console.WindowHeight)
+            if (row + lines > bh)
             {
-                _originRow = Console.WindowHeight - lines;
+                _originRow = bh - lines;
             }
 
             // Account for line wrap
-            if (col > Console.WindowWidth - 1)
+            if (col > bw - 1)
             {
-                col = ((_originColumn + _textPosition) % Console.WindowWidth);
-                row = _originRow + ((_originColumn + _textPosition) / Console.WindowWidth);
+                col = ((_originColumn + _textPosition) % bw);
+                row = _originRow + ((_originColumn + _textPosition) / bw);
             }
 
             // Move cursor to text position for next input and turn it back on
@@ -641,7 +650,7 @@ namespace PERQemu.UI
 #if !DEBUG
                                 if (!c.Hidden)
 #endif
-                                    result.Completions.Add(c.ToString());
+                                result.Completions.Add(c.ToString());
                             }
                         }
 

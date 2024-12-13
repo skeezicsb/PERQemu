@@ -246,7 +246,7 @@ namespace PERQemu.UI
                 // quit message when any of them closes or only the last one?
             }
 #if DEBUG
-            else
+            else if (e.type != SDL.SDL_EventType.SDL_TEXTINPUT)
             {
                 Log.Detail(Category.UI, "Unhandled event type {0}, user.type {1}", e.type, e.user.type);
             }
