@@ -462,10 +462,6 @@ C#/Mono System.IO.Ports.SerialPort implementation that will require a reworking
 of the emulator's port handling.
 
 
-PERQ-2/EIO support is still highly experimental, but if you want to try it out
-there are some known quirks/bugs to be aware of:
-
-
 4. PNX boot failure at DDS 142.
 
 Symptoms:  Attempting to boot from the PNX installation floppies causes the DDS
@@ -662,7 +658,7 @@ v0.1 - First public release.
 
 Update history:
 
-12/12/2024 - skeezicsb - v0.6.5 (experiments)
+12/31/2024 - skeezicsb - v0.6.5 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)

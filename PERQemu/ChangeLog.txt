@@ -8,6 +8,22 @@ avoid wasting precious time scrolling to the end. :-)
 
 December, 2024:
 
+    5. Purely for shitzengiggles, updated the EIO RTC to test the Z80's time
+    setting code.  The PERQSystem now remembers the accumulated cycles executed
+    since power on, and the RTC computes the local time based on that.  This
+    means the RTC runs at the emulation rate, so time elapses in the emulator
+    accordingly.
+
+    Next update will roll out copyright date bump and some other minor changes.
+    Farewell to 2024, and probably to human civilization as we descend into 2025
+    and unfathomable idiocy.  If the fundamental building blocks of the universe
+    are hydrogen and stupidity, this will be the year we burn off most of the
+    remaining hydrogen.  While I can muster the energy to continue, PERQemu will
+    see updates and improvements.  As the world burns, THIS is my escape into
+    joy, as frivolous and pointless as it may seem.  I offer it up with love and
+    defiance in the face of a meaningless world brimming with angry morons bent
+    on cruelty, destruction and misery.  May the goofy old PERQ live on forever!
+
     4. Some quality-of-life updates.  Gracefully handle the case where a host
     serial port throws an exception by unassigning the port and continuing.  Try
     to unwedge the Windows console by reverting to the Buffer* vs Window* stuff
@@ -486,4 +502,4 @@ February, 2023:
 
 
 ---
-Last update: skeezics    Thu Dec 12 18:55:03 PST 2024
+Last update: skeezics    Tue Dec 31 20:01:22 PST 2024

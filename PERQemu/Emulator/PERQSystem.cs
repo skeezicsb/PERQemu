@@ -189,6 +189,7 @@ namespace PERQemu
 
         public CPU CPU => _cpu.Processor;
         public Scheduler Scheduler => _cpu.Scheduler;
+        public ulong Uptime => _uptime;
 
         public MemoryBoard Memory => _mem;
         public VideoController VideoController => _mem.Video;
@@ -319,6 +320,7 @@ namespace PERQemu
                     break;
 
                 case RunState.Reset:
+                    _uptime += _cpu.Scheduler.CurrentTimeNsec;
                     _cpu.Reset();
                     _mem.Reset();
                     _ioBus.Reset();
@@ -820,6 +822,9 @@ namespace PERQemu
         // Controlly bits
         ExecutionMode _mode;
         volatile RunState _state;
+
+        // This is pure Velveeta
+        ulong _uptime;
 
         delegate void RunDelegate();
     }

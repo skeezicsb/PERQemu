@@ -70,6 +70,8 @@ namespace PERQemu.IO.Z80
         // No hard disk seek circuit on the EIO
         public override Z80CTC CTC => null;
 
+        // For debugging mostly
+        public Oki5832RTC RTC => _rtc;
 
         /// <summary>
         /// Initializes the EIO devices and attaches them to the bus.

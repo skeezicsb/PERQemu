@@ -22,6 +22,7 @@ using System.Text;
 using System.Diagnostics;
 using System.Collections.Generic;
 
+using PERQemu.IO.Z80;
 using PERQemu.Debugger;
 
 namespace PERQemu
@@ -300,10 +301,18 @@ namespace PERQemu
         [Command("debug z80 dump rtc")]
         void DumpRTC()
         {
-            var rtc = new IO.Z80.Oki5832RTC(0xaa);  // fake address for testing
+            // If the PERQ is running and has an EIO, dump the active RTC!
+            if (!CheckSys()) return;
 
-            // This is super basic for now; just verify the registers are valid
-            Console.WriteLine(rtc);
+            if (PERQemu.Config.Current.IOBoard == Config.IOBoardType.EIO)
+            {
+                var eio = PERQemu.Sys.IOB.Z80System as EIOZ80;
+
+                eio.RTC.DumpRTC();
+                return;
+            }
+
+            Console.WriteLine("This PERQ doesn't have an RTC chip.");
         }
 
         // todo: ram & rom disassembler, like the perq microcode disassembler?
