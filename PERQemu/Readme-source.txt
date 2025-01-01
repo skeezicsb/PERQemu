@@ -32,18 +32,15 @@ code and clean up all of my quirks, shortcuts, errors and other questionable
 coding choices. ;-)
 
 In the meantime, this is more Mac-focused, since that's the primary development
-platform I have available.  For now it runs on MacOS X versions as old as 10.11
-and 10.13; it hasn't been tested on newer versions of macOS or non-Intel Macs.
-PERQemu is now tested almost exclusively in 64-bit mode.  It's unlikely to run
-on 32-bit Mono due to OS limitations.
+platform I have available.  For now it runs on MacOS X versions as old as 10.13;
+it hasn't yet been tested on newer versions of macOS or non-Intel Macs.  PERQemu
+is now tested exclusively in 64-bit mode and is unlikely to run on 32-bit Mono
+due to OS limitations.
 
 Testing on Windows and Linux (in a VM) is now being integrated, but due to the
 sprawling, interactive nature of the emulator there are no automated tests so
 I mostly use the same QA approach that 3RCC used, for better or worse: if it
 runs the POS "burn in" code (i.e. the SIGGRAPH demos) it's good to go!
-
-[With the pull request to merge this back into the master branch, this file
-could use yet another rewrite...]
 
 
 1.2  Version History
@@ -52,8 +49,7 @@ could use yet another rewrite...]
 The next major release will incorporate all of the changes since v0.5.0 to add
 PERQ-2 configurations, along with an expanded library of pre-built, bundled
 hard disk images.  This is currently in development on the "experiments" branch
-and is slated to be released to main as PERQemu v0.7.5, hopefully by the end of
-2024 or early in 2025.
+and is slated to be released to main as PERQemu v0.7.5, hopefully early in 2025.
 
 PERQemu v0.6.5 incorporates all of the changes since v0.5.5 to bring up the EIO
 board and new Z80 subsystem.  All of the PERQ-2/EIO 20-bit configurations are
@@ -784,6 +780,7 @@ PERQ info and lore.  More to come!
 
 Update history:
 
+v2.5 - 1/1/2025 - skeezics
 v2.4 - 12/8/2024 - skeezics - updated for the v0.6.5 interim release
 v2.3 - 3/25/2024 - skeezics
 v2.2 - 2/18/2024 - skeezics - updated for the v0.5.5 interim release

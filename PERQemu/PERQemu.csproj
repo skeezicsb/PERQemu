@@ -627,7 +627,7 @@
     <None Include="PROM\oioz80.lst">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="ChangeLog-Old.txt" />
+    <None Include="ChangeLog-Older.txt" />
     <None Include="PROM\cioboot.rom">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -694,7 +694,7 @@
     <None Include="Conf\s6lisp.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="ChangeLog.txt" />
+    <None Include="ChangeLog-Old.txt" />
     <None Include="SharpPcap.dll.config">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -728,6 +728,9 @@
     <None Include="Docs\Hardware References\EIO_Disk_Quick_Feb83.txt" />
     <None Include="Docs\HardDisks.txt" />
     <None Include="Docs\Hardware References\serial.memo" />
+    <None Include="ChangeLog.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
