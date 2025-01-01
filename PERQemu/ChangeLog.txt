@@ -1,0 +1,17 @@
+﻿PERQemu "experiments" branch ChangeBlog
+
+
+Summary of changes on the development branch since the v0.6.5 interim release.
+Previous notes moved to ChangeLog-Old.txt.
+
+
+January, 2025:
+
+    1. Bumped the copyright notices and version number to v0.6.6 to snapshot at
+    the start of the new year.  Reassessed and reviewed the state of the world
+    (sheer horror) and the code base (looking up) and am resolved to get to v1.0
+    before the year is out, or die trying.
+
+
+---
+Last update: skeezics    Wed Jan  1 08:23:20 PST 2025
