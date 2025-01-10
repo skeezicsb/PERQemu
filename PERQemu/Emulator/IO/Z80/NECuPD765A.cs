@@ -86,7 +86,9 @@ namespace PERQemu.IO.Z80
             }
 
             for (var i = 0; i < _pcn.Length; i++)
+            {
                 _pcn[i] = 0;
+            }
 
             _commandData.Clear();
             _statusData.Clear();
@@ -857,13 +859,14 @@ namespace PERQemu.IO.Z80
             }
 
             // Get the next byte to send
-            _readByte = _transfer.SectorData.ReadByte((uint)_transfer.TransferIndex++);
+            _readByte = _transfer.SectorData.ReadByte((uint)_transfer.TransferIndex);
 
             Log.Detail(Category.FloppyDisk, "Read byte 0x{0:x2} from index {1}",
-                                            _readByte, _transfer.TransferIndex - 1);
+                                            _readByte, _transfer.TransferIndex);
 
             // Tell the DMA we're ready and schedule the next one
             _readDataReady = true;
+            _transfer.TransferIndex++;
             _scheduler.Schedule(ByteTimeNsec, SectorByteReadCallback);
         }
 
@@ -910,21 +913,18 @@ namespace PERQemu.IO.Z80
                 SelectedUnit.Write(_transfer.SectorData);
             }
 
-            // Was the request aborted by the DMA controller?
-            // Did we reach the last sector in the track?  
-            if (_transfer.Aborted || _transfer.Sector == _transfer.EndOfTrack)
-            {
-                // We're done, so report success
-                FinishTransfer(_transfer);
-                return;
-            }
-
-            // Nope!  Increment the sector counter and go 'round again
-            _transfer.Sector++;
-
-            _scheduler.Schedule(SectorTimeNsec, SectorTransferCallback);
-
-            Log.Detail(Category.FloppyDisk, "Next sector transfer queued");
+            //
+            // The uPD765 does multi-sector operations by default; I thought this
+            // may be taken advantage of by the PERQ during the special FloppyBoot
+            // command, but closer examination of the schematics shows that both
+            // IOB and EIO wire the DMA chip's TCL or EOP line to the '765s TC pin.
+            // Consulting three different datasheets for the Am9517/i8237 (AMD,
+            // Intel and NEC), all three have _slightly_ different wording, but
+            // the gist is that TC asserted means the floppy controller breaks the
+            // multi-sector loop and interrupts to signal completion.  Thus, we no
+            // longer check here if we've been terminated or reached end of track!
+            //
+            FinishTransfer(_transfer);
         }
 
         #endregion
@@ -1522,7 +1522,8 @@ namespace PERQemu.IO.Z80
     and the results are purely non-deterministic; it exhibits completely random
     behavior from the various software layers based, I can only surmise, on some
     highly specific quirks of the original IOB hardware/software implementation.
-    The best part is that it's all sure to change when we try to run v10.017 on
-    this thing, where it DOES look like the use all the FDC commands (except the
-    search functions).  Just shoot me now.
+    
+    The CIO/EIO (v10.017+) rewrite is a bazillion times cleaner, but it still
+    has some quirks and more torture testing is needed to see how the high-level
+    software, microcode and Z80 all handle exceptional conditions.  Someday.
 */

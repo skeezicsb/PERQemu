@@ -111,6 +111,13 @@ namespace PERQemu.IO
 
         public void LoadDataHigh(ChannelName chan, int value)
         {
+            // On the T4, addr bits <23:20> are in value<11:8>; save them so they
+            // can be properly unfrobbed later
+            if (CPUBoard.CPUBits == 24)
+            {
+                value = ((value & 0x0f00) >> 4) | (value & 0x000f);
+            }
+
             _channels[(int)chan].DataAddr.Hi = ~value;
             Log.Debug(Category.DMA, "{0} data buffer addr (high) set to {1:x}", chan, value);
         }
@@ -123,11 +130,20 @@ namespace PERQemu.IO
 
         public void LoadHeaderHigh(ChannelName chan, int value)
         {
+            // If EIO header count is bits <7:4> of this word (irrelevant for IOB)
+            if (PERQemu.Sys.IOB.IsEIO)
+            {
+                _channels[(int)chan].HeaderCount = (byte)(~(value >> 4) & 0x0f);
+
+                // And pluck the extra address bits, as above
+                if (CPUBoard.CPUBits == 24)
+                {
+                    value = ((value & 0x0f00) >> 4) | (value & 0x000f);
+                }
+            }
+
             _channels[(int)chan].HeaderAddr.Hi = ~value;
             Log.Debug(Category.DMA, "{0} header buffer addr (high) set to {1:x}", chan, value);
-
-            // If EIO header count is bits <7:4> of this word (irrelevant for IOB)
-            _channels[(int)chan].HeaderCount = (byte)(~(value >> 4) & 0x0f);
         }
 
         public void LoadHeaderLow(ChannelName chan, int value)
@@ -176,7 +192,7 @@ namespace PERQemu.IO
             if (PERQemu.Sys.IOB.IsEIO)
             {
                 // For EIO, only the upper bits are inverted
-                unfrobbed = (~addr.Hi & 0x0f0000) | addr.Lo;
+                unfrobbed = (~addr.Hi & 0xff0000) | addr.Lo;
             }
             else
             {

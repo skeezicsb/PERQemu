@@ -199,6 +199,7 @@ namespace PERQmedia
             IsLoaded = false;
             IsModified = false;
             Filename = string.Empty;
+            FileInfo.Clear();
         }
 
         

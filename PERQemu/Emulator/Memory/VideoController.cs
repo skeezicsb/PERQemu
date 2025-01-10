@@ -297,10 +297,17 @@ namespace PERQemu.Memory
         /// <remarks>
         /// Currently the Configurator allows up to 8MB (4MW) of memory.  There
         /// were a few obscure references to Accent supporting this much RAM but
-        /// no 8MB boards are known to have been produced.  To support the full
+        /// no 8MB boards are known to have been produced.  (To support the full
         /// 32MB/16MW address range, the display and cursor address registers
         /// and microcode/software support would have to be rewritten and the
-        /// full 16 bits used as the base address.
+        /// full 16 bits used as the base address.)
+        /// 
+        /// NOTE: a discrepancy in the documentation indicates that only bit 2
+        /// is used (as address bit 20) on the 24-bit board;  S. Clark memo and
+        /// a note in MakeVMBoot.Pas implies that the screen "must be on lower 
+        /// 4 meg memory board" (so a PERQ with *two* 4MB boards was tested!?).
+        /// We'll try it with just bit two to see if it eliminates the strange
+        /// artifacts when booting in 24 bit mode.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         int UnFrobAddress(int value)
@@ -318,7 +325,7 @@ namespace PERQemu.Memory
             }
 
             // Rare 4MB board (T4)
-            return ((value & 0xc) << 18 | (value & 0xfff0) << 4);
+            return (((value & 0x4) << 14) | (value & 0xfff0)) << 4;
         }
 
 

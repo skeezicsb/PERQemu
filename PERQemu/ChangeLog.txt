@@ -7,6 +7,13 @@ Previous notes moved to ChangeLog-Old.txt.
 
 January, 2025:
 
+    2. Fixed the floppy DMA handling that was causing grief with the EIO Z80.
+    This is a testing snapshot to try out some other small fixes (24-bit) and
+    incorporate some PERQmedia tweaks that help with loading dodgy POS floppies.
+    Bumped the UserGuide.pdf as well.  Still working toward building a couple
+    of Micropolis and MFM disk images with demos and games and goodies as well
+    as other fixes for a v0.7.x release.  Real Soon Now.  Really.
+
     1. Bumped the copyright notices and version number to v0.6.6 to snapshot at
     the start of the new year.  Reassessed and reviewed the state of the world
     (sheer horror) and the code base (looking up) and am resolved to get to v1.0
@@ -14,4 +21,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Wed Jan  1 08:23:20 PST 2025
+Last update: skeezics    Fri Jan 10 00:47:07 PST 2025

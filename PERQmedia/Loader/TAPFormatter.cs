@@ -204,7 +204,7 @@ namespace PERQmedia
 
                             var label = new byte[size];
                             fs.Read(label, 0, label.Length);
-                            dev.FileInfo.TextLabel = label;
+                            dev.FileInfo.ImageLabel = label;
 
                             if ((size & 1) != 0) fs.ReadByte();     // Toss pad byte
                         }
