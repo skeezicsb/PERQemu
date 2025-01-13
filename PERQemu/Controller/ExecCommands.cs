@@ -127,14 +127,7 @@ namespace PERQemu
         void ShowBootChar()
         {
             Console.Write("Bootchar is ");
-            if (PERQemu.Controller.BootChar != 0)
-            {
-                Console.WriteLine((char)PERQemu.Controller.BootChar);
-            }
-            else
-            {
-                Console.WriteLine("unset");
-            }
+            Console.WriteLine(PERQemu.Controller.BootChar != 0 ? (char)PERQemu.Controller.BootChar : "unset");
         }
 
 

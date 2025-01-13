@@ -279,8 +279,9 @@ Fixed in v0.5.3:
 
 Added in v0.5.8:
   - PNX 3 is now also confirmed to boot and run (from floppy) with an
-    included video patch.  (I may be missing one critical floppy needed
-    to complete a full hard disk install, however.  Watch this space.)
+    included video patch.  (The available floppy installation set is
+    incomplete and needs to be re-imaged before a full hard disk
+    installation is possible, however.  Watch this space.)
   - Debug pre-release for early Micropolis disk support testing.
 
 
@@ -519,7 +520,9 @@ v0.7 - TBD
   - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
 
 v0.6.6 - Experiments branch
-  - Bug fixes and other updates
+  - Video update so floppy activity icon is visible during slow floppy boots
+  - Update for EIO RTC chip programming and time handling
+  - Bug fixes and some documentation updates
 
 v0.6.5 - Main branch (v0.7 pre-release)
   - MFM support for PERQ-2/Tx, multiple 5.25" hard disks
@@ -661,7 +664,7 @@ v0.1 - First public release.
 
 Update history:
 
-1/10/2025 - skeezicsb - v0.6.6 (experiments)
+1/12/2025 - skeezicsb - v0.6.6 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)

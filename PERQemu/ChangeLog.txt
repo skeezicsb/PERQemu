@@ -7,6 +7,22 @@ Previous notes moved to ChangeLog-Old.txt.
 
 January, 2025:
 
+    3. Updated the video display handling so that the floppy activity icon is
+    now visible during slow floppy boots.  It's pretty subtle so you might not
+    notice it.
+
+    Also:  POS G.85 booted from floppy.  Don't have full installation media or
+    any sources (dang) but may have a tape image to load.  This one is super
+    rare.  PNX 3 installation dead in the water, as most of the floppies
+    are missing cylinder zero.  This is typical for POS floppies, but PNX DOES
+    actually use that track -- so we won't get a PNX 3 image until the original
+    diskettes are re-scanned.  Bummer.  It has demos?  Working on PNX 5 boot
+    issues (bad VFY test).  Plus, made some progress on 24-bit support just
+    because I was in the mood to fool around a little.  Got way farther than
+    expected!  Actually was able to run an Accent S6 image (20 bit) on the 24-
+    bit CPU with working DMA (but a video glitch that needs investigation).
+    All of this is definitely NOT procrastination, no way, not at all.  Nope.
+
     2. Fixed the floppy DMA handling that was causing grief with the EIO Z80.
     This is a testing snapshot to try out some other small fixes (24-bit) and
     incorporate some PERQmedia tweaks that help with loading dodgy POS floppies.
@@ -21,4 +37,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Fri Jan 10 00:47:07 PST 2025
+Last update: skeezics    Sun Jan 12 21:47:07 PST 2025
