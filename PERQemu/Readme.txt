@@ -465,7 +465,7 @@ of the emulator's port handling.
 
 4. PNX boot failure at DDS 142.
 
-Symptoms:  Attempting to boot from the PNX installation floppies causes the DDS
+Symptom:  Attempting to boot from the PNX installation floppies causes the DDS
 to stop at 142 and the process to hang.
 
 Workaround:  The version of the VFY microcode included on the available floppies
@@ -478,14 +478,17 @@ detect and fix this has been developed and is included in PERQemu v0.5.8 and
 beyond.
 
 Update: The PNX 5 boot floppy uses different microcode that fails in the same
-way but in a different location; looking to update the patch or figure out if
-the Victim register implementation needs to be relaxed to allow PNX to run, as
-this busted code DOES work on the actual hardware.  Hmmm.
+way but in a different location.  The previous patch for PNX 2 and 3 has been
+backed out, as the Victim register implementation has been updated to follow the
+hardware schematics more closely -- this seems to have fixed the VFY/boot issue
+for every version of PNX I've teseted, with no apparent ill effects in Accent or
+POS.  PNX users can update to PERQemu v0.6.6 (experiments) or the next release
+for the bug fix.
 
 
 5. PNX video glitches.
 
-Symptoms: The PNX 2 window manager sometimes randomly paints its background 
+Symptom: The PNX 2 window manager sometimes randomly paints its background 
 pattern with strange stripes or other visual anomalies.
 
 Workaround:  While the odd background pattern is visually distracting it does
@@ -493,6 +496,14 @@ not appear to cause any issues running the OS.  Sometimes dragging a window
 around will cause it to repaint properly.  Initial analysis shows that this
 might be a RasterOp glitch specific to the PNX 2 implementation, as it does not
 affect PNX 1 or other OSes.
+
+Symptom:  PNX 5 glitches when writing text to the initial boot screen and drops
+into the kernel debugger.
+
+Workaround:  None at this time.  Investigating whether this is a corrupted boot
+image or yet another PNX difference in how their microcode drives the hardware.
+Affects PERQ2-T2 configurations only (if anyone else is attempting to perform a
+bare metal install from the Bitsavers floppies).
 
 
 5.0 Version History and Roadmap
@@ -664,7 +675,7 @@ v0.1 - First public release.
 
 Update history:
 
-1/12/2025 - skeezicsb - v0.6.6 (experiments)
+1/14/2025 - skeezicsb - v0.6.6 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)

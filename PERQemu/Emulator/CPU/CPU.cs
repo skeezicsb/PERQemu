@@ -98,6 +98,9 @@ namespace PERQemu.Processor
             // Decode the next instruction
             Instruction uOp = _ustore.GetInstruction(_usequencer.PC);
 
+            // Update the victim (if not holding)
+            _usequencer.Victim = _usequencer.PC;
+
 #if DEBUG
             // Breakpoint set at this address?
             if (_system.Debugger.WatchedMicroaddress.IsWatched(_usequencer.PC))
@@ -484,13 +487,25 @@ namespace PERQemu.Processor
                 case AField.NextOp:
                     if (OpFileEmpty)
                     {
-                        // Only latch if Victim is empty
-                        if (_usequencer.Victim == 0)
+                        // Only latch if not already holding
+                        if (!_usequencer.HoldVictim)
                         {
-                            _usequencer.Victim = _usequencer.PC;
+                            // Block further updates until Revive/ReadVictim!
+                            _usequencer.HoldVictim = true;
 
                             Log.Debug(Category.Sequencer, "Victim register is now {0:x4}", _usequencer.Victim);
                         }
+                        /*
+                                Oh.  So they do this regularly, testing to see if the word they want is
+                                in the opfile by repeatedly testing until the revivevictim succeeds!?
+                                turn off logging (we never used to before anyway) since it produces an
+                                endless stream of warnings otherwise.  Hmm.
+                        else
+                        {
+                            // throw new InvalidOperationException("NextOp attempted while in Victim hold");
+                            Log.Warn(Category.Sequencer, "NextOp attempted while in Victim hold @ PC {0:x4}", _usequencer.PC);
+                        }
+                        */
                     }
                     else
                     {
@@ -807,8 +822,8 @@ namespace PERQemu.Processor
                                     }
                                     Log.Debug(Category.Sequencer, "Read from Victim latch {0:x4}", _usequencer.Victim);
 
-                                    // ReadVictim clears the latch, does not set PC
-                                    _usequencer.Victim = 0;
+                                    // ReadVictim clears the hold, does not set PC
+                                    _usequencer.HoldVictim = false;
                                     break;
 
                                 case 0x1:   // Multiply / DivideStep

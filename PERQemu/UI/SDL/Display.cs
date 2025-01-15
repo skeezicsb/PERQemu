@@ -74,7 +74,6 @@ namespace PERQemu.UI
 
             // Just once at power on :-)
             _warmedUp = false;
-            _fader = 0d;
         }
 
         /// <summary>
@@ -283,15 +282,15 @@ namespace PERQemu.UI
         /// </summary>
         public void Refresh(bool enabled)
         {
+#if DEBUG
             if (enabled != _enabled)
             {
-#if DEBUG
                 Status();
                 Console.Write("Screen is now {0}, ", enabled ? "ON" : "OFF");
                 Console.WriteLine("DDS @ {0} (clocks {1})", PERQemu.Sys.CPU.DDS, PERQemu.Sys.CPU.Clocks);
-#endif
-                _enabled = enabled;
             }
+#endif
+            _enabled = enabled;
 
             SDL.SDL_PushEvent(ref _renderEvent);
         }
@@ -381,8 +380,10 @@ namespace PERQemu.UI
                 // If not warmed up, bump our fader
                 if (!_warmedUp)
                 {
+                    _fadeCount++;
+
                     // Adjust the fade until it saturates
-                    _fader = (_frames * _frames) * FADE_RATE;
+                    _fader = (_fadeCount * _fadeCount) * FADE_RATE;
                     if (_fader > 255.0)
                     {
                         _warmedUp = true;
@@ -663,6 +664,10 @@ namespace PERQemu.UI
 
             // Restore
             SDL.SDL_SetRenderTarget(_sdlRenderer, _defaultTexture);
+
+            // Lock and load
+            _fader = 0d;
+            _fadeCount = 0;
         }
 
         /// <summary>
@@ -724,6 +729,7 @@ namespace PERQemu.UI
         bool _enabled;
         int _freeY;         // Y offset in the display for "scrolling"
         int _freeHeight;    // _displayHeight + n extra lines (128?)
+        int _fadeCount;
         double _fader;
 
         // Frame count

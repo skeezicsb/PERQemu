@@ -7,6 +7,19 @@ Previous notes moved to ChangeLog-Old.txt.
 
 January, 2025:
 
+    4. Finally revisited the CPU Victim register implementation, and after more
+    careful study of the schematics corrected the emulation to be more faithful
+    to the actual hardware.  This has eliminated the need for the PNX "DDS 142"
+    boot bug (although their 16K VFY test code is still janky as hell and may
+    not actually test what they think it does).  The microcode patch that was
+    slapped together for earlier PNX versions has been removed.  PNX 5, however,
+    has some sort of video or RasterOp problem, where characters are randomly
+    painted incorrectly and the kernel drops into the debugger shortly after
+    boot.  This may be a bad boot floppy?  Investigation underway.  A couple of
+    small bug fixes to correct the previous commit (something that compiled on
+    Xamarin Studio threw an error on VS2022, first time that's happened).  This
+    should build correctly.
+
     3. Updated the video display handling so that the floppy activity icon is
     now visible during slow floppy boots.  It's pretty subtle so you might not
     notice it.
@@ -37,4 +50,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Sun Jan 12 21:47:07 PST 2025
+Last update: skeezics    Tue Jan 14 22:57:46 PST 2025

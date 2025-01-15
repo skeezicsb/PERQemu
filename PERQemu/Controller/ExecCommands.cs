@@ -120,14 +120,17 @@ namespace PERQemu
         [Command("bootchar", "Set the boot character (selects OS to boot)")]
         void SetBootChar(char key)
         {
-            PERQemu.Controller.BootChar = (byte)key;
+            if ((key >= 'A' && key <= 'Z') || (key >= 'a' && key <= 'z'))
+                PERQemu.Controller.BootChar = (byte)key;
+            else
+                Console.WriteLine($"'{key}' isn't a valid PERQ boot letter!");
         }
 
         [Command("bootchar", "Show the boot character")]
         void ShowBootChar()
         {
             Console.Write("Bootchar is ");
-            Console.WriteLine(PERQemu.Controller.BootChar != 0 ? (char)PERQemu.Controller.BootChar : "unset");
+            Console.WriteLine(PERQemu.Controller.BootChar != 0 ? $"'{(char)PERQemu.Controller.BootChar}'" : "unset");
         }
 
 
