@@ -236,6 +236,14 @@ namespace PERQemu.Processor
             // Jump to where we need to go...
             _usequencer.DispatchJump(uOp);
 
+#if DEBUG
+            // Watched Qcode?  Check here if we've done a NextOp _or_ NextInst
+            if ((uOp.A == AField.NextOp || uOp.JMP == JumpOperation.NextInstReviveVictim) &&
+                _system.Debugger.WatchedOpCodes.IsWatched(_lastOpcode))
+            {
+                _break = _system.Debugger.WatchedOpCodes.BreakpointReached(_lastOpcode);
+            }
+#endif
             return _break;
         }
 
@@ -495,17 +503,8 @@ namespace PERQemu.Processor
 
                             Log.Debug(Category.Sequencer, "Victim register is now {0:x4}", _usequencer.Victim);
                         }
-                        /*
-                                Oh.  So they do this regularly, testing to see if the word they want is
-                                in the opfile by repeatedly testing until the revivevictim succeeds!?
-                                turn off logging (we never used to before anyway) since it produces an
-                                endless stream of warnings otherwise.  Hmm.
-                        else
-                        {
-                            // throw new InvalidOperationException("NextOp attempted while in Victim hold");
-                            Log.Warn(Category.Sequencer, "NextOp attempted while in Victim hold @ PC {0:x4}", _usequencer.PC);
-                        }
-                        */
+                        // NB: There is no "else" here, on purpose!  If we execute
+                        // a NextOp while the Victim is holding, just continue.
                     }
                     else
                     {
@@ -533,13 +532,6 @@ namespace PERQemu.Processor
                     _incrementBPC = true;           // Increment BPC at start of next cycle
 
                     Log.Debug(Category.OpFile, "NextOp read from BPC[{0:x1}]={1:x2}", BPC, amux);
-#if DEBUG
-                    // Watched Qcode?
-                    if (_system.Debugger.WatchedOpCodes.IsWatched(amux))
-                    {
-                        _break = _system.Debugger.WatchedOpCodes.BreakpointReached(amux);
-                    }
-#endif
                     break;
 
                 case AField.IOD:

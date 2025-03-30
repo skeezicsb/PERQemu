@@ -49,12 +49,13 @@ runs the POS "burn in" code (i.e. the SIGGRAPH demos) it's good to go!
 The next major release will incorporate all of the changes since v0.5.0 to add
 PERQ-2 configurations, along with an expanded library of pre-built, bundled
 hard disk images.  This is currently in development on the "experiments" branch
-and is slated to be released to main as PERQemu v0.7.5, hopefully early in 2025.
+and is slated to be released to main as PERQemu v0.7.5, hopefully in Q2 2025.
 
-PERQemu v0.6.5 incorporates all of the changes since v0.5.5 to bring up the EIO
+PERQemu v0.6.x incorporates all of the changes since v0.5.5 to bring up the EIO
 board and new Z80 subsystem.  All of the PERQ-2/EIO 20-bit configurations are
-now configurable, with 8" Micropolis or 5.25" MFM hard disks.  This pre-release
-does not yet include additional bundled disk images.
+now configurable, with 8" Micropolis or 5.25" MFM hard disks.  These interim
+releases also include a number of bug fixes (RasterOp, Victim register) that
+correct issues with PNX installations.
 
 PERQemu v0.5.8 is an interim release to allow access to early EIO/Micropolis
 hard disk support.
@@ -536,9 +537,6 @@ files are loaded from the PROM directory at startup:
       NOTE: these are the actual ROM dumps, but with their address lines
       "unscrambled".  See PROM/Unscrambler.cs if you're not squeamish.
 
-    - RasterOp:  Two text files and a small Perl script are included to
-      build "rsc03emu.rom" and "rds00emu.rom".
-
     - Memory:  The "bkm16emu.rom" image is used by the Memory State Machine.
       The source and a small Perl hack to build it are included here.
 
@@ -780,7 +778,7 @@ PERQ info and lore.  More to come!
 
 Update history:
 
-v2.5 - 1/1/2025 - skeezics
+v2.5 - 3/28/2025 - skeezics
 v2.4 - 12/8/2024 - skeezics - updated for the v0.6.5 interim release
 v2.3 - 3/25/2024 - skeezics
 v2.2 - 2/18/2024 - skeezics - updated for the v0.5.5 interim release

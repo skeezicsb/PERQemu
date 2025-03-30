@@ -146,7 +146,7 @@ namespace PERQemu
         }
 
         [Command("debug z80 set breakpoint", "Set a Z80 breakpoint")]
-        public void SetZ80Breakpoint(BreakpointType type, int watch)
+        public void SetZ80Breakpoint(BreakpointType type, int watch, bool pause = false)
         {
             if (!CheckSys()) return;
 
@@ -157,7 +157,7 @@ namespace PERQemu
             }
 
             _bpList = GetZ80Breakpoints(type)[0];
-            SetBPInternal(type, watch);
+            SetBPInternal(type, watch, pause);
         }
 
         [Command("debug z80 reset breakpoints", "Reset Z80 breakpoint counters")]

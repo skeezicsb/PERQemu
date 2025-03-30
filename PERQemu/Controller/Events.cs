@@ -58,6 +58,7 @@ namespace PERQemu
         DDSChanged,         // For UI update, boot key
         HaltedInLoop,       // Microcode halted in loop
         Z80RunState,        // Z80 turned on or off
+        DebugBreakpoint,    // Breakpoint triggered
         HardDiskActivity,   // For blinkenlights
         FloppyActivity,     // Sure, why not
         StreamerActivity,   // Definitely this

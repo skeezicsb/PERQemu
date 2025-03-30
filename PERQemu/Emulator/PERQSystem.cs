@@ -230,6 +230,9 @@ namespace PERQemu
             }
         }
 
+        /// <summary>
+        /// Moves to a new run state as the Controller commands.
+        /// </summary>
         void OnRunStateChange(RunStateChangeEventArgs s)
         {
             _state = s.State;
@@ -774,6 +777,13 @@ namespace PERQemu
                 case WhatChanged.Z80RunState:
                     // For now, just a debug message; in future, Z80 debugger/GUI update
                     Log.Write(Category.Emulator, "Z80 power state changed: running={0}", (bool)args[0]);
+                    return;
+
+                case WhatChanged.DebugBreakpoint:
+                    // The action has already fired; if in Async mode we just want to force
+                    // the transition to Paused so the RunState isn't indeterminate)
+                    Log.Write("-- Emulation paused on breakpoint --");
+                    PERQemu.Controller.Break();
                     return;
 
                 case WhatChanged.HaltedInLoop:

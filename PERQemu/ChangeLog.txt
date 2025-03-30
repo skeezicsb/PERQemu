@@ -5,6 +5,46 @@ Summary of changes on the development branch since the v0.6.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+March, 2025:
+
+    3. Cleanup and snapshot of the RasterOp fix.  Push for platform testing.
+    Bump to v0.6.9 because yeah, you only grow old once but you can be immature
+    forever.
+
+    2. Single-step countless RasterOps through the simulation, rewrite the code
+    n ways, check and double check the PROM dumps and schematics, stare bleary
+    eyed and mystified at nonsensical results and wonder about my life choices.
+
+    Three days later:  Oh.  The test program was calculating the x coordinate
+    incorrectly for the only test that consistently failed.  I fixed the actual
+    RasterOp bug a week ago. <facepalm/>
+
+    1. Completed a mortgage refinance that probably took 10 years off my life.
+    Wells Fargo is a criminal organization and I am finally well clear of them.
+    Trying to actually breathe again and pick up where I left off:  RasterOp
+    rewrite and testing. 
+
+
+February, 2025:
+
+    3. Wrote an entire RasterOp simulator and worked out the deep mysteries of
+    the RTI, RSC and RDS PROMs.  Having finally unraveled this, I suspect a
+    Vogon contstructor fleet is gathering in orbit.
+    
+    2. Work sidetracked by another plunge down the rabbit hole into the murky
+    depths of the RasterOp machine.  PNX visual glitches unearthed an obscure
+    bug that, rather than patching through a PROM update, motivated me to look
+    again at the implementation... which I hadn't messed with for 7 YEARS!?
+    Refactored the RasterOp pipeline and bumped RSC03 to RSC04, rewrote the
+    edge table to correct the glitches, and updated the Perl hacks used to
+    build it.  Bumped PERQemu to v0.6.7 to reflect the changes.
+
+    1. Reworked and updated DMA register address frobbing (simplified for EIO).
+    Implemented Q-code breakpoints added a MachineStateChanged event to properly
+    pause execution through the ExecutionController (fixing the earlier buggy,
+    rushed implementation).
+
+
 January, 2025:
 
     4. Finally revisited the CPU Victim register implementation, and after more

@@ -182,10 +182,10 @@ namespace PERQemu.Debugger
             // I'll have mine with extra cheese
             if (_type == BreakpointType.Interrupt)
             {
-                return string.Format("{0} ({1})", val, (InterruptSource)val);
+                return $"{val} ({(InterruptSource)val})";
             }
 
-            return string.Format("0x{0:x} ({1})", val, val);
+            return $"0x{val:x} ({val})";
         }
 
         public void ShowActions()

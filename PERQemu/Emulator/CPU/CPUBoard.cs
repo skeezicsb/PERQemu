@@ -93,8 +93,13 @@ namespace PERQemu.Processor
                 if (_processor.Execute())
                 {
                     // Processor encountered a breakpoint that requested a
-                    // pause in emulation; stop the run loop and bail out
+                    // pause in emulation; stop the run loop and send a change
+                    // notification so that we transition back to Paused cleanly
+                    // (when in AsynchMode)
                     _stopAsyncThread = true;
+#if DEBUG
+                    _system.MachineStateChange(WhatChanged.DebugBreakpoint, null);
+#endif
                     break;
                 }
 

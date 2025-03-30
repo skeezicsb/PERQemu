@@ -497,6 +497,9 @@ around will cause it to repaint properly.  Initial analysis shows that this
 might be a RasterOp glitch specific to the PNX 2 implementation, as it does not
 affect PNX 1 or other OSes.
 
+[Corrected in PERQemu v0.6.9]
+
+
 Symptom:  PNX 5 glitches when writing text to the initial boot screen and drops
 into the kernel debugger.
 
@@ -504,6 +507,8 @@ Workaround:  None at this time.  Investigating whether this is a corrupted boot
 image or yet another PNX difference in how their microcode drives the hardware.
 Affects PERQ2-T2 configurations only (if anyone else is attempting to perform a
 bare metal install from the Bitsavers floppies).
+
+[Video issue corrected in PERQemu v0.6.9]
 
 
 5.0 Version History and Roadmap
@@ -530,7 +535,8 @@ v0.7 - TBD
     serial port, RTC chip, support for two hard disks
   - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
 
-v0.6.6 - Experiments branch
+v0.6.9 - Experiments branch
+  - Comprehensive RasterOp update, refactoring to fix PNX glitches
   - Video update so floppy activity icon is visible during slow floppy boots
   - Update for EIO RTC chip programming and time handling
   - Bug fixes and some documentation updates
@@ -675,7 +681,7 @@ v0.1 - First public release.
 
 Update history:
 
-1/14/2025 - skeezicsb - v0.6.6 (experiments)
+3/29/2025 - skeezicsb - v0.6.9 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)

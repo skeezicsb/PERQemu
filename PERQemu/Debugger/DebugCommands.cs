@@ -433,21 +433,10 @@ namespace PERQemu
             if (CheckSys()) PERQemu.Sys.Memory.DumpQueues();
         }
 
-        // todo: most of the really detailed rasterop debugging stuff is no longer
-        // needed?  the rasterop unit seems to be 100% now, so other than performance
-        // tuning much of this can be removed and archived...
-
-        [Command("debug set rasterop debug", "Enable extended RasterOp debugging")]
-        void SetRopDebug()
-        {
-            if (CheckSys()) PERQemu.Sys.CPU.RasterOp.Debug = true;
-        }
-
-        [Command("debug clear rasterop debug", "Disable extended RasterOp debugging")]
-        void ClearRopDebug()
-        {
-            if (CheckSys()) PERQemu.Sys.CPU.RasterOp.Debug = false;
-        }
+        // The fully-instrumented debug version of the code was removed to a special
+        // build tree, so really detailed RasterOp debugging stuff is no longer needed
+        // in typical Release builds.  Some basic info remains but much of this will
+        // likely be pruned in a future release.
 
         [Command("debug show rasterop state", "Display current RasterOp unit status")]
         void ShowRopState()
@@ -591,10 +580,8 @@ namespace PERQemu
         //
         // Breakpoints
         //
-        // ARGH!  This would be SO much easier in a GUI!  Sigh.
-        //
         [Command("debug set breakpoint", "Set a breakpoint")]
-        public void SetBreakpoint(BreakpointType type, int watch) // action (string)  ARGH
+        public void SetBreakpoint(BreakpointType type, int watch, bool pause = false)
         {
             if (!CheckSys()) return;
 
@@ -605,10 +592,10 @@ namespace PERQemu
             }
 
             _bpList = GetBreakpoints(type)[0];
-            SetBPInternal(type, watch);
+            SetBPInternal(type, watch, pause);
         }
 
-        private void SetBPInternal(BreakpointType type, int watch)
+        void SetBPInternal(BreakpointType type, int watch, bool pause)
         {
             if (watch < 0 || watch > _bpList.Range)
             {
@@ -617,6 +604,7 @@ namespace PERQemu
             }
 
             var action = GetDefaultActionFor(type);
+            action.PauseEmulation = pause;
             _bpList.Watch(watch, action);
 
             Console.WriteLine($"Breakpoint set for {_bpList.Name} {watch}");
@@ -1151,17 +1139,24 @@ namespace PERQemu
         [Command("debug unfrob")]
         void UnfrobTest(int address)
         {
+            // Quick and dirty test of the DMARegisters Unfrob routine -- doesn't
+            // require instantiating the DMARegisters as a proper test would but
+            // is sufficient to make sure I haven't borked everything up.  This
+            // can probably be removed once I'm satisfied things are working fine.
+
             Console.WriteLine($"Address: {address:x8} not: {~address:x8}");
 
             ExtendedRegister r = new ExtendedRegister(4, 16);   // 20-bit for testing
             r.Lo = (ushort)(address);
-            r.Hi = ~(address >> 16);
+            r.Hi = (address >> 16);
             Console.WriteLine($"Register encoding: {r}");
 
-            var unfrobbed = r.Hi | (~(0x3ff ^ r.Lo) & 0xffff);
+            // Invert and unfrob the low 10 bits on IOB/CIO
+            var unfrobbed = ~(r.Value ^ 0x3ff) & 0xfffff;
             Console.WriteLine($"Unfrobbed std: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
 
-            unfrobbed = (~r.Hi & 0x0f0000) | r.Lo;
+            // EIO now goes straight through (20 or 24 bit)
+            unfrobbed = r.Value;
             Console.WriteLine($"Unfrobbed EIO: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
         }
 
