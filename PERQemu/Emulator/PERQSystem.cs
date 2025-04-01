@@ -386,11 +386,12 @@ namespace PERQemu
             // Now go away or I shall taunt you some more
             _inputs.Shutdown();
             _display.Shutdown();
-            _oio?.Shutdown();
-            _iob.Shutdown();
+            _ioBus.Shutdown();
             _cpu.Shutdown();
 
+            _iob = null;
             _ioBus = null;
+
             Log.Detail(Category.Emulator, "PERQSystem shutdown.");
         }
 

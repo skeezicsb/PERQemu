@@ -18,7 +18,6 @@
 //
 
 using System;
-using System.IO;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
@@ -291,9 +290,10 @@ namespace PERQemu.Processor
             //      so the FIFOs move in lock step (while in the source region), he
             //      said, handwaving furiously.
             //
-            // The RSC04 ROM tells the hardware how to cope with the source FIFO; here
-            // we use a lookup table to deal with all the complicated edge alignment
-            // rules outlined above.
+            // The hardware uses three PROMs to manage its state machine (RTI02),
+            // source FIFO (RSC03) and destination pipeline (RDS00).  Here we distill
+            // all that into a slightly convoluted set of rules to deal with all the
+            // complicated edge alignment rules outlined above.
             //
             // Many Bothans died to bring us this information...
             //

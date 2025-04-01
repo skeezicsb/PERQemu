@@ -38,6 +38,7 @@ namespace PERQemu.IO
         {
             _name = "CIO";
             _desc = "PERQ-1 I/O Board, new Z80, Shugart/Micropolis";
+            _isEIO = false;
 
             _z80CycleTime = 407;    // 2.4576Mhz
 

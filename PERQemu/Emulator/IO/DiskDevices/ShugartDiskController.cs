@@ -217,19 +217,13 @@ namespace PERQemu.IO.DiskDevices
                     break;
 
                 case Command.ReadChk:
-                    ReadBlock();
-                    break;
-
                 case Command.ReadDiag:
                     ReadBlock();
                     break;
 
-                case Command.WriteFirst:
-                    WriteBlock(true /* writeHeader */);
-                    break;
-
                 case Command.WriteChk:
-                    WriteBlock(false /* writeHeader */);
+                case Command.WriteFirst:
+                    WriteBlock(_command == Command.WriteFirst);
                     break;
 
                 case Command.Format:
@@ -484,11 +478,11 @@ namespace PERQemu.IO.DiskDevices
 
             // Idle doesn't set busy to begin with; Reset should be quick (but
             // do a minimal delay so the microcode can see the Busy transition
-            // and then reset happen).  Give it 1 usec for now?  PNX 2 seems
+            // and then reset happen).  Give it 10 usec for now?  PNX 2 seems
             // sensitive to this.
             if (_command == Command.Reset)
             {
-                delay = Conversion.UsecToNsec;
+                delay = 10 * Conversion.UsecToNsec;
             }
 
             // Schedule the event to clear the busy bit and trigger an interrupt
@@ -531,13 +525,26 @@ namespace PERQemu.IO.DiskDevices
             Console.WriteLine($"  Command: {_command}  Busy: {_controllerBusy}");
             Console.WriteLine($"  Seek command:  {_seekCommand}  State: {_seekState}");
             Console.WriteLine($"  Disk status:   0x{stat:x4} ({(Status)stat})");
+            Console.WriteLine();
+            Console.WriteLine("Drive mechanical status:");
+            Console.WriteLine($"  Index: {_disk.Index}  Ready: {_disk.Ready}  Trk0: {_disk.Track0}  Fault: {_disk.Fault}");
+            Console.WriteLine($"  Current Cyl:  {_disk.CurCylinder}  Head: {_disk.CurHead}  Seek complete: {_disk.SeekComplete}");
         }
 
-        enum SeekState
+
+        /// <summary>
+        /// Status bits from the drive mapped to the DiskStatus word.
+        /// </summary>
+        [Flags]
+        enum Status
         {
-            WaitForStepSet = 0,
-            WaitForStepRelease,
-            WaitForSeekComplete
+            Done = 0x0,
+            Busy = 0x7,
+            Index = 0x08,
+            TrackZero = 0x10,
+            DriveFault = 0x20,
+            SeekComplete = 0x40,
+            UnitReady = 0x80
         }
 
         /// <summary>
@@ -579,19 +586,11 @@ namespace PERQemu.IO.DiskDevices
             Unit1 = 0x40
         }
 
-        /// <summary>
-        /// Status bits from the drive mapped to the DiskStatus word.
-        /// </summary>
-        [Flags]
-        enum Status
+        enum SeekState
         {
-            Done = 0x0,
-            Busy = 0x7,
-            Index = 0x08,
-            TrackZero = 0x10,
-            DriveFault = 0x20,
-            SeekComplete = 0x40,
-            UnitReady = 0x80
+            WaitForStepSet = 0,
+            WaitForStepRelease,
+            WaitForSeekComplete
         }
 
         // The physical disk data
@@ -602,8 +601,8 @@ namespace PERQemu.IO.DiskDevices
         byte _head;
         ushort _sector;
 
-        int _blockNumber;   // Not really used...
-
+        // Not really used...
+        int _blockNumber;
         ExtendedRegister _serialNumber;
 
         // Controller status

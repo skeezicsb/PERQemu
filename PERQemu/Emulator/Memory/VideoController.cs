@@ -600,6 +600,11 @@ namespace PERQemu.Memory
             throw new ArgumentException("Bad _cursorFunc in TransformCursorByte");
         }
 
+        public void Shutdown()
+        {
+            // Nothing extra to do
+        }
+
         [Flags]
         enum CRTSignals
         {

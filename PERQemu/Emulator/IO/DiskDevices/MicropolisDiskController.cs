@@ -55,7 +55,7 @@ namespace PERQemu.IO.DiskDevices
             _dib.Reset();
             ResetFlags();
 
-            Log.Info(Category.HardDisk, "Micropolis controller reset");
+            Log.Debug(Category.HardDisk, "Micropolis controller reset");
         }
 
         /// <summary>
@@ -209,7 +209,7 @@ namespace PERQemu.IO.DiskDevices
                     break;
 
                 default:
-                    Log.Warn(Category.HardDisk, "Command {0} unknown or not yet implemented", _command);
+                    Log.Warn(Category.HardDisk, "Command {0} unknown or unimplemented", _command);
                     break;
             }
         }
@@ -708,7 +708,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 _control = parent;
                 _status = new HWStatus();
-                _status.DriveType = (int)DeviceType.Unused;      // until loaded
+                _status.DriveType = (int)DeviceType.Unused;      // Until loaded
                 _disk = null;
             }
 
@@ -1063,8 +1063,8 @@ namespace PERQemu.IO.DiskDevices
 
             // Local registers
             byte _driveSelect;
-            ushort _cylinder;
             byte _head;
+            ushort _cylinder;
             bool _latchedIndex;
 
             // Nibble in progress

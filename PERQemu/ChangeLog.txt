@@ -5,6 +5,13 @@ Summary of changes on the development branch since the v0.6.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+April, 2025:
+
+    1. Fix bug where switching from EIO to CIO/IOB configurations left the
+    Shugart disk controller confused (boot failures at DDS 014).  Other small
+    cleanups in preparation for v0.7.5 release.
+
+
 March, 2025:
 
     3. Cleanup and snapshot of the RasterOp fix.  Push for platform testing.

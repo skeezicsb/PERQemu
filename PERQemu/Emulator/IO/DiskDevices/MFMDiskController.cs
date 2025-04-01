@@ -42,6 +42,9 @@ namespace PERQemu.IO.DiskDevices
             _registerFile = new byte[16];
         }
 
+        /// <summary>
+        /// Perform a "hardware reset" of the controller and drive.
+        /// </summary>
         public void Reset()
         {
             _dib.Reset();
@@ -97,6 +100,9 @@ namespace PERQemu.IO.DiskDevices
             return status;
         }
 
+        /// <summary>
+        /// Dispatch register writes.
+        /// </summary>
         public void LoadRegister(byte address, int value)
         {
             switch (address)
@@ -221,7 +227,7 @@ namespace PERQemu.IO.DiskDevices
                     break;
 
                 default:
-                    Log.Warn(Category.HardDisk, "Command {0} unknown or not yet implemented", _command);
+                    Log.Warn(Category.HardDisk, "Command {0} unknown or unimplemented", _command);
                     break;
             }
         }
@@ -491,7 +497,7 @@ namespace PERQemu.IO.DiskDevices
                     Log.Debug(Category.HardDisk,
                               "MFM unit {0} track format of cyl {1}/hd {2} complete",
                               _dib.Unit, _dib.Cylinder, _dib.Head);
-                    
+
                     _status = SMStatus.Idle;
                 }
                 return;
@@ -727,14 +733,14 @@ namespace PERQemu.IO.DiskDevices
             public DiskInterfaceBoard(MFMDiskController parent)
             {
                 _control = parent;
-                _drives = new HardDisk[2];    // Four, someday? :-)
-
-                _status.DriveType = (int)DeviceType.Unused;
+                _status = new HWStatus();
+                _status.DriveType = (int)DeviceType.Unused;     // Until loaded
+                _drives = new HardDisk[2];                      // Four, someday? :-)
             }
 
             public HardDisk SelectedDrive => _drives[_selected];
 
-            public int Unit => _selected;
+            public byte Unit => _selected;
             public byte Head => _head;
             public ushort Cylinder => _cylinder;
 
@@ -793,7 +799,7 @@ namespace PERQemu.IO.DiskDevices
             /// <summary>
             /// If selected unit changed, update the internal state.
             /// </summary>
-            void UnitSelect(int unit)
+            void UnitSelect(byte unit)
             {
                 if (unit != _selected && _drives[unit] != null)
                 {
@@ -968,15 +974,15 @@ namespace PERQemu.IO.DiskDevices
                 switch (regSelect)
                 {
                     case RegSelect.SelReg:
-                        var unit = (val & 0x20) >> 5;
+                        var unit = (byte)((val & 0x20) >> 5);
                         _seekDir = (val & 0x10) >> 4;
-                        _rwc = (val & 0x08) >> 3;
+                        var rwc = (val & 0x08) != 0;
 
                         // Do all the things if selected unit changed
                         UnitSelect(unit);
 
                         // Determine if RWC (write precomp) is really a head select bit...
-                        if (_rwc > 0 && _drives[_selected].Geometry.Heads > 7)
+                        if (rwc && _drives[_selected].Geometry.Heads > 7)
                         {
                             _head = (byte)(val & 0x0f);
                             Log.Debug(Category.HardDisk, "MFM disk control: unit {0}, dir {1}, head {2}",
@@ -986,7 +992,7 @@ namespace PERQemu.IO.DiskDevices
                         {
                             _head = (byte)(val & 0x07);
                             Log.Debug(Category.HardDisk, "MFM disk control: unit {0}, dir {1}, rwc {2}, head {3}",
-                                                        _selected, _seekDir, _rwc, _head);
+                                                        _selected, _seekDir, rwc, _head);
                         }
 
                         // ...and select the head
@@ -1095,7 +1101,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 Console.WriteLine("MFM DIB status:");
                 Console.WriteLine($"  {_status}");
-                Console.WriteLine($"  Unit: {_selected}  Cyl: {_cylinder}  Head: {_head}  Idx: {_latchedIndex}  RWC: {_rwc}");
+                Console.WriteLine($"  Unit: {_selected}  Cyl: {_cylinder}  Head: {_head}  Idx: {_latchedIndex}");
                 Console.WriteLine($"  Seek dir: {_seekDir}  Seek count: {_seekCount}  State: {_seekState}");
                 Console.WriteLine();
 
@@ -1131,8 +1137,7 @@ namespace PERQemu.IO.DiskDevices
             // MFM DIB has a 100KHz step function (555 timer)
             readonly ulong StepRate = 10 * Conversion.UsecToNsec;
 
-            int _selected;
-            int _rwc;
+            byte _selected;
             byte _head;
             ushort _cylinder;
             bool _latchedIndex;

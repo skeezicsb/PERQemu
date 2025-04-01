@@ -27,18 +27,23 @@ namespace PERQemu.IO
         bool HandlesPort(byte ioPort);
 
         /// <summary>
-        /// Resets the given IO device
+        /// Resets the given IO device.
         /// </summary>
         void Reset();
 
         /// <summary>
-        /// Does a read from the given port
+        /// Does a read from the given port.
         /// </summary>
         int IORead(byte ioPort);
 
         /// <summary>
-        /// Does a write to the given port
+        /// Does a write to the given port.
         /// </summary>
         void IOWrite(byte ioPort, int value);
+
+        /// <summary>
+        /// Shuts down the given device.
+        /// </summary>
+        void Shutdown();
     }
 }
