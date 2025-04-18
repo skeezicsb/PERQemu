@@ -367,10 +367,13 @@ namespace PERQemu
         {
             // The emulation has hit a serious error.  Return to the CLI.
             Log.Error(Category.All, "\nBreak due to internal emulation error: {0}", e.Message);
-            Log.Error(Category.All, "System state may be inconsistent.\n");
 #if DEBUG
             Log.Write(e.StackTrace);
+#else
+            Log.Error(Category.All, "Source: {0}  Target: {1}", e.Source, e.TargetSite);
 #endif
+            Log.Error(Category.All, "System state may be inconsistent.\n");
+
             // Make sure both threads stop
             PERQemu.Controller.TransitionTo(RunState.Halted);
         }

@@ -7,6 +7,19 @@ Previous notes moved to ChangeLog-Old.txt.
 
 April, 2025:
 
+    3. Some corrections to the MFM and Micropolis hard disk controllers to fix
+    a regression and clarify some strange boot-time behavior.  Correct a small
+    Configurator bug that was preventing saved configurations from loading at
+    startup.  Bump to v0.7.0, push for platform testing before finally bundling
+    this up for release.
+
+    2. Finally put together a decent POS G.6 image, which was surprisingly hard
+    to do given the strange state of the archived media.  All the pieces are
+    there, scattered about, but with some maddening little gaps that make "bare
+    metal" installs far more convoluted than they should be.  New bundled images
+    for PERQ-2 and PERQ-2/T2 coming soon to the Disks/ directory, with updated
+    UserGuide and Readmes.  Accent S6 next!
+
     1. Fix bug where switching from EIO to CIO/IOB configurations left the
     Shugart disk controller confused (boot failures at DDS 014).  Other small
     cleanups in preparation for v0.7.5 release.
@@ -36,7 +49,7 @@ February, 2025:
 
     3. Wrote an entire RasterOp simulator and worked out the deep mysteries of
     the RTI, RSC and RDS PROMs.  Having finally unraveled this, I suspect a
-    Vogon contstructor fleet is gathering in orbit.
+    Vogon constructor fleet is gathering in orbit.
     
     2. Work sidetracked by another plunge down the rabbit hole into the murky
     depths of the RasterOp machine.  PNX visual glitches unearthed an obscure
@@ -97,4 +110,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Tue Jan 14 22:57:46 PST 2025
+Last update: skeezics    Wed Apr 16 12:37:33 PDT 2025

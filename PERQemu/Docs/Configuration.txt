@@ -334,7 +334,7 @@ them.  These live in Emulator/IO/DiskDevices:
         - handles seeks using a generic stepping algorithm that could
           be subclassed if smoother accelleration ramps desired
         - provides the "mechanical" hard disk emulation, handling seeks,
-          head settling, index pulses, etc.
+          head settling, index pulses, rotational delay, etc.
         - interfaced to an IOBoard through an IStorageController
 
 The IStorageController interface will define the common hooks for the PERQ to
@@ -352,7 +352,6 @@ control the HardDisks using the appropriate protocols.  These are:
         - provides an interface specific to the Micropolis 1200-series
           drives (21-70MB) used in early PERQ 2 models
         - the best documented/supported interface is PERQ-2/EIO only
-        - [under development]
 
     CIOMicropolisController.cs:  alternate 8" controller
         - in theory, a "CIO" PERQ-1 could talk to this controller; a
@@ -365,7 +364,7 @@ control the HardDisks using the appropriate protocols.  These are:
         - loads DeviceType.Disk5Inch images
         - supports a bunch of drives from different manufacturers in
           varying capacities, used exclusively on the EIO/NIO in PERQ-2
-        - [not yet implemented]
+        - formatting and even bad sector table manipulation seems to work!
 
     SMDController.cs:  controller for future SMD (Multibus) drives
         - will support DeviceType.DiskSMD images
@@ -383,13 +382,13 @@ basic requirements of tape drives too, a possible ITapeController interface
 could/will produce:
 
     QICTapeController.cs:  controller for QIC-02 streaming tape drives
-        - support DeviceType.TapeQIC images
+        - supports DeviceType.TapeQIC images
         - mimics the Archive Sidewinder 3020I (30ips) and its 90ips variants
         - attached through the Option IO board
         - is supported/tested on POS and Accent
 
     MBusTapeController.cs:  controller for generic Multibus tape drives
-        - would support DeviceType.Tape9Track images
+        - will support DeviceType.Tape9Track images
         - software support exists but there's weirdly no specifics
           about what 9-track drives or controllers were used
           [update: seems the Ciprico Tapemaster is supported]
@@ -409,16 +408,19 @@ scan or representation of the media label saved within the archive.
 Additional Peripherals
 ----------------------
 
-With the Z80 rewrite, PERQemu's support of the PERQ-1 RS-232 port requires
-some additional testing and new configuration support.  With the addition of
-the EIO forthcoming, a second RS-232 port will be included as well.  Serial
-devices may be attached to real ports on the host computer, or to a pseudo
-"RSX:" device that allows RSX-11 "PIP" style file transfers to and from the
-virtual machine from the host.  Three Rivers supplied a very basic terminal
-program (Chatter), but both Kermit and a sophisticated VT-100 emulator (Jet)
-are available as well.  Several serial-connected printers are supported by
-POS as well, but it would be a stretch to find an actual Xerox Diablo or TI
-Paper Tiger and do any real testing.  Volunteers?
+With the Z80 rewrite, PERQemu supports the one RS-232 port for PERQ-1 IOB/CIO
+configurations, and two ports on PERQ-2/EIO.  Serial devices may be attached
+to real ports on the host computer, or to a pseudo "RSX:" device that allows
+RSX-11 "PIP" style file transfers between the virtual machine and the host.
+Three Rivers supplied a very basic terminal program (Chatter), but both Kermit
+and a sophisticated VT-100 emulator (Jet) are available as well.
+
+Several serial-connected printers are supported by POS as well, but it would be
+a stretch to find an actual Xerox Diablo or TI Paper Tiger and do any real
+testing.  Volunteers?  In theory, a virtual PERQ could drive a real printer on
+the host, and I intend to at least try out my old Okidata ML-182 if/when I get
+its power supply fixed.
+
 
 The GPIB interface now supports the IOB and CIO (both Z80 versions), primarily
 to attach the Summagraphics BitPad One graphics tablet.  Older versions of POS
@@ -436,17 +438,15 @@ service, tape backup, print/time/FTP servers, etc.  [The first whack at this
 is in development and is being tested/refined.  See Network.txt for more!]
 
 
-The Canon laser printer interface is high on the list, since it should be a
-relatively simple thing to emulate.  The PERQ uses the Canon "video interface"
-to send a bitstream to the marking engine at 240dpi (LBP-10) or 300dpi (CX).
-(This should be familiar to any NeXT heads.)  The plan for PERQemu is to just
-stream the bits into a bitmap and save them as TIFF, JPG or PNG images.  (It's
-simple enough to post-process the pages into a multi-page PDF if desired, but
-let's not get carried away.)
+The Canon laser printer interface is complete.  The PERQ uses the Canon "video
+interface" to send a bitstream to the marking engine at 240dpi (LBP-10) or
+300dpi (CX).  (This should be familiar to any NeXT heads.)  PERQemu streams the
+bits into a bitmap and saves them as TIFF or PNG images.  Lots more information
+about this available in LaserCanon.txt.
 
 
 Wow.  If you read all that, give yourself a cookie!
 
 
 --
-Last update: skeezics    Sun Aug 13 11:17:38 PDT 2023
+Last update: skeezics    Sat Apr  5 14:13:30 PDT 2025

@@ -2,7 +2,6 @@
 Notes on CIO/EIO Hard Disk Implementations
 ==========================================
 
-
 This documents the ongoing development of and many intricacies and secrets of
 PERQemu's hard disk emulation.  It is a work in progress.
 
@@ -613,8 +612,12 @@ Shugart formatting was handled entirely by the state machine on the IOB, and is
 implemented in the ShugartController's FormatBlock() routine.  It seems to work
 and is sufficiently complete to fool DiskTest and most of the low-level diags.
 
-Micropolis 8" drives are still not fully implemented; still much study of the
-microcode and manuals to figure out how that works.
+
+Micropolis 8" drive formatting isn't fully understood; since the drive itself
+does the formatting, the PERQ's Format command is basically handled as a normal
+Write.  That seems to work!  More testing may be needed, but hyper-accurate
+Micropolis 8" disk formatting emulation isn't a terribly high priority.
+
 
 Formatting a 5.25" drive takes two revolutions of the platters:  First the Idle
 command is issued with the Format bit set in the SMControl word, which causes
@@ -631,7 +634,7 @@ gaps, checksums (etc), we just zero out the sectors for the selected cylinder.
 The second revolution is where the Pascal/ucode issues the Format command to
 state machine to write each sector, initializing the logical header values and
 optionally rewriting the data blocks much like the Shugart formatter does.  In
-fact, this is essentially just a regular Write() command, so we don't duplicate
+fact, this is essentially just a regular Write command, so we don't duplicate
 the code.
 
 Note that Index bit returned in the status register is synthesized by the EIO.
@@ -645,4 +648,4 @@ with a T2 setup with two MFM drives.
 
 
 --
-Last update: skeezics   Sat Nov  2 19:55:53 PDT 2024 
+Last update: skeezics   Sat Apr  5 13:57:34 PDT 2025 

@@ -327,7 +327,7 @@ namespace PERQemu.Memory
             }
 
             // Rare 4MB board (T4)
-            return (((value & 0x4) << 14) | (value & 0xfff0)) << 4;
+            return (((value & 0xc) << 14) | (value & 0xfff0)) << 4;
         }
 
 

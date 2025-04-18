@@ -218,7 +218,7 @@ namespace PERQemu.IO.DiskDevices
                 case SMCommand.Write:
                 case SMCommand.WriteChk:
                     _status = SMStatus.Busy;
-                    WriteBlock(_command == SMCommand.Write);
+                    WriteBlock();
                     break;
 
                 case SMCommand.Format:
@@ -246,15 +246,20 @@ namespace PERQemu.IO.DiskDevices
 
         /// <summary>
         /// Extra sanity checking (for debugging) to make sure the register file,
-        /// DIB and disk are all in sync.  Always returns true in release builds
-        /// since the fake disk always returns the requested cyl/head/sec. :-)
+        /// DIB and disk are all in sync.  Since MFM supports multiple drives, also
+        /// makes sure the selected unit # exists; otherwise always returns true in
+        /// Release builds since the fake disk always returns the requested C/H/S.
         /// </summary>
         bool CheckBlockParameters(ushort cyl, byte head)
         {
-#if DEBUG
             if (_dib.SelectedDrive == null)
-                throw new InvalidOperationException($"{_command} but no disk selected");
+            {
+                Log.Warn(Category.HardDisk, "{0} requested for unattached unit {1}",
+                                            _command, _dib.Unit);
+                return false;
+            }
 
+#if DEBUG
             // The 5.25" SYSB code explicitly does NOT use register[2] for the head
             // select, although it's defined; checking it causes the boot to fail at
             // DDS 157 even if the OS code programs the value correctly.  Instead the
@@ -325,12 +330,7 @@ namespace PERQemu.IO.DiskDevices
             var head = (byte)(_registerFile[8] & 0x0f);
             var sector = _registerFile[3];
 
-            // Compute the delay to the start of the sector (or fake it if we
-            // aren't modeling accurate disk timings.  We'll say that 100usec
-            // is a reasonable minimum to the mid-sector point in case we bug
-            // out on a header error (or fire the DB interrupt on a good read)
-
-            // Fast...
+            // Delay timing:  Fast...
             var delay = 100 * Conversion.UsecToNsec;
 
             // ...or accurate?
@@ -349,31 +349,35 @@ namespace PERQemu.IO.DiskDevices
             // Read the sector from the disk
             var block = _dib.SelectedDrive.GetSector(cyl, head, sector);
 
-            // Fetch the unfrobbed buffer addresses
+            // Fetch the buffer addresses, header count
             var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
-
-#if DEBUG
-            // This will always be 2?  Unless non-check reads don't xfer the header?  Hmm.
             var quads = _system.IOB.DMARegisters.GetHeaderCount(ChannelName.HardDisk);
 
+#if DEBUG
             if (quads != 2)
             {
                 Log.Warn(Category.HardDisk, "Bad DMA header count {0} on {1}", quads, _command);
             }
+
+            if (header > _system.Memory.MemSize)
+            {
+                Log.Warn(Category.HardDisk, "DMA header addr 0x{0:x} out of range on {1}", header, _command);
+            }
 #endif
 
-            // Copy the header to the header address
-            for (int i = 0; i < block.Header.Length; i += 2)
+            // At boot time, avoid potentially scribbling outside the lines
+            if (quads == 2 && header < _system.Memory.MemSize)
             {
-                int word = block.Header[i] | (block.Header[i + 1] << 8);
-                _system.Memory.StoreWord(header + (i >> 1), (ushort)word);
-            }
+                // Copy the header to the header address
+                for (int i = 0; i < block.Header.Length; i += 2)
+                {
+                    int word = block.Header[i] | (block.Header[i + 1] << 8);
+                    _system.Memory.StoreWord(header + (i >> 1), (ushort)word);
+                }
 
-            // On a ReadChk, verify that the LH matches the registers
-            if (_command == SMCommand.ReadChk)
-            {
-                if (!CheckLogicalHeaderBytes(block.Header))
+                // On a ReadChk, verify that the LH matches the registers
+                if (_command == SMCommand.ReadChk && !CheckLogicalHeaderBytes(block.Header))
                 {
                     Log.Warn(Category.HardDisk,
                              "Logical header mismatch on read from {0}/{1}/{2}",
@@ -410,15 +414,16 @@ namespace PERQemu.IO.DiskDevices
         /// Does a write to the cyl/head/sec specified by the controller registers.
         /// Same basic steps as Read/ReadCheck, but the other way around.
         /// </summary>
-        void WriteBlock(bool writeHeader)
+        void WriteBlock()
         {
             var cyl = (ushort)((_registerFile[8] & 0xf0) << 4 | _registerFile[4]);
             var head = (byte)(_registerFile[8] & 0x0f);
             var sector = _registerFile[3];
             var delay = 100 * Conversion.UsecToNsec;
 
-            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
+            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed) || _command == SMCommand.Format)
             {
+                // Formatting is sensitive to accurate index pulse timing!
                 delay = _dib.SelectedDrive.ComputeRotationalDelay(_system.Scheduler.CurrentTimeNsec, sector);
             }
 
@@ -430,17 +435,10 @@ namespace PERQemu.IO.DiskDevices
 
             var block = _dib.SelectedDrive.GetSector(cyl, head, sector);
 
-            var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
+            var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
 
-            for (int i = 0; i < block.Data.Length; i += 2)
-            {
-                int word = _system.Memory.FetchWord(data + (i >> 1));
-                block.Data[i] = (byte)(word & 0xff);
-                block.Data[i + 1] = (byte)(word >> 8);
-            }
-
-            if (writeHeader)
+            if (_command != SMCommand.WriteChk)
             {
                 for (int i = 0; i < block.Header.Length; i += 2)
                 {
@@ -448,6 +446,13 @@ namespace PERQemu.IO.DiskDevices
                     block.Header[i] = (byte)(word & 0xff);
                     block.Header[i + 1] = (byte)(word >> 8);
                 }
+            }
+
+            for (int i = 0; i < block.Data.Length; i += 2)
+            {
+                int word = _system.Memory.FetchWord(data + (i >> 1));
+                block.Data[i] = (byte)(word & 0xff);
+                block.Data[i + 1] = (byte)(word >> 8);
             }
 
             _dib.SelectedDrive.SetSector(block);
@@ -504,7 +509,7 @@ namespace PERQemu.IO.DiskDevices
             }
 
             // Regular Format command: treat it like a normal Write
-            WriteBlock(true);
+            WriteBlock();
         }
 
         #endregion
@@ -799,19 +804,23 @@ namespace PERQemu.IO.DiskDevices
             /// <summary>
             /// If selected unit changed, update the internal state.
             /// </summary>
-            void UnitSelect(byte unit)
+            bool UnitSelect(byte unit)
             {
-                if (unit != _selected && _drives[unit] != null)
+                if (_selected != unit)
                 {
                     _selected = unit;
                     Log.Debug(Category.HardDisk, "DIB: Unit {0} selected", _selected);
 
                     if (_seekState != SeekState.Idle)
+                    {
                         Log.Warn(Category.HardDisk, "Unit select change while seek {0}!?", _seekState);
+                    }
                 }
 
                 // Update for new unit status (or error)
                 UpdateStatus();
+
+                return SelectedDrive != null;
             }
 
             /// <summary>
@@ -823,6 +832,12 @@ namespace PERQemu.IO.DiskDevices
             /// </summary>
             void StartSeek()
             {
+                if (SelectedDrive == null)
+                {
+                    Log.Warn(Category.HardDisk, "MFM StartSeek on unattached unit {0}", _selected);
+                    return;
+                }
+
                 // Step count from the microcode is one less than the desired number!
                 _seekCount++;
 
@@ -848,16 +863,16 @@ namespace PERQemu.IO.DiskDevices
                 // Set our destination and check it / clip to range
                 if (_seekDir > 0)
                 {
-                    _cylinder = (ushort)Math.Min(_drives[_selected].CurCylinder + _seekCount,
-                                                 _drives[_selected].Geometry.Cylinders - 1);
+                    _cylinder = (ushort)Math.Min(SelectedDrive.CurCylinder + _seekCount,
+                                                 SelectedDrive.Geometry.Cylinders - 1);
                 }
                 else
                 {
-                    _cylinder = (ushort)Math.Max(_drives[_selected].CurCylinder - _seekCount, 0);
+                    _cylinder = (ushort)Math.Max(SelectedDrive.CurCylinder - _seekCount, 0);
                 }
 
                 Log.Debug(Category.HardDisk, "MFM unit {0} starting seek from {1} to {2} ({3} steps)",
-                                            _selected, _drives[_selected].CurCylinder, _cylinder, _seekCount);
+                                            _selected, SelectedDrive.CurCylinder, _cylinder, _seekCount);
 
                 _seekEvent = _control._system.Scheduler.Schedule(StepRate, SeekStepPulse);
             }
@@ -876,7 +891,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 // Do it
                 _seekCount--;
-                _drives[_selected].SeekStep(_seekDir);
+                SelectedDrive.SeekStep(_seekDir);
 
                 // Are we there yet?
                 if (_seekCount > 0)
@@ -932,7 +947,7 @@ namespace PERQemu.IO.DiskDevices
                 // Sanity checks
                 if (SelectedDrive == null)
                 {
-                    Log.Error(Category.HardDisk, "MFM Format request but drive not mounted (unit {0})", _selected);
+                    Log.Error(Category.HardDisk, "MFM Format request for unattached unit {0}", _selected);
                     return false;
                 }
 
@@ -951,8 +966,8 @@ namespace PERQemu.IO.DiskDevices
                     // We could just rewrite them in place but low-level formatting
                     // is an extremely rare operation and I'm being lazy
                     SelectedDrive.SetSector(new Sector(_cylinder, _head, sec,
-                                                       _drives[_selected].Geometry.SectorSize,
-                                                       _drives[_selected].Geometry.HeaderSize));
+                                                       SelectedDrive.Geometry.SectorSize,
+                                                       SelectedDrive.Geometry.HeaderSize));
                 }
 
                 return true;
@@ -979,10 +994,10 @@ namespace PERQemu.IO.DiskDevices
                         var rwc = (val & 0x08) != 0;
 
                         // Do all the things if selected unit changed
-                        UnitSelect(unit);
+                        if (!UnitSelect(unit)) break;
 
                         // Determine if RWC (write precomp) is really a head select bit...
-                        if (rwc && _drives[_selected].Geometry.Heads > 7)
+                        if (rwc && SelectedDrive.Geometry.Heads > 7)
                         {
                             _head = (byte)(val & 0x0f);
                             Log.Debug(Category.HardDisk, "MFM disk control: unit {0}, dir {1}, head {2}",
@@ -996,7 +1011,7 @@ namespace PERQemu.IO.DiskDevices
                         }
 
                         // ...and select the head
-                        _drives[_selected].HeadSelect(_head);
+                        SelectedDrive.HeadSelect(_head);
                         break;
 
                     case RegSelect.SeekHiReg:

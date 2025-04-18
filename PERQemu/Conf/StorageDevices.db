@@ -50,7 +50,7 @@ geometry Shugart24
 performance SA4000
 done
 
-# include this mythical beast for fun
+# Include this mythical beast for fun - NO software support for this (yet)
 
 define Disk14Inch Shugart48
 description "Shugart SA4104 48MB hard disk (unsupported)"
@@ -60,17 +60,18 @@ done
 
 # Standard 8" drives
 
-define Disk8Inch Microp21
-description "Micropolis 1202 21MB hard disk"
-geometry Microp21 580 3 24 512 16
-performance M1200 3600 10000 25000 4 96 8 705000
-done
-
 define Disk8Inch Microp35
 description "Micropolis 1203 35MB hard disk"
 geometry Microp35 580 5 24 512 16
-performance M1200
+performance M1200 3600 10000 25000 4 96 8 705000
 done
+
+# Shown in the documentation, but the software always assumes 5 heads!?
+# define Disk8Inch Microp21
+# description "Micropolis 1202 21MB hard disk"
+# geometry Microp21 580 3 24 512 16
+# performance M1200
+# done
 
 # Standard 5.25" drives
 
@@ -184,21 +185,19 @@ geometry Eagle689 842 20 69 512 16
 performance M2361A 3600 1627 40000 5 35 1 2458000
 done
             
-# Standard streamer tape
-
-# The default geometry for the Archive 3020I is built-in
-# The default drive performance specs are built-in
+# Streamer tape
 
 # This tiny test tape is for dev/debug only
-define TapeQIC TestTape
-description "Archive 3020I Test cartridge (2MB)"
-geometry QICtest 1 4 1024 512 4
-performance Archive30IPS
-removable true
-done
+# define TapeQIC TestTape
+# description "Archive 3020I Test cartridge (2MB)"
+# geometry QICtest 1 4 1024 512 4
+# performance Archive30IPS
+# removable true
+# done
 
 # Standard drive: 4 tracks, 450' cartridge
-# Turn off rate limiting for 90IPS operation :-)
+# The default geometry for the Archive 3020I is built-in
+# The default drive performance specs are built-in
 
 define TapeQIC Archive20
 description "Archive 3020I DC-300XL (20MB) QIC tape"
@@ -208,6 +207,7 @@ removable true
 done
 
 # Enhanced drive: 9 tracks, 450' cartridge
+# Turn off rate limiting for 90IPS operation :-)
 define TapeQIC Archive45
 description "Archive 9045I DC-300XL (45MB) QIC tape"
 geometry QIC45 1 9 10240 512 4
@@ -223,4 +223,4 @@ performance Archive90Ext 90 0 300 5910 80671500 0 86700
 removable true
 done
 
-# End of PERQemu 0.4.8 standard definitions
+# End of PERQemu 0.7.0 standard definitions

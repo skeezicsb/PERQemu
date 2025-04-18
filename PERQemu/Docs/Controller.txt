@@ -33,7 +33,9 @@ states from startup to shutdown:
                     try again.  (The UI checks to make sure the file can be
                     read and is the correct type for the controller it is being
                     attached to, but until the Load() is actually attempted it
-                    doesn't know if the file is actually valid.)
+                    doesn't know if the file is actually valid.)  As of v0.6.7,
+                    this state is also where the visual "warm up" of the display
+                    is presented graphically, because why not. :-)
 
     Reset           The Reset state is transitioned to automatically after the
                     WarmingUp phase, after a typed "reset" command, or after
@@ -250,4 +252,4 @@ Bottom line:
 
 
 --
-Last update: skeezics    Mon Jul 18 16:40:14 PDT 2022
+Last update: skeezics    Sat Apr  5 14:03:04 PDT 2025

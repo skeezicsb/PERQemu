@@ -353,7 +353,7 @@ namespace PERQemu
         {
             if (!CheckSys()) return;
 
-            if (address > PERQemu.Sys.Memory.MemSize - 1)
+            if (address >= PERQemu.Sys.Memory.MemSize)
             {
                 Console.WriteLine("Start address must be in range 0..{0}", PERQemu.Sys.Memory.MemSize - 1);
                 return;
