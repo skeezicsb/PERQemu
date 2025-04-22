@@ -46,10 +46,9 @@ runs the POS "burn in" code (i.e. the SIGGRAPH demos) it's good to go!
 1.2  Version History
 --------------------
 
-The next major release will incorporate all of the changes since v0.5.0 to add
-PERQ-2 configurations, along with an expanded library of pre-built, bundled
-hard disk images.  This is currently in development on the "experiments" branch
-and is slated to be released to main as PERQemu v0.7.5, hopefully in Q2 2025.
+PERQemu v0.7.5 is a milestone release that accumulates all of the changes since
+v0.5.0, adding PERQ-2 configurations along with an expanded library of pre-built
+bundled hard disk images.
 
 PERQemu v0.6.x incorporates all of the changes since v0.5.5 to bring up the EIO
 board and new Z80 subsystem.  All of the PERQ-2/EIO 20-bit configurations are
@@ -605,7 +604,7 @@ when the "CPUSpeed" RateLimit option setting is enabled.
 PERQ Ethernet support comes in three flavors:  the 10Mbit interface on the OIO
 option board, the built-in 10Mbit interface on the EIO board, and the prototype
 3Mbit interface that came as a wire-wrapped option board.  The PERQ-1 OIO option
-is now in development.  EIO and the 3Mbit board will follow.
+and PERQ-2 EIO implementations are available; the 3Mbit board will follow.
 
 The Ethernet code is in Emulator/IO/Network:
 
@@ -615,9 +614,9 @@ The Ethernet code is in Emulator/IO/Network:
       for transmission just disappear; nothing is ever received.  This
       allows Accent to properly initialize;
 
-    - Ether10MbitController.cs is the PERQ side of the OIO (and future
-      EIO) interface.  It handles the control/status/registers and DMA
-      to and from memory.  Initially it requires root/admin privileges
+    - Ether10MbitController.cs is the PERQ side of the OIO and EIO
+      interfaces.  It handles the control/status/registers and DMA to
+      and from memory.  Initially it requires root/admin privileges
       to open the host adapter in "promiscuous mode" but should/will
       support other encapsulations in the future;
 
@@ -778,6 +777,7 @@ PERQ info and lore.  More to come!
 
 Update history:
 
+v2.6 - 4/22/2025 - skeezics - v0.7.5 release
 v2.5 - 3/28/2025 - skeezics
 v2.4 - 12/8/2024 - skeezics - updated for the v0.6.5 interim release
 v2.3 - 3/25/2024 - skeezics

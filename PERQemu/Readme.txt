@@ -81,18 +81,9 @@ base expanded greatly, but it still only emulated PERQ-1 configurations.  Work
 on the experimental branch shifted to expanding emulation options, adding new
 peripheral support (Ethernet, laser printer), bug fixes, and new UI features.
 
-PERQemu v0.5.5 added Canon printer support and expanded experimental Ethernet
-support.  It was an interim release to skeezicsb/main and wasn't submitted for
-a merge into the master.
-
-PERQemu v0.5.8 introduces the first milestone in PERQ-2/EIO support, adding a
-Micropolis 8" disk driver and enough of the EIO/Z80 components to allow POS G,
-Accent S6 and PNX 2 and 3 to boot.  There are still a number of rough edges and
-missing pieces, but this interim development snapshot is reliable enough to let
-it into the wild for testing from skeezicsb/main.
-
-PERQemu v0.6.5 delivers nearly complete PERQ-2 and 2/Tx support; at this point
-only the 24-bit PERQ-2/T4 is unfinished (but in testing).
+PERQemu v0.7.5 wraps up all the work since v0.5.0 along with a batch of new
+bundled hard disk images with new software to play with.  It is a release to
+"skeezicsb/main" and a candidate to sync up with the master branch.
 
 Please check back often for updates!
 
@@ -182,10 +173,12 @@ There are several subdirectories:
             A bundle of the basic PNX 1.3 installation from the PERQmedia
             repository, but reformatted as a .prqm image.
 
+        pnx2.prqm:
         pnx2mic.prqm:
-            An 8" Micropolis disk for PERQ-2 containing the available
-            PNX 2 installation.  Many improvements over PNX 1, but the
-            man pages are missing and no extra apps/demos are available.
+            Images of PNX 2 for the PERQ-1, and an 8" Micropolis image
+            for PERQ-2 containing the available PNX 2 software.  Many
+            improvements over PNX 1, but the man pages are missing and
+            no extra apps/demos are available.
 
         Additional "stock" hard drive or floppy images may be included as
         well.  Any custom disk images you create or import are loaded from
@@ -298,7 +291,7 @@ Added in v0.5.8:
 
 Added in v0.6.x:
   - 5.25" MFM disk support for PERQ-2/Tx models (POS G, Accent tested;
-    PNX not yet available)
+    PNX 5 not yet available)
 
 NOTE: PNX 1 only supports 1MB of memory and will crash if configured with more.
 PNX 2, PNX 3, POS, MPOS and Accent have no trouble with a full megaword (2MB)
@@ -321,7 +314,7 @@ The following hardware has been implemented in the emulator:
 
   Processors:
     - 4K and 16K CPUs (20-bit) are tested and complete;
-    - 16K CPU (24-bit) is complete but not tested; waiting on PERQ-2/EIO;
+    - 16K CPU (24-bit) is complete but not fully tested;
     - The CPU, memory and video run on a separate thread.
 
   Memory/VideoController:
@@ -380,9 +373,9 @@ The following hardware has been implemented in the emulator:
       has been reinstated.
 
   GPIB:
-    - The TMS9914 controller chip is implemented to work with the new Z80, but
-      it is still incomplete and occasionally seems to confuse POS (reporting
-      non-fatal errors that don't seem to negatively affect operation);
+    - The TMS9914 controller chip is implemented to work with the new Z80, and
+      operates well with the Bitpad tablet; not extensively tested with other
+      GPIB code (and no additional peripheral emulations are available yet);
     - Supports basic System Controller, Talker and Listener features, but just
       enough to support what the PERQ needs.  Being able to drive a real GPIB
       card in the host computer would be pretty darn cool but I wouldn't hold
@@ -405,8 +398,9 @@ The following hardware has been implemented in the emulator:
       but with caveats.  Check the User Guide for details.
 
   Canon:
-    - Laser printer interface can now be enabled as an OIO option.  It provides
-      high quality output in PNG or TIFF format at 240- or 300-dpi.
+    - Laser printer interface can now be enabled as an OIO option for all valid
+      PERQ chassis/IO Board combinations.  It provides high quality output in
+      PNG or TIFF format at 240- or 300-dpi.
 
 
 There is a ton of additional detail about the internals of PERQemu itself in
@@ -492,7 +486,7 @@ session, and will not stop at 255 when PNX has completed booting.
 
 Solution:  A patch to detect and fix this automatically was included in PERQemu
 v0.5.8 through v0.6.5; the CPU was modified to correct the issue and the patch
-removed in v0.6.6 (experiments branch).
+removed in v0.6.6 (experiments branch).  Suggest upgrade to v0.7.5.
 
 
 5. PNX video glitches.
@@ -500,7 +494,7 @@ removed in v0.6.6 (experiments branch).
 Symptom: The PNX 2 window manager sometimes randomly paints its background 
 pattern with strange stripes or other visual anomalies.
 
-Solution:  Corrected in PERQemu v0.6.9.
+Solution:  Corrected in PERQemu v0.6.9.  Suggest upgrade to v0.7.5.
 
 
 6. PNX 5 kernel panic after boot.
@@ -531,13 +525,13 @@ v0.9 - TBD
   - See if CIO Micropolis has any real software support?
   - Multibus and SMD disks?
 
-v0.7.5 - RSN
-  Leverage the new architecture to roll out new models, new peripherals and
-  open up the full range of available operating systems!
-  - Add more bundled configurations and hard disk images
-  - PERQ-2 EIO emulation support: expanded IO Board with faster Z80, second
-    serial port, RTC chip, support for two hard disks
-  - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
+v0.7.5 - Main branch
+  (New default release; candidate for merge to jdersch/master)
+  Rolls up all of the changes since v0.5.0 to leverage the new architecture,
+  with support for the PERQ-2 models, new peripherals and the full range of
+  available operating systems!  (See below for the details)
+  - Added more bundled configurations and hard disk images
+  - Bug fixes and documentation updates
 
 v0.7.0 - Experiments branch
   - Comprehensive RasterOp update, refactoring to fix PNX glitches
@@ -584,14 +578,14 @@ v0.5.0 - New baseline
   - Expanded logging and enhanced debugging support
   - Persistent user preference settings
 
-v0.4.9 - Experimental branch (v0.5.0 pre-release) 
+v0.4.9 - Experiments branch (v0.5.0 pre-release) 
   - Added a minimal Ethernet interface, bug fixes.
   - Bundled a working Spice Lisp disk image.
 
 v0.4.8 - Main branch (v0.5.0 pre-relase)
   - Added streamer tape support!
 
-v0.4.6 - Experimental branch (v0.5.0 pre-release)
+v0.4.6 - Experiments branch (v0.5.0 pre-release)
   - All v0.5.0 features above, in a snapshot release prior to merge back into
     master.
 
@@ -681,6 +675,7 @@ v0.1 - First public release
 
 Update history:
 
+4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)
 6/19/2024 - skeezicsb - v0.5.8 (main)

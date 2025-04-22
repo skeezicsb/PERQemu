@@ -7,6 +7,20 @@ Previous notes moved to ChangeLog-Old.txt.
 
 April, 2025:
 
+    5. Small Ethernet bug fix when fetching the machine's MAC address.  Update
+    the UserGuide for the pending release.  Update some of the older disk images
+    (re-enable network servers in Accent S4, e.g.) and some final fiddling about
+    before pushing this thing out of the nest.  Bump to v.0.7.5!
+
+    4. Updated and added more disk images.  MOAR! DISK! IMAGES!  These are a
+    bit thrown together and there's still a bazillion floppies and tapes to go
+    through to assemble new apps/games/demos/sources/etc, but at least now I've
+    bundled some PERQ-2/8" Microp and PERQ-2/Tx 5.25"/MFM images to start with.
+    See the ReadMe/UserGuide for additional info.
+
+    Also, more fiddling with RasterOp, resulting (on my ancient creaky Mac) in
+    a blistering .5fps average increase in refresh rate.  Worth it. :-P
+
     3. Some corrections to the MFM and Micropolis hard disk controllers to fix
     a regression and clarify some strange boot-time behavior.  Correct a small
     Configurator bug that was preventing saved configurations from loading at
@@ -110,4 +124,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Wed Apr 16 12:37:33 PDT 2025
+Last update: skeezics    Tue Apr 22 02:18:22 PDT 2025

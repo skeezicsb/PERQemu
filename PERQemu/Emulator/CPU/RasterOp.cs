@@ -41,6 +41,13 @@ namespace PERQemu.Processor
     /// </summary>
     public sealed class RasterOp
     {
+        static RasterOp()
+        {
+            _maskTable = new CombinerFlags[1024];
+
+            InitMaskTable();
+        }
+
         public RasterOp(MemoryBoard mem)
         {
             _ropShifter = new CPU.Shifter();        // Our own private Idaho
@@ -601,97 +608,14 @@ namespace PERQemu.Processor
         {
             CombinerFlags m;
 
-            if (_direction == Direction.LeftToRight)
-            {
-                switch (_phase)
-                {
-                    case Phase.Begin:
-                    case Phase.XtraSource:
-                        m = (index < _destWordPosition) ? CombinerFlags.DontMask :
-                            (index == _destWordPosition) ? CombinerFlags.LeftEdge :
-                            CombinerFlags.FullWord;
-                        break;
+            var lookup = (_direction == Direction.RightToLeft ? 0x200 : 0) |
+                         ((int)_phase << 6) |
+                         (_destWordPosition << 4) |
+                         (_widWordPosition << 2) |
+                         index;
 
-                    case Phase.Mid:
-                    case Phase.FirstSource:
-                        m = CombinerFlags.FullWord;
-                        break;
-
-                    case Phase.End:
-                    case Phase.EndClear:
-                        m = (index > _widWordPosition) ? CombinerFlags.Leftover :
-                            (index == _widWordPosition) ? CombinerFlags.RightEdge :
-                            CombinerFlags.FullWord;
-                        break;
-
-                    case Phase.BeginEnd:
-                    case Phase.BeginEndClear:
-
-                        var left = (index == _destWordPosition);
-                        var right = (index == _widWordPosition);
-
-                        if (left && right)
-                            m = CombinerFlags.Both;
-                        else if (left && !right)
-                            m = CombinerFlags.LeftEdge;
-                        else if (!left && right)
-                            m = CombinerFlags.RightEdge;
-                        else
-                            m = (index < _destWordPosition) ? CombinerFlags.DontMask :
-                                (index > _widWordPosition) ? CombinerFlags.Leftover :
-                                CombinerFlags.FullWord;
-                        break;
-
-                    default:
-                        throw new InvalidOperationException($"Illegal phase {_phase} in CompDWMask (LR)");
-                }
-            }
-            else
-            {
-                switch (_phase)
-                {
-                    case Phase.Begin:
-                    case Phase.XtraSource:
-                        m = (index > _destWordPosition) ? CombinerFlags.DontMask :
-                            (index == _destWordPosition) ? CombinerFlags.RightEdge :
-                            CombinerFlags.FullWord;
-                        break;
-
-                    case Phase.Mid:
-                    case Phase.FirstSource:
-                        m = CombinerFlags.FullWord;
-                        break;
-
-                    case Phase.End:
-                    case Phase.EndClear:
-                        m = (index < _widWordPosition) ? CombinerFlags.Leftover :
-                            (index == _widWordPosition) ? CombinerFlags.LeftEdge :
-                            CombinerFlags.FullWord;
-                        break;
-
-                    case Phase.BeginEnd:
-                    case Phase.BeginEndClear:
-
-                        var left = (index == _widWordPosition);
-                        var right = (index == _destWordPosition);
-
-                        if (left && right)
-                            m = CombinerFlags.Both;
-                        else if (left && !right)
-                            m = CombinerFlags.LeftEdge;
-                        else if (!left && right)
-                            m = CombinerFlags.RightEdge;
-                        else
-                            m = (index > _destWordPosition) ? CombinerFlags.DontMask :
-                                (index < _widWordPosition) ? CombinerFlags.Leftover :
-                                CombinerFlags.FullWord;
-                        break;
-
-                    default:
-                        throw new InvalidOperationException($"Illegal phase {_phase} in CompDWMask (RL)");
-                }
-            }
-
+            m = _maskTable[lookup];
+            Log.Detail(Category.RasterOp, "Mask lookup: 0x{0:x3} --> {1}", lookup, m);
             return m;
         }
 
@@ -817,6 +741,132 @@ namespace PERQemu.Processor
             dstWord = (ushort)((dstWord & ~mask) | (srcWord & mask));
 
             return dstWord;
+        }
+
+
+        /// <summary>
+        /// Compute the combiner masks once at startup, the same way as the original
+        /// RDS PROM code does it.  Mostly.  Overall this maybe saves half an fps? :-)
+        /// </summary>
+        /// <remarks>
+        /// The PROM (and the old RasterOp implementation) take advantage of the very
+        /// careful numbering of the Phases to save a bit in the lookup calculation,
+        /// so that a 9-bit index (512) can be used and a smaller chip provisioned.
+        /// Here in the 21st century, memory is cheap and 512 extra bytes to save a
+        /// few picoseconds required for a mask operation is a worthwhile tradeoff.
+        /// Table index format:
+        ///    Direction:   1 bit
+        ///    Phase:       3 bits
+        ///    DestWordPos: 2 bits
+        ///    WidWordPos:  2 bits
+        ///    Index:       2 bits
+        /// </remarks>
+        static void InitMaskTable()
+        {
+            CombinerFlags m;
+
+            for (var dir = 0; dir <= 0x200; dir += 0x200)
+                for (var phase = Phase.Begin; phase < Phase.Done; phase++)
+                    for (var destPos = 0; destPos <= 3; destPos++)
+                        for (var widPos = 0; widPos <= 3; widPos++)
+                            for (var idx = 0; idx <= 3; idx++)
+                            {
+                                if ((Direction)dir == Direction.LeftToRight)
+                                {
+                                    switch (phase)
+                                    {
+                                        case Phase.Begin:
+                                        case Phase.XtraSource:
+                                            m = (idx < destPos) ? CombinerFlags.DontMask :
+                                                (idx == destPos) ? CombinerFlags.LeftEdge :
+                                                CombinerFlags.FullWord;
+                                            break;
+
+                                        case Phase.Mid:
+                                        case Phase.FirstSource:
+                                            m = CombinerFlags.FullWord;
+                                            break;
+
+                                        case Phase.End:
+                                        case Phase.EndClear:
+                                            m = (idx > widPos) ? CombinerFlags.Leftover :
+                                                (idx == widPos) ? CombinerFlags.RightEdge :
+                                                CombinerFlags.FullWord;
+                                            break;
+
+                                        case Phase.BeginEnd:
+                                        case Phase.BeginEndClear:
+
+                                            var left = (idx == destPos);
+                                            var right = (idx == widPos);
+
+                                            if (left && right)
+                                                m = CombinerFlags.Both;
+                                            else if (left && !right)
+                                                m = CombinerFlags.LeftEdge;
+                                            else if (!left && right)
+                                                m = CombinerFlags.RightEdge;
+                                            else
+                                                m = (idx < destPos) ? CombinerFlags.DontMask :
+                                                    (idx > widPos) ? CombinerFlags.Leftover :
+                                                    CombinerFlags.FullWord;
+                                            break;
+
+                                        default:
+                                            throw new InvalidOperationException($"Illegal phase {phase} in CompDWMask (LR)");
+                                    }
+                                }
+                                else
+                                {
+                                    switch (phase)
+                                    {
+                                        case Phase.Begin:
+                                        case Phase.XtraSource:
+                                            m = (idx > destPos) ? CombinerFlags.DontMask :
+                                                (idx == destPos) ? CombinerFlags.RightEdge :
+                                                CombinerFlags.FullWord;
+                                            break;
+
+                                        case Phase.Mid:
+                                        case Phase.FirstSource:
+                                            m = CombinerFlags.FullWord;
+                                            break;
+
+                                        case Phase.End:
+                                        case Phase.EndClear:
+                                            m = (idx < widPos) ? CombinerFlags.Leftover :
+                                                (idx == widPos) ? CombinerFlags.LeftEdge :
+                                                CombinerFlags.FullWord;
+                                            break;
+
+                                        case Phase.BeginEnd:
+                                        case Phase.BeginEndClear:
+
+                                            var left = (idx == widPos);
+                                            var right = (idx == destPos);
+
+                                            if (left && right)
+                                                m = CombinerFlags.Both;
+                                            else if (left && !right)
+                                                m = CombinerFlags.LeftEdge;
+                                            else if (!left && right)
+                                                m = CombinerFlags.RightEdge;
+                                            else
+                                                m = (idx > destPos) ? CombinerFlags.DontMask :
+                                                    (idx < widPos) ? CombinerFlags.Leftover :
+                                                    CombinerFlags.FullWord;
+                                            break;
+
+                                        default:
+                                            throw new InvalidOperationException($"Illegal phase {phase} in CompDWMask (RL)");
+                                    }
+                                }
+
+                                var lookup = (dir | ((int)phase << 6) | (destPos << 4) | (widPos << 2) | idx);
+                                _maskTable[lookup] = m;
+                            }
+
+            Log.Debug(Category.RasterOp, "RasterOp mask table initialized.");
         }
 
 
@@ -960,13 +1010,13 @@ namespace PERQemu.Processor
         [Flags]
         enum CombinerFlags
         {
-            Invalid = 0x00,         // word not properly initialized (debugging)
-            DontMask = 0x01,        // pass word unmodified; beginning of scan line
-            LeftEdge = 0x02,        // word contains a left edge
-            RightEdge = 0x04,       // word contains a right edge
-            Both = 0x06,            // word contains both edges (shortcut)
-            FullWord = 0x08,        // use all 16 bits
-            Leftover = 0x10         // pass word; endscan line
+            Invalid = 0x00,
+            DontMask = 0x01,
+            LeftEdge = 0x02,
+            RightEdge = 0x04,
+            Both = 0x06,
+            FullWord = 0x08,
+            Leftover = 0x10
         }
 
         // RasterOp state
@@ -1022,6 +1072,8 @@ namespace PERQemu.Processor
         // handwavy stand-in for the memory pipeline.  Result words are queued
         // here during the RasterOp cycle and pulled out when a Store is pending.
         Queue<ROpWord> _destFifo;
+
+        // Pre-computed destination masks
+        static CombinerFlags[] _maskTable;
     }
 }
-
