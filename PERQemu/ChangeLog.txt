@@ -7,6 +7,16 @@ Previous notes moved to ChangeLog-Old.txt.
 
 April, 2025:
 
+    6. Oh bloody hell.  Missed one small fix to the MFM/Microp disk controllers.
+    The BOOT ROM tells the disk controller to ship the normal two quad words for
+    the logical header but sets the high address bits so the buffer will always
+    end up in high memory regardless of what size board is installed -- and then
+    ignores the header bytes anyway.  Ugh.  The disk hardware/state machine must
+    rely on always sending those two quads even though the DMA hardware could be
+    programmed to skip it by changing ONE CONSTANT in the microcode, but ANYWAY
+    it means we take out the range check and just let our Memory implementation
+    wrap the address, like the hardware do.  Gotta love it, warts and all.
+
     5. Small Ethernet bug fix when fetching the machine's MAC address.  Update
     the UserGuide for the pending release.  Update some of the older disk images
     (re-enable network servers in Accent S4, e.g.) and some final fiddling about

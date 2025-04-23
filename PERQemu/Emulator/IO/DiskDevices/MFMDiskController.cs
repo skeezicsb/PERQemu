@@ -360,14 +360,17 @@ namespace PERQemu.IO.DiskDevices
                 Log.Warn(Category.HardDisk, "Bad DMA header count {0} on {1}", quads, _command);
             }
 
+            // Probably not even worth logging this; see below
             if (header > _system.Memory.MemSize)
             {
-                Log.Warn(Category.HardDisk, "DMA header addr 0x{0:x} out of range on {1}", header, _command);
+                Log.Detail(Category.HardDisk, "DMA header addr 0x{0:x} out of range on {1}", header, _command);
             }
 #endif
 
-            // At boot time, avoid potentially scribbling outside the lines
-            if (quads == 2 && header < _system.Memory.MemSize)
+            // This always seems to be set, even when the data isn't needed or used
+            // and even at boot time when the ROM code sets a DMA address potentially
+            // off the end of RAM (depends on the hardware wrapping it around).  UGH.
+            if (quads == 2)
             {
                 // Copy the header to the header address
                 for (int i = 0; i < block.Header.Length; i += 2)
@@ -396,8 +399,8 @@ namespace PERQemu.IO.DiskDevices
             }
 
             Log.Debug(Category.HardDisk,
-                      "MFM sector read from {0}/{1}/{2}, to memory at 0x{3:x6}",
-                      cyl, head, sector, data);
+                      "MFM sector {0} from {1}/{2}/{3}, to memory at 0x{4:x6} (LH at 0x{5:x6})",
+                      _command, cyl, head, sector, data, header);
 
             // For MFM, no separate flag to ignore mid-sector interrupts
             if (_flags.HasFlag(SMControl.InterruptsOn))
@@ -458,8 +461,8 @@ namespace PERQemu.IO.DiskDevices
             _dib.SelectedDrive.SetSector(block);
 
             Log.Debug(Category.HardDisk,
-                      "MFM sector write complete to {0}/{1}/{2}, from memory at 0x{3:x6}",
-                      cyl, head, sector, data);
+                      "MFM sector {0} to {1}/{2}/{3}, from memory at 0x{4:x6}",
+                      _command, cyl, head, sector, data);
 
             if (_flags.HasFlag(SMControl.InterruptsOn))
             {

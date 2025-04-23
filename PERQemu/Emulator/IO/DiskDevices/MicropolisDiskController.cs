@@ -367,11 +367,7 @@ namespace PERQemu.IO.DiskDevices
             }
 #endif
 
-            // At boot, the ROM code isn't careful about where it shoves the LH,
-            // and I assume it just wraps around and lands in the wrong spot,
-            // but on *any* Read op if the header count isn't two quads, skip it.
-            // Why doesn't the boot code just set the header count to zero? :-/
-            if (quads == 2 && header < _system.Memory.MemSize)
+            if (quads == 2)     // See comment in MFMDiskController
             {
                 // Copy the header to the header address
                 for (int i = 0; i < block.Header.Length; i += 2)
