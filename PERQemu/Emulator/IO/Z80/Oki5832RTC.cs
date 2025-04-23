@@ -1,5 +1,5 @@
 ﻿//
-// Oki5832RTC.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// Oki5832RTC.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -51,7 +51,10 @@ namespace PERQemu.IO.Z80
             _ports = new byte[] { _baseAddress, (byte)(_baseAddress + 1) };
 
             _registers = new byte[16];
-            GetCurrentHostTime();
+
+            // Populate the registers with the current host time
+            _startDate = DateTime.Now.ToUniversalTime();
+            UpdateRegistersFromHostTime();
         }
 
         public string Name => "RTC";
@@ -61,26 +64,6 @@ namespace PERQemu.IO.Z80
         public byte? ValueOnDataBus => null;
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
-
-        public override string ToString()
-        {
-            try
-            {
-                // Convert the internal registers to a date time for formatting;
-                var dt = new DateTime(_registers[12] * 10 + _registers[11],     // yy
-                                      _registers[10] * 10 + _registers[9],      // mm
-                                      _registers[8] * 10 + _registers[7],       // dd
-                                      _registers[5] * 10 + _registers[4],       // hh
-                                      _registers[3] * 10 + _registers[2],       // mm
-                                      _registers[1] * 10 + _registers[0]);      // ss
-
-                return $"[{Name}: Date={dt.Month}/{dt.Day}/{dt.Year}, Time={dt.Hour:D2}:{dt.Minute:D2}:{dt.Second:D2}, Day={dt.DayOfWeek}]";
-            }
-            catch
-            {
-                return "[BAD DATE TIME!]";
-            }
-        }
 
         public void Reset()
         {
@@ -130,10 +113,8 @@ namespace PERQemu.IO.Z80
                 // Hold bit transitions start or end a read/write sequence
                 if (!_busy && _command.HasFlag(Control.Hold))
                 {
-                    // Assuming a read, populate the registers with the current
-                    // date/time from the host.  A write will clobber these, but
-                    // (for now) we just sort of ignore writes.  Hmm.
-                    GetCurrentHostTime();
+                    // Assuming a read, populate the registers with the current date/time
+                    UpdateRegistersFromHostTime((PERQemu.Sys.Uptime + PERQemu.Sys.Scheduler.CurrentTimeNsec) - _startTime);
                     _busy = true;
                     Log.Detail(Category.RTC, "Starting a new read/write sequence");
                 }
@@ -141,8 +122,15 @@ namespace PERQemu.IO.Z80
                 if (_busy && !_command.HasFlag(Control.Hold))
                 {
                     Log.Detail(Category.RTC, "{0} sequence complete", _writing ? "Write" : "Read");
+
+                    // If we just wrote the time, update our base!
+                    if (_writing)
+                    {
+                        UpdateStartTimeFromRegisters();
+                        _writing = false;
+                    }
+
                     _busy = false;
-                    _writing = false;
                 }
 
                 return;
@@ -158,6 +146,15 @@ namespace PERQemu.IO.Z80
             //         a 12-hour clock; the PERQ always sets this bit
             //     Register 8 (Day10s) bit 2 is set in leap years to indicate that
             //         February has 29 days
+            //
+            // Note that 3RCC says that the hardware ignores writes to the seconds
+            // registers, and the datasheet confirms this, but the Z80 code sends
+            // them anyway.  My modified module (Clock.pas) just sets the seconds
+            // field to zero, even though the emulator is perfectly happy to set
+            // them.  It seems that 3RCC always set the clock to GMT at the factory
+            // as well, so the "/SETGMTOFFSET" switch was used to compute and store
+            // the offset by running SETTIME and putting in the local time.  There
+            // doesn't appear to be a way to read or display the current offset!
             //
             if (_regSelect == 5)
             {
@@ -183,11 +180,12 @@ namespace PERQemu.IO.Z80
         }
 
         /// <summary>
-        /// Populate the register file with the date/time from the host.
+        /// Populate the register file with the date/time since launch, or since
+        /// the chip was last programmed.
         /// </summary>
-        void GetCurrentHostTime()
+        void UpdateRegistersFromHostTime(ulong elapsed = 0)
         {
-            var dt = DateTime.Now;
+            var dt = _startDate.AddMilliseconds(elapsed * Conversion.NsecToMsec);
 
             _registers[0] = (byte)(dt.Second % 10);
             _registers[1] = (byte)(dt.Second / 10);
@@ -201,9 +199,54 @@ namespace PERQemu.IO.Z80
             _registers[9] = (byte)(dt.Month % 10);
             _registers[10] = (byte)(dt.Month / 10);
             _registers[11] = (byte)(dt.Year % 10);
-            _registers[12] = (byte)((dt.Year % 100) / 10);
+            _registers[12] = (byte)((dt.Year - 1980) / 10);
 
-            Log.Debug(Category.RTC, "Current host date/time: {0}", dt);
+            Log.Info(Category.RTC, "Current PERQ date/time: {0}", dt);
+        }
+
+        /// <summary>
+        /// Sets the virtual host time from the current register settings.  This saves
+        /// the current scheduler timestamp so that subsequent reads from the RTC give
+        /// the elapsed time since the last time it was programmed.
+        /// </summary>
+        void UpdateStartTimeFromRegisters()
+        {
+            try
+            {
+                // Convert the internal registers to a date time to make sure it's legit
+                var dt = new DateTime(_registers[12] * 10 + _registers[11] + 1980,  // yr
+                                      _registers[10] * 10 + _registers[9],          // mon
+                                      _registers[8] * 10 + _registers[7],           // day
+                                      _registers[5] * 10 + _registers[4],           // hr
+                                      _registers[3] * 10 + _registers[2],           // min
+                                      _registers[1] * 10 + _registers[0]);          // sec
+
+                Log.Info(Category.RTC, "PERQ set the date/time: {0}", dt);
+
+                // Save our new baseline date/time
+                _startDate = dt;
+                _startTime = PERQemu.Sys.Uptime + PERQemu.Sys.Scheduler.CurrentTimeNsec;
+            }
+            catch
+            {
+                Log.Info(Category.RTC, "PERQ tried to set bad date/time");
+            }
+        }
+
+        // Debugging
+        public void DumpRTC()
+        {
+            var elapsed = PERQemu.Sys.Uptime + PERQemu.Sys.Scheduler.CurrentTimeNsec - _startTime;
+            elapsed = (ulong)(elapsed * Conversion.NsecToMsec * Conversion.MsecToSec);
+
+            Console.WriteLine($"RTC: running since {_startDate} ({elapsed} sec since last update)");
+            Console.WriteLine("Registers:");
+            Console.WriteLine($"  Year: {_registers[12]}{_registers[11]}\t(+1980)");
+            Console.WriteLine($"  Mon:  {_registers[10]}{_registers[9]}");
+            Console.WriteLine($"  Day:  {_registers[8]}{_registers[7]}");
+            Console.WriteLine($"  Hour: {_registers[5]}{_registers[4]}");
+            Console.WriteLine($"  Min:  {_registers[3]}{_registers[2]}");
+            Console.WriteLine($"  Sec:  {_registers[1]}{_registers[0]}");
         }
 
         /// <summary>
@@ -218,6 +261,9 @@ namespace PERQemu.IO.Z80
             Write = 0x20,
             Hold = 0x40
         }
+
+        DateTime _startDate;
+        ulong _startTime;
 
         byte[] _registers;
         byte _regSelect;
@@ -238,25 +284,28 @@ namespace PERQemu.IO.Z80
     register (6).  This chip only tracks 2-digit years, so it's not Y2K compliant.
 
     Setting the date and time on the hardware requires a special DIL clip and
-    daughterboard that physically enables the Write pin, plus a special boot
-    floppy that almost certainly doesn't exist anywhere anymore.  But the code
-    seems to include the write routine in the standard build!  This means we'll
-    be able to use the emulator to recreate the date/time setting software...
+    perfboard that physically enables the Write pin, plus a special boot floppy
+    that almost certainly doesn't exist anywhere anymore (though we did find the
+    DP drawings of it!).  But the EIO Z80 code includes the write routine in the
+    standard build!  This means we'll be able to use the emulator to recreate the
+    date/time setting software... [I have done this, and will distribute it when
+    tested more thoroughly. -- skz]
 
-    The initial implementation always updates the chip's registers from the host
-    OS on every read.  This is likely sufficient for normal operation since the
-    RTC is only used by Login to set the system clock at bootup.  If the virtual
-    machine is paused, or the host runs the emulation too slowly (or too fast!)
-    subsequent reads will be inaccurate.  I should/may update the code to take a
-    snapshot of the initial time when instantiated, then compute the elapsed time
-    based on how many CPU cycles have run; this would let diagnostics or any user
-    software that reads the RTC get a locally accurate result.
+    The initial implementation always updated the chip's registers from the host
+    OS on every read.  This has now been modified to initialize the chip to GMT
+    based on the host's clock at power on (of the virtual machine).  Subsequent
+    reads from the RTC are offset from the start time by the number of processor
+    cycles actually executed, so the chip runs at emulation speed.  The next
+    step is to save and restore the programmed RTC registers so that if you set
+    the clock back to 1983 on an emulated machine, it will resume where it left
+    off when restarted! :-)
+
+    Taking that to the next level of absurdity, we could compute the "age" of a
+    virtual PERQ based on its estimated manufacturing date (between 1980-1985ish)
+    and use that to slowly age the display phosphor -- "burning in" the Accent
+    Icons window title bar -- or slowly introduce random disk errors as the
+    number of power on hours increases.  If you want a truly accurate emulation
+    experience, it's the little details that matter!  [At this point the author
+    was escorted to the asylum by some nice gentlemen in clean white coats.]
     
-    Taking that to the next level of absurdity, we could save and restore the RTC
-    register contents between runs of the emulator for every configuration that
-    includes the EIO board, so each virtual machine would remember its own total
-    runtime.  Then we could slowly age the display phosphor -- "burning in" the
-    Accent Icons window title bar -- or slowly introduce random disk errors as
-    the number of "power on hours" increased... I mean, if you want a _true_
-    emulation experience, it's the little details that matter!  :-]
  */

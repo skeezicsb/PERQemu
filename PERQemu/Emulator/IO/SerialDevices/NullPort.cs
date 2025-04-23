@@ -1,5 +1,5 @@
 ﻿//
-// NullPort.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// NullPort.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -17,6 +17,8 @@
 // along with PERQemu.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System;
+
 using PERQemu.IO.Z80;
 
 namespace PERQemu.IO.SerialDevices
@@ -33,5 +35,10 @@ namespace PERQemu.IO.SerialDevices
         }
 
         public override string Name => "Unassigned RS232 port";
+
+        public override void Status()
+        {
+            Console.WriteLine("No status available for this port.");
+        }
     }
 }

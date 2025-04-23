@@ -1,5 +1,5 @@
 ﻿//
-// Ether10MbitController.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// Ether10MbitController.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -87,6 +87,15 @@ namespace PERQemu.IO.Network
         // The Multicast Command Byte
         public byte MCB => _mcastGroups[0];
 
+        /// <summary>
+        /// Controller hardware reset.
+        /// </summary>
+        /// <remarks>
+        /// Todo: This may be way too aggressive for the software/state machine reset
+        /// that is called much more frequently; probably need to split this up
+        /// into a "hard" clobber everything vs. "soft" return-to-idle style that
+        /// some other controllers use.  Docs are sketchy; study the nanocode.
+        /// </remarks>
         public void Reset()
         {
             _system.Scheduler.Cancel(_timer);
@@ -233,7 +242,9 @@ namespace PERQemu.IO.Network
                     break;
 
                 case 0xc3:
-                    Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
+                    // Todo: bit 1 enables the "bit count interrupt" when set
+                    // What does that actually mean?
+                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
                     break;
 
                 default:
@@ -293,6 +304,7 @@ namespace PERQemu.IO.Network
                     if (MCB == 0xfe)
                     {
                         Log.Info(Category.Ethernet, "Special receive to fetch address!");
+                        _state = State.Receiving;
 
                         // The minimum delay is as long as it takes to DMA one
                         // quad word, but the microcode seems to bank on the fact
@@ -301,6 +313,12 @@ namespace PERQemu.IO.Network
                         // takes the hardware to read a preamble" is 96 bit times,
                         // so let's round up to 10usec?  Oy vey.
                         _response = _system.Scheduler.Schedule(10 * Conversion.UsecToNsec, GetAddress);
+
+                        // Do NOT do a receive here?  The DMA will be set up for
+                        // our special packet, and if anything else is queued up
+                        // (and all modern networks are extremely chatty) we'll
+                        // potentially step on the response.  Oof.
+                        return;
                     }
 
                     // Go see if the NIC has anything queued up!
@@ -434,7 +452,7 @@ namespace PERQemu.IO.Network
             }
 
             // Otherwise log the rejection
-            Log.Info(Category.Ethernet, "Rejecting packet for {0}", dest);
+            Log.Debug(Category.Ethernet, "Rejecting packet for {0}", dest);
             return false;
         }
 

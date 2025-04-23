@@ -1,5 +1,5 @@
 ﻿//
-// TAPFormatter.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// TAPFormatter.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -204,7 +204,7 @@ namespace PERQmedia
 
                             var label = new byte[size];
                             fs.Read(label, 0, label.Length);
-                            dev.FileInfo.TextLabel = label;
+                            dev.FileInfo.ImageLabel = label;
 
                             if ((size & 1) != 0) fs.ReadByte();     // Toss pad byte
                         }

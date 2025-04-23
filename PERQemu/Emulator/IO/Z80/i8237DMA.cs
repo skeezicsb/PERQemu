@@ -1,5 +1,5 @@
 ﻿//
-// i8237DMA.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// i8237DMA.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -196,8 +196,8 @@ namespace PERQemu.IO.Z80
                         // Whack the device
                         _channels[_active].Device.DMATerminate();
 
-                        // Reinit?  Will reset or mask as appropriate
-                        _channels[_active].Reinit();
+                        // If not auto-initializing, set our mask bit
+                        _channels[_active].Masked = !_channels[_active].AutoInit;
 
                         // Ping the Am9519
                         _interruptEnabled = true;
@@ -523,20 +523,17 @@ namespace PERQemu.IO.Z80
                 return Terminated;
             }
 
-            public void Reinit()
+            public void CheckReady()
             {
-                if (AutoInit)
+                // Check if we should re-init the channel first
+                if (AutoInit && Terminated)
                 {
                     CurrentAddress = BaseAddress;
                     CurrentCount = (ushort)(WordCount + 1);
                     Terminated = false;
                     Log.Debug(Category.Z80DMA, "{0} channel autoinitialized", Device);
                 }
-                else Masked = true;
-            }
 
-            public void CheckReady()
-            {
                 // Set the Requested flag if the channel is ready to go
                 // Note: Use |= if software requests/block mode allowed...
                 Requested = (!Masked && !Terminated &&

@@ -32,33 +32,29 @@ code and clean up all of my quirks, shortcuts, errors and other questionable
 coding choices. ;-)
 
 In the meantime, this is more Mac-focused, since that's the primary development
-platform I have available.  For now it runs on MacOS X versions as old as 10.11
-and 10.13; it hasn't been tested on newer versions of macOS or non-Intel Macs.
-PERQemu is now tested almost exclusively in 64-bit mode.  It's unlikely to run
-on 32-bit Mono due to OS limitations.
+platform I have available.  For now it runs on MacOS X versions as old as 10.13;
+it hasn't yet been tested on newer versions of macOS or non-Intel Macs.  PERQemu
+is now tested exclusively in 64-bit mode and is unlikely to run on 32-bit Mono
+due to OS limitations.
 
 Testing on Windows and Linux (in a VM) is now being integrated, but due to the
 sprawling, interactive nature of the emulator there are no automated tests so
 I mostly use the same QA approach that 3RCC used, for better or worse: if it
 runs the POS "burn in" code (i.e. the SIGGRAPH demos) it's good to go!
 
-[With the pull request to merge this back into the master branch, this file
-could use yet another rewrite...]
-
 
 1.2  Version History
 --------------------
 
-The next major release will incorporate all of the changes since v0.5.0 to add
-PERQ-2 configurations, along with an expanded library of pre-built, bundled
-hard disk images.  This is currently in development on the "experiments" branch
-and is slated to be released to main as PERQemu v0.7.5, hopefully by the end of
-2024 or early in 2025.
+PERQemu v0.7.5 is a milestone release that accumulates all of the changes since
+v0.5.0, adding PERQ-2 configurations along with an expanded library of pre-built
+bundled hard disk images.
 
-PERQemu v0.6.5 incorporates all of the changes since v0.5.5 to bring up the EIO
+PERQemu v0.6.x incorporates all of the changes since v0.5.5 to bring up the EIO
 board and new Z80 subsystem.  All of the PERQ-2/EIO 20-bit configurations are
-now configurable, with 8" Micropolis or 5.25" MFM hard disks.  This pre-release
-does not yet include additional bundled disk images.
+now configurable, with 8" Micropolis or 5.25" MFM hard disks.  These interim
+releases also include a number of bug fixes (RasterOp, Victim register) that
+correct issues with PNX installations.
 
 PERQemu v0.5.8 is an interim release to allow access to early EIO/Micropolis
 hard disk support.
@@ -540,9 +536,6 @@ files are loaded from the PROM directory at startup:
       NOTE: these are the actual ROM dumps, but with their address lines
       "unscrambled".  See PROM/Unscrambler.cs if you're not squeamish.
 
-    - RasterOp:  Two text files and a small Perl script are included to
-      build "rsc03emu.rom" and "rds00emu.rom".
-
     - Memory:  The "bkm16emu.rom" image is used by the Memory State Machine.
       The source and a small Perl hack to build it are included here.
 
@@ -611,7 +604,7 @@ when the "CPUSpeed" RateLimit option setting is enabled.
 PERQ Ethernet support comes in three flavors:  the 10Mbit interface on the OIO
 option board, the built-in 10Mbit interface on the EIO board, and the prototype
 3Mbit interface that came as a wire-wrapped option board.  The PERQ-1 OIO option
-is now in development.  EIO and the 3Mbit board will follow.
+and PERQ-2 EIO implementations are available; the 3Mbit board will follow.
 
 The Ethernet code is in Emulator/IO/Network:
 
@@ -621,9 +614,9 @@ The Ethernet code is in Emulator/IO/Network:
       for transmission just disappear; nothing is ever received.  This
       allows Accent to properly initialize;
 
-    - Ether10MbitController.cs is the PERQ side of the OIO (and future
-      EIO) interface.  It handles the control/status/registers and DMA
-      to and from memory.  Initially it requires root/admin privileges
+    - Ether10MbitController.cs is the PERQ side of the OIO and EIO
+      interfaces.  It handles the control/status/registers and DMA to
+      and from memory.  Initially it requires root/admin privileges
       to open the host adapter in "promiscuous mode" but should/will
       support other encapsulations in the future;
 
@@ -784,6 +777,8 @@ PERQ info and lore.  More to come!
 
 Update history:
 
+v2.6 - 4/22/2025 - skeezics - v0.7.5 release
+v2.5 - 3/28/2025 - skeezics
 v2.4 - 12/8/2024 - skeezics - updated for the v0.6.5 interim release
 v2.3 - 3/25/2024 - skeezics
 v2.2 - 2/18/2024 - skeezics - updated for the v0.5.5 interim release

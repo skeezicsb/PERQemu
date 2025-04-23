@@ -1,5 +1,5 @@
 //
-// Z80SIOChannel.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// Z80SIOChannel.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -125,6 +125,16 @@ namespace PERQemu.IO.Z80
             public void ClosePort()
             {
                 _port?.Close();
+            }
+
+            void DisablePort()
+            {
+                Log.Warn(Category.All, "Serial port {0} has thrown an exception; disabling it", _port.Name);
+                Log.Warn(Category.All, "Check that {1} is a valid port and restart the PERQ to reenable.", _port.Port);
+                DetachDevice();
+
+                // Replace with a null port
+                AttachDevice(new NullPort(PERQemu.Sys.IOB.Z80System));
             }
 
             public byte ReadRegister()
@@ -432,9 +442,22 @@ namespace PERQemu.IO.Z80
                 // physical port and our virtual machine's actual execution rate...
                 if (_port != null)
                 {
-                    _readRegs[0] |= (byte)(_port.DCD ? RReg0.DCDState : 0);
-                    _readRegs[0] |= (byte)(_port.CTS ? RReg0.CTSState : 0);
-                    _readRegs[0] |= (byte)(_breakDetected ? RReg0.BreakAbort : 0);
+                    try
+                    {
+                        _readRegs[0] |= (byte)(_port.DCD ? RReg0.DCDState : 0);
+                        _readRegs[0] |= (byte)(_port.CTS ? RReg0.CTSState : 0);
+                        _readRegs[0] |= (byte)(_breakDetected ? RReg0.BreakAbort : 0);
+                    }
+                    catch (Exception e)
+                    {
+                        // On our first (lazy) access, may get an "inappropriate ioctl for device"
+                        // error from the host, so at this point just punt and assign a NullPort
+                        // todo: add a CLI option to close/reset/reopen the port at runtime without
+                        // having to power off -- USB gizmos can be unreliable and transient serial
+                        // port issues should require a restart if we can avoid it!
+                        Log.Error(Category.RS232, "Exception thrown in UpdateFlags: {0}", e.Message);
+                        DisablePort();
+                    }
                 }
 
                 // If no interrupts pending, the Z80 returns V3..V1 = 011.  So

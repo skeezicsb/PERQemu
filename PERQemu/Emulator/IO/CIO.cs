@@ -1,5 +1,5 @@
 //
-// CIO.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// CIO.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -38,6 +38,7 @@ namespace PERQemu.IO
         {
             _name = "CIO";
             _desc = "PERQ-1 I/O Board, new Z80, Shugart/Micropolis";
+            _isEIO = false;
 
             _z80CycleTime = 407;    // 2.4576Mhz
 

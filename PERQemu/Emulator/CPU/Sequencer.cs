@@ -1,5 +1,5 @@
 ﻿//
-// Sequencer.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// Sequencer.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -52,6 +52,7 @@ namespace PERQemu.Processor
                 _s.Value = 0;
                 _pc.Value = 0;
                 _victim.Value = 0;
+                _holdVictim = false;
                 _extendedOp = false;
                 _callStack.Reset();
 
@@ -94,11 +95,23 @@ namespace PERQemu.Processor
             /// are to the full address width, and no calculations that might
             /// overflow the low 12 bits are ever done directly, so we just
             /// expose the getter/setter as a ushort.  Yes, yes, I know...
+            /// 
+            /// Updated: to more closely match the hardware, we now compute the
+            /// "hold" signal more like the hardware does.  PNX seems to depend
+            /// on the fact that the victim register is reloaded on every cycle
+            /// UNLESS the actual OpEmpty condition is true, at which point any
+            /// further writes are blocked until a Revive or Read is performed.
             /// </remarks>
             public ushort Victim
             {
                 get { return (ushort)_victim.Value; }
-                set { _victim.Value = value; }
+                set { if (!_holdVictim) _victim.Value = value; }
+            }
+
+            public bool HoldVictim
+            {
+                get { return _holdVictim; }
+                set { _holdVictim = value; }
             }
 
             /// <summary>
@@ -200,8 +213,6 @@ namespace PERQemu.Processor
                     default:
                         throw new UnimplementedInstructionException($"Unimplemented Condition {uOp.CND}");
                 }
-
-                // var curPC = _pc.Value;       // for debugging cross-bank jumps
 
                 // Dispatch jump action
                 switch (uOp.JMP)
@@ -402,7 +413,7 @@ namespace PERQemu.Processor
                         else
                         {
                             // Is the victim latch set?
-                            if (Victim == 0)
+                            if (!_holdVictim)
                             {
                                 throw new InvalidOperationException("Revive from unset victim latch!");
                             }
@@ -410,7 +421,7 @@ namespace PERQemu.Processor
                             Log.Debug(Category.Sequencer, "PC restored from victim ({0:x4})", Victim);
 
                             _pc.Value = Victim;     // Revive
-                            Victim = 0;             // Clear the latch
+                            _holdVictim = false;    // Clear the hold
                         }
                         break;
 
@@ -440,9 +451,6 @@ namespace PERQemu.Processor
                     default:
                         throw new UnimplementedInstructionException($"Unhandled Jump type {uOp.JMP}");
                 }
-
-                //if ((_pc.Value & 0x3000) != (curPC & 0x3000))
-                //    Console.WriteLine($"Cross bank jump from {curPC:x4} to {_pc.Value:x4}");
             }
 
             /// <summary>
@@ -522,6 +530,9 @@ namespace PERQemu.Processor
 
             // 2910 call stack
             CallStack _callStack;
+
+            // Give that victim a big ol' hug
+            bool _holdVictim;
 
             // Support decoding two-byte ops
             bool _extendedOp;

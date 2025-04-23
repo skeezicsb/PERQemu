@@ -1,5 +1,5 @@
 //
-// IOBus.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// IOBus.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -23,7 +23,7 @@ using System.Collections.Generic;
 namespace PERQemu.IO
 {
     /// <summary>
-    /// Handle read/write errors in a uniform way?
+    /// Handle read/write errors in a uniform way.
     /// </summary>
     public class UnhandledIORequestException : Exception
     {
@@ -41,10 +41,10 @@ namespace PERQemu.IO
     }
 
     /// <summary>
-    /// IOBus acts as an arbiter between the PERQ CPU and various devices
-    /// attached to the system.  It dispatches IO reads and writes to the
-    /// correct devices.  It does not at this time deal with details like
-    /// arbitration and timing.
+    /// IOBus acts as an arbiter between the PERQ CPU and various devices attached
+    /// to the system's IOA (address) and IOD (data) buses on the backplane.  Reads
+    /// and writes to a specific device are routed to the board/slot they're connected
+    /// to.  It does not at this time deal with details like arbitration and timing.
     /// </summary>
     public sealed class IOBus
     {
@@ -121,6 +121,17 @@ namespace PERQemu.IO
             {
                 Log.Warn(Category.IO, e.Message);
             }
+        }
+
+
+        public void Shutdown()
+        {
+            foreach (IIODevice device in _devices)
+            {
+                device.Shutdown();
+            }
+
+            _devices.Clear();
         }
 
         /// <summary>

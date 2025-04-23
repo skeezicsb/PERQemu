@@ -1,5 +1,5 @@
 ﻿//
-// Events.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// Events.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -58,6 +58,7 @@ namespace PERQemu
         DDSChanged,         // For UI update, boot key
         HaltedInLoop,       // Microcode halted in loop
         Z80RunState,        // Z80 turned on or off
+        DebugBreakpoint,    // Breakpoint triggered
         HardDiskActivity,   // For blinkenlights
         FloppyActivity,     // Sure, why not
         StreamerActivity,   // Definitely this

@@ -1,5 +1,5 @@
 //
-// Configurator.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// Configurator.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -323,13 +323,13 @@ namespace PERQemu.Config
                         }
                     }
 
+                    // Todo: For PERQ-2, save the configured serial number if set
+
                     // If an Ethernet address has been set, save it
                     if (_current.EtherAddress != 0)
                     {
                         sw.WriteLine("ethernet address " + _current.EtherAddress);
                     }
-
-                    // Todo: For PERQ-2, save the configured serial number if set
 
                     // Write out the storage configuration
                     for (var unit = 0; unit < _current.Drives.Length; unit++)
@@ -604,6 +604,12 @@ namespace PERQemu.Config
                     // Disallow EIO + OIO Ethernet... but allow NIO?  Ugh.
                     if ((conf.IOBoard == IOBoardType.EIO) && conf.IOOptions.HasFlag(IOOptionType.Ether))
                     {
+                        if (Quietly)
+                        {
+                            // When loading saved configs, just remove the conflict and continue
+                            conf.IOOptions &= ~IOOptionType.Ether;
+                            break;
+                        }
                         conf.Reason = $"OIO Board Ethernet option conflicts with {conf.IOBoard} board.";
                         return false;
                     }
@@ -633,7 +639,7 @@ namespace PERQemu.Config
         /// For now, traditional configuration rules apply:
         ///     PERQ-1 only has 1 floppy, 1 Shugart 14" disk.
         ///     PERQ-2 only has 1 floppy, 1 Micropolis 8" disk.
-        ///     PERQTx only has 1 floppy, 1 Micropolis 8" or 1-2 5.25" disks.
+        ///     PERQTx only has 1 floppy, 1 or 2 5.25" disks.
         /// With the addition of the QIC Tape streamer (OIO only, currently) any
         /// configuration may attach a single drive as unit 3 iff the controller
         /// is available.  (Rather than throw an error, if OIO or MLO is selected
@@ -644,8 +650,8 @@ namespace PERQemu.Config
         /// At the moment, SMD Disks are not supported (requires the as-yet-
         /// unimplemented MLO option board).  We now have photographic proof of
         /// an ICL-labeled "CIO" that in theory supports a Micropolis 8" drive
-        /// in a PERQ-1 chassis!  We just have to obtain/create a disk image in
-        /// order to test it...
+        /// in or attached to (?) a PERQ-1 chassis!  We just have to obtain or
+        /// create a disk image in order to test it...
         /// </remarks>
         public bool CheckStorage()
         {
@@ -761,8 +767,9 @@ namespace PERQemu.Config
                 }
             }
 
-            // Currently the hard disk controller can't cope if there's no media loaded;
-            // not sure how realistic it is to run the actual hardware with no disk attached...
+            // Currently the hard disk controller can't cope if there's no media
+            // loaded; not sure how realistic it is to run the actual hardware with
+            // no disk attached, unless using a link board (not supported, yet?)
             if (!gotHard)
             {
                 conf.Reason = "The PERQ won't boot without a hard disk present.";

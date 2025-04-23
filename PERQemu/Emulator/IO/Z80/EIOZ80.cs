@@ -1,5 +1,5 @@
 //
-// EIOZ80.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// EIOZ80.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -70,6 +70,8 @@ namespace PERQemu.IO.Z80
         // No hard disk seek circuit on the EIO
         public override Z80CTC CTC => null;
 
+        // For debugging mostly
+        public Oki5832RTC RTC => _rtc;
 
         /// <summary>
         /// Initializes the EIO devices and attaches them to the bus.
@@ -123,7 +125,7 @@ namespace PERQemu.IO.Z80
                 }
                 else
                 {
-                    var rsb = new PhysicalPort(this, Settings.RSADevice, Settings.RSASettings, "B");
+                    var rsb = new PhysicalPort(this, Settings.RSBDevice, Settings.RSBSettings, "B");
                     _z80sioB.AttachPortDevice(0, rsb);
                     _timerB.AttachDevice(0, rsb);
                 }

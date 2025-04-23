@@ -3,7 +3,7 @@
 //
 //  Author:  S. Boondoggle <skeezicsb@gmail.com>
 //
-//  Copyright (c) 2022-2024, Boondoggle Heavy Industries, Ltd.
+//  Copyright (c) 2022-2025, Boondoggle Heavy Industries, Ltd.
 //
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -70,17 +70,7 @@ namespace PERQmedia
     {
         public MediaInfo()
         {
-            Version = 0;
-            Format = Formatters.Unknown;
-            FSType = FilesystemHint.Unknown;
-#if DEBUG
-            ArchiveDate = DateTime.Today;   // don't change every damn run when testing
-#else
-            ArchiveDate = DateTime.UtcNow;
-#endif
-            ArchivedBy = Environment.UserName;
-            _textLabel = null;
-            _imageLabel = null;
+            Clear();
         }
 
         public MediaInfo(byte vers, Formatters form, FilesystemHint hint,
@@ -100,6 +90,21 @@ namespace PERQmedia
         public FilesystemHint FSType;
         public DateTime ArchiveDate;
         public string ArchivedBy;
+
+        public void Clear()
+        {
+            Version = 0;
+            Format = Formatters.Unknown;
+            FSType = FilesystemHint.Unknown;
+#if DEBUG
+            ArchiveDate = DateTime.Today;   // don't change every damn run when testing
+#else
+            ArchiveDate = DateTime.UtcNow;
+#endif
+            ArchivedBy = Environment.UserName;
+            _textLabel = null;
+            _imageLabel = null;
+        }
 
         public byte[] TextLabel
         {

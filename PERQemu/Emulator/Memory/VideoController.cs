@@ -1,5 +1,5 @@
 //
-// VideoController.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// VideoController.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -85,7 +85,7 @@ namespace PERQemu.Memory
         {
             _state = VideoState.Idle;
             _crtSignals = CRTSignals.None;
-            _videoStatus = StatusRegister.None;
+            _videoStatus = StatusRegister.DisableMicroInterrupt;
             _scanLine = 0;
             _displayAddress = 0;
             _cursorAddress = 0;
@@ -109,7 +109,7 @@ namespace PERQemu.Memory
         public int DisplayWidth => _displayWidth;
         public int DisplayHeight => _displayHeight;
 
-        bool MicroInterruptEnabled => (_videoStatus & StatusRegister.DisableMicroInterrupt) == 0;
+        bool InterruptEnabled => (_videoStatus & StatusRegister.DisableMicroInterrupt) == 0;
         bool DisplayEnabled => (_videoStatus & StatusRegister.EnableDisplay) != 0;
         bool CursorEnabled => (_videoStatus & StatusRegister.EnableCursor) != 0;
         bool VSyncEnabled => (_videoStatus & StatusRegister.EnableVSync) != 0;
@@ -253,20 +253,22 @@ namespace PERQemu.Memory
                         Log.Debug(Category.Display, "Cursor Y enabled at line {0}", _scanLine);
                     }
 
-                    // If either VSync or Display enables set, kick the state machine
+                    Log.Debug(Category.Display, "Video status port set to {0} (0x{1:x}) @ line {2}",
+                                                _videoStatus, value, _scanLine);
+
+                    // Clear in case we transition at a weird time?
+                    _system.Scheduler.Cancel(_currentEvent);
+
+                    // Check the enable conditions in order of priority
                     if (VSyncEnabled)
                     {
                         _state = VideoState.VBlank;
-                        RunStateMachine();
                     }
-                    else if (DisplayEnabled)
+                    else if (DisplayEnabled || !InterruptEnabled)
                     {
                         _state = VideoState.Active;
-                        RunStateMachine();
                     }
-
-                    Log.Debug(Category.Display, "Video status port set to {0} (0x{1:x}) @ line {2}",
-                                               _videoStatus, value, _scanLine);
+                    RunStateMachine();
                     break;
 
                 case 0xe4:  // Load cursor X position
@@ -297,10 +299,17 @@ namespace PERQemu.Memory
         /// <remarks>
         /// Currently the Configurator allows up to 8MB (4MW) of memory.  There
         /// were a few obscure references to Accent supporting this much RAM but
-        /// no 8MB boards are known to have been produced.  To support the full
+        /// no 8MB boards are known to have been produced.  (To support the full
         /// 32MB/16MW address range, the display and cursor address registers
         /// and microcode/software support would have to be rewritten and the
-        /// full 16 bits used as the base address.
+        /// full 16 bits used as the base address.)
+        /// 
+        /// NOTE: a discrepancy in the documentation indicates that only bit 2
+        /// is used (as address bit 20) on the 24-bit board;  S. Clark memo and
+        /// a note in MakeVMBoot.Pas implies that the screen "must be on lower 
+        /// 4 meg memory board" (so a PERQ with *two* 4MB boards was tested!?).
+        /// We'll try it with just bit two to see if it eliminates the strange
+        /// artifacts when booting in 24 bit mode.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         int UnFrobAddress(int value)
@@ -318,7 +327,7 @@ namespace PERQemu.Memory
             }
 
             // Rare 4MB board (T4)
-            return ((value & 0xc) << 18 | (value & 0xfff0) << 4);
+            return (((value & 0xc) << 14) | (value & 0xfff0)) << 4;
         }
 
 
@@ -357,13 +366,13 @@ namespace PERQemu.Memory
                             // interrupts (so the emulator doesn't go bonkers)
                             if (_scanLine % DisplayHeight == 0)
                             {
-                                _system.Display.Refresh();
+                                _system.Display.Refresh(InterruptEnabled);
                             }
                         }
 
                         //
                         // Line counter: count down this "band" until it hits zero.
-                        // If it was non-zero to start with, return to Idle and wait
+                        // If it was non-zero to start with, return to Idle to wait
                         // for the microcode to set up the next one.  Otherwise,
                         // return to Active or VBlank to do the next line.
                         //
@@ -378,6 +387,14 @@ namespace PERQemu.Memory
                             _state = VideoState.VBlank;
                         }
                         else if (DisplayEnabled)
+                        {
+                            _state = VideoState.Active;
+                        }
+
+                        // Backstop: if the video is switched off mid-frame we
+                        // want to continue the refresh loop, so force the action.
+                        // There's probably a more elegant way to do this.  Meh.
+                        if (!InterruptEnabled && _state == VideoState.Idle)
                         {
                             _state = VideoState.Active;
                         }
@@ -398,7 +415,7 @@ namespace PERQemu.Memory
             // Trigger an interrupt if the line counter is set and has reached 0
             if (_lineCounter == 0 && _lineCounterInit > 0)
             {
-                if (MicroInterruptEnabled && !_lineCountOverflow)     // Just once...
+                if (InterruptEnabled && !_lineCountOverflow)     // Just once...
                 {
                     Log.Debug(Category.Display, "Line counter overflow @ scanline {0}", _scanLine);
                     _system.CPU.RaiseInterrupt(InterruptSource.LineCounter);
@@ -407,6 +424,7 @@ namespace PERQemu.Memory
                 // Set our flag; this will be reset when _lineCounterInit is reloaded
                 _lineCountOverflow = true;
 
+                //
                 // Check the StartOver bit: at the end of the second vertical
                 // blanking band we're about to start a new frame, so reset the
                 // scan line counter before we return to idle.  The microcode
@@ -449,7 +467,7 @@ namespace PERQemu.Memory
             Console.WriteLine("counterInit={0}, count={1}, overflow={2}, scanline={3}, startOver={4}",
                               _lineCounterInit, _lineCounter, _lineCountOverflow, _scanLine, _startOver);
             Console.WriteLine("screen @ 0x{0:x}, cursor @ 0x{1:X}, intrEnabled={2}",
-                              _displayAddress, _cursorAddress, MicroInterruptEnabled);
+                              _displayAddress, _cursorAddress, InterruptEnabled);
             Console.WriteLine("state={0}, crt={1}", _state, _crtSignals);
         }
 
@@ -460,6 +478,9 @@ namespace PERQemu.Memory
         /// </summary>
         public void RenderScanline(int renderLine)
         {
+            // If interrupts are off, nothin' to do
+            if (!InterruptEnabled) return;
+
             // Set the start of this scanline, offset from start of display (by quads)
             int dispAddress = (_displayAddress >> 2) + (renderLine * _displayQuads);
 
@@ -579,6 +600,11 @@ namespace PERQemu.Memory
             throw new ArgumentException("Bad _cursorFunc in TransformCursorByte");
         }
 
+        public void Shutdown()
+        {
+            // Nothing extra to do
+        }
+
         [Flags]
         enum CRTSignals
         {
@@ -643,9 +669,10 @@ namespace PERQemu.Memory
         // This is strictly based on 60Hz refresh tied to the original 170ns
         // microcycle time; run the CPU faster or slower and the refresh rate
         // varies with it.  On a fast host, rate limiting the CPU (Settings)
-        // will yield 60fps; running faster than that might produce some
-        // strange behavior in OSes that rely on a 60Hz vertical retrace to
-        // run their clocks, but that'd be a nice problem to have... :-|
+        // will yield 60fps, while running faster than that scales the video
+        // refresh but keeps the timing relationship inside the virtual machine
+        // the same.  Running at 144fps (real world) on a gaming PC in 2024 did
+        // not reveal any issues or timing quirks in the PERQ emulation!  Cool.
         //
         readonly ulong _scanLineTimeNsec = 11900;   // 70 microcycles
         readonly ulong _hBlankTimeNsec = 3740;      // 22 microcycles
@@ -658,7 +685,7 @@ namespace PERQemu.Memory
         // Trade a little space for speed
         int _displayQuads;
         int _displayBytes;
-        bool _isPortrait = true;
+        bool _isPortrait;
 
         ScanLineBuffer _scanlineData;
         byte[] _cursorData;

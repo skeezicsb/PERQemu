@@ -1,5 +1,5 @@
 //
-// HardDisk.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// HardDisk.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -169,6 +169,8 @@ namespace PERQemu.IO.DiskDevices
             var seekStart = _scheduler.CurrentTimeNsec;
             var seekEnd = (ulong)Specs.MinimumSeek;
 
+            _seekComplete = false;
+
             // Schedule the time delay based on drive specifications
             if (_seekEvent == null)
             {
@@ -242,6 +244,7 @@ namespace PERQemu.IO.DiskDevices
             Log.Debug(Category.HardDisk, "Drive seek to cyl {0} from {1}, {2} steps in {3:n}ms",
                                           cyl, _cyl, _stepCount, delay);
             _cyl = cyl;
+            _seekComplete = false;
 
             // Schedule the callback
             _seekEvent = _scheduler.Schedule((ulong)delay * Conversion.MsecToNsec, SeekCompletion);

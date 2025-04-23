@@ -1,5 +1,5 @@
 //
-// Display.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// Display.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -41,6 +41,11 @@ namespace PERQemu.UI
             MakePixelExpansionTable();
         }
 
+        // Stupid SDL2 doesn't have a SetRenderDrawColor that just takes an int
+        static byte Red(uint argb) { return (byte)((argb & 0x00ff0000) >> 16); }
+        static byte Green(uint argb) { return (byte)((argb & 0x0000ff00) >> 8); }
+        static byte Blue(uint argb) { return (byte)argb; }
+
         public Display(PERQSystem system)
         {
             _system = system;
@@ -59,12 +64,16 @@ namespace PERQemu.UI
             // Keep a local copy
             _displayWidth = _system.VideoController.DisplayWidth;
             _displayHeight = _system.VideoController.DisplayHeight;
+            _freeHeight = _displayHeight + EXTRA_LINES;
 
             // Allocate our hunka hunka burnin' pixels
             _32bppDisplayBuffer = new int[(_displayWidth * _displayHeight)];
 
             // And our intermediate one
             _8bppDisplayBuffer = new long[(_displayWidth / 8 * _displayHeight)];
+
+            // Just once at power on :-)
+            _warmedUp = false;
         }
 
         /// <summary>
@@ -116,12 +125,8 @@ namespace PERQemu.UI
             // issue on displays too short to hold the entire screen?
             SDL.SDL_RenderSetLogicalSize(_sdlRenderer, _displayWidth, _displayHeight);
 
-            // Initialize in our slightly greenish/grayish background color :-)
-            // during "warmup" we'll fade in to full brightness.  because why not.
-            SDL.SDL_SetRenderDrawColor(_sdlRenderer, 0x40, 0x48, 0x40, 0xff);
-
             //
-            // Create the display texture
+            // Create the display textures
             //
             _displayTexture = SDL.SDL_CreateTexture(
                 _sdlRenderer,
@@ -135,6 +140,35 @@ namespace PERQemu.UI
                 throw new InvalidOperationException(
                     string.Format("SDL_CreateTexture failed: {0}", SDL.SDL_GetError()));
             }
+
+            _freeRunTexture = SDL.SDL_CreateTexture(
+                _sdlRenderer,
+                SDL.SDL_PIXELFORMAT_ARGB8888,
+                (int)SDL.SDL_TextureAccess.SDL_TEXTUREACCESS_TARGET,
+                _displayWidth,
+                _freeHeight);
+
+            if (_freeRunTexture == IntPtr.Zero)
+            {
+                throw new InvalidOperationException(
+                    string.Format("SDL_CreateTexture failed: {0}", SDL.SDL_GetError()));
+            }
+
+            // Set up a rectangle for fading/painting the full display
+            _displayRect = new SDL.SDL_Rect();
+            _displayRect.h = _displayHeight;
+            _displayRect.w = _displayWidth;
+            _displayRect.x = 0;
+            _displayRect.y = 0;
+
+            // Set up for initial warm-up
+            _enabled = true;
+
+            // Init the display textures
+            SDL.SDL_SetTextureBlendMode(_displayTexture, SDL.SDL_BlendMode.SDL_BLENDMODE_NONE);
+            SDL.SDL_SetTextureBlendMode(_freeRunTexture, SDL.SDL_BlendMode.SDL_BLENDMODE_BLEND);
+
+            MakeBackground();
 
             //
             // Some visual "sugar"
@@ -184,10 +218,6 @@ namespace PERQemu.UI
             _printerRect.w = 32;
             _printerRect.x = _streamerRect.x - 36;
             _printerRect.y = _streamerRect.y;
-
-            // Init the display texture
-            SDL.SDL_SetTextureBlendMode(_displayTexture, SDL.SDL_BlendMode.SDL_BLENDMODE_NONE);
-            SDL.SDL_RenderClear(_sdlRenderer);
 
             // Set up our custom SDL render event, if not already done
             if (_customEventType == 0)
@@ -250,8 +280,18 @@ namespace PERQemu.UI
         /// Called by the VideoController to send a render event to the SDL 
         /// message loop so the screen will get drawn.
         /// </summary>
-        public void Refresh()
+        public void Refresh(bool enabled)
         {
+#if DEBUG
+            if (enabled != _enabled)
+            {
+                Status();
+                Console.Write("Screen is now {0}, ", enabled ? "ON" : "OFF");
+                Console.WriteLine("DDS @ {0} (clocks {1})", PERQemu.Sys.CPU.DDS, PERQemu.Sys.CPU.Clocks);
+            }
+#endif
+            _enabled = enabled;
+
             SDL.SDL_PushEvent(ref _renderEvent);
         }
 
@@ -298,30 +338,77 @@ namespace PERQemu.UI
             int pitch = 0;
             int j = 0;
 
-            // Expand our "fake palletized" 8 bits to 32, manually, because all
-            // the faffing around with SDL-CS surfaces is just a complete waste
-            // of time (on Mono, anyway).  This is painfully stupid.  But doing
-            // this here (on the main/SDL thread) boosts frame rates by 10fps.
-            for (int i = 0; i < _8bppDisplayBuffer.Length; i++)
+            if (_enabled)
             {
-                var quad = (ulong)_8bppDisplayBuffer[i];
-                _32bppDisplayBuffer[j++] = (int)((quad & 0xff00000000000000U) != 0 ? BLACK : WHITE);
-                _32bppDisplayBuffer[j++] = (int)((quad & 0x00ff000000000000U) != 0 ? BLACK : WHITE);
-                _32bppDisplayBuffer[j++] = (int)((quad & 0x0000ff0000000000U) != 0 ? BLACK : WHITE);
-                _32bppDisplayBuffer[j++] = (int)((quad & 0x000000ff00000000U) != 0 ? BLACK : WHITE);
-                _32bppDisplayBuffer[j++] = (int)((quad & 0x00000000ff000000U) != 0 ? BLACK : WHITE);
-                _32bppDisplayBuffer[j++] = (int)((quad & 0x0000000000ff0000U) != 0 ? BLACK : WHITE);
-                _32bppDisplayBuffer[j++] = (int)((quad & 0x000000000000ff00U) != 0 ? BLACK : WHITE);
-                _32bppDisplayBuffer[j++] = (int)((quad & 0x00000000000000ffU) != 0 ? BLACK : WHITE);
+                // Draw the PERQ screen!
+                //
+                // Expand our "fake palletized" 8 bits to 32, manually, because all
+                // the faffing around with SDL-CS surfaces is just a complete waste
+                // of time.  Doing this here (on the main/SDL thread) boosts frame
+                // rates by 10fps.
+                //
+                for (int i = 0; i < _8bppDisplayBuffer.Length; i++)
+                {
+                    var quad = (ulong)_8bppDisplayBuffer[i];
+                    _32bppDisplayBuffer[j++] = (int)((quad & 0xff00000000000000U) != 0 ? BLACK : WHITE);
+                    _32bppDisplayBuffer[j++] = (int)((quad & 0x00ff000000000000U) != 0 ? BLACK : WHITE);
+                    _32bppDisplayBuffer[j++] = (int)((quad & 0x0000ff0000000000U) != 0 ? BLACK : WHITE);
+                    _32bppDisplayBuffer[j++] = (int)((quad & 0x000000ff00000000U) != 0 ? BLACK : WHITE);
+                    _32bppDisplayBuffer[j++] = (int)((quad & 0x00000000ff000000U) != 0 ? BLACK : WHITE);
+                    _32bppDisplayBuffer[j++] = (int)((quad & 0x0000000000ff0000U) != 0 ? BLACK : WHITE);
+                    _32bppDisplayBuffer[j++] = (int)((quad & 0x000000000000ff00U) != 0 ? BLACK : WHITE);
+                    _32bppDisplayBuffer[j++] = (int)((quad & 0x00000000000000ffU) != 0 ? BLACK : WHITE);
+                }
+
+                // Stuff the display data into the display texture
+                SDL.SDL_LockTexture(_displayTexture, IntPtr.Zero, out textureBits, out pitch);
+                Marshal.Copy(_32bppDisplayBuffer, 0, textureBits, _32bppDisplayBuffer.Length);
+                SDL.SDL_UnlockTexture(_displayTexture);
+
+                // Send the display texture to the renderer
+                SDL.SDL_RenderCopy(_sdlRenderer, _displayTexture, IntPtr.Zero, IntPtr.Zero);
             }
+            else
+            {
+                //
+                // Draw the freerunning tube!
+                //
+                // Paint the background
+                SDL.SDL_SetRenderDrawColor(_sdlRenderer, Red(COLDTUBE), Green(COLDTUBE), Blue(COLDTUBE), 255);
+                SDL.SDL_RenderClear(_sdlRenderer);
 
-            // Stuff the display data into the display texture
-            SDL.SDL_LockTexture(_displayTexture, IntPtr.Zero, out textureBits, out pitch);
-            Marshal.Copy(_32bppDisplayBuffer, 0, textureBits, _32bppDisplayBuffer.Length);
-            SDL.SDL_UnlockTexture(_displayTexture);
+                // If not warmed up, bump our fader
+                if (!_warmedUp)
+                {
+                    _fadeCount++;
 
-            // Render the display texture to the renderer
-            SDL.SDL_RenderCopy(_sdlRenderer, _displayTexture, IntPtr.Zero, IntPtr.Zero);
+                    // Adjust the fade until it saturates
+                    _fader = (_fadeCount * _fadeCount) * FADE_RATE;
+                    if (_fader > 255.0)
+                    {
+                        _warmedUp = true;
+                        _fader = 255.0;     // SDL_ALPHA_OPAQUE
+
+                        // Is there any performance benefit to this?
+                        SDL.SDL_SetRenderDrawBlendMode(_sdlRenderer, SDL.SDL_BlendMode.SDL_BLENDMODE_NONE);
+                    }
+                    else
+                    {
+                        // Set it
+                        SDL.SDL_SetRenderDrawBlendMode(_sdlRenderer, SDL.SDL_BlendMode.SDL_BLENDMODE_BLEND);
+                        SDL.SDL_SetTextureAlphaMod(_freeRunTexture, (byte)_fader);
+                    }
+                }
+
+                // Update, check our rectangle offset and adjust in a visually
+                // interesting way.  Doesn't have to be terribly fast. ;-)
+                var jiggle = new Random().Next(0, 9);
+                _freeY = (_freeY >= EXTRA_LINES - jiggle) ? 0 : _freeY + jiggle;
+                _displayRect.y = _freeY;
+
+                // Blend in the _freeRunTexture
+                SDL.SDL_RenderCopy(_sdlRenderer, _freeRunTexture, ref _displayRect, IntPtr.Zero);
+            }
 
             // Overlay the activity icon if the floppy drive is busy
             if (_floppyActive)
@@ -448,11 +535,17 @@ namespace PERQemu.UI
             // Tell the EventLoop we're going away
             PERQemu.GUI.DetachDisplay();
 
-            // Clear the display texture
+            // Clear the display textures
             if (_displayTexture != IntPtr.Zero)
             {
                 SDL.SDL_DestroyTexture(_displayTexture);
                 _displayTexture = IntPtr.Zero;
+            }
+
+            if (_freeRunTexture != IntPtr.Zero)
+            {
+                SDL.SDL_DestroyTexture(_freeRunTexture);
+                _freeRunTexture = IntPtr.Zero;
             }
 
             // And the renderer
@@ -532,6 +625,49 @@ namespace PERQemu.UI
 
             var flags = SDL.SDL_GetWindowFlags(_sdlWindow);
             Console.WriteLine("flags={0}", (SDL.SDL_WindowFlags)flags);
+
+            if (SDL.SDL_RenderTargetSupported(_sdlRenderer) == SDL.SDL_bool.SDL_TRUE)
+                Console.WriteLine("RENDER TARGET SUPPORTED");
+
+            Console.WriteLine("warmedUp={0}, fader={1}, enabled={2}, freeY={3}",
+                              _warmedUp, _fader, _enabled, _freeY);
+        }
+
+        /// <summary>
+        /// Draw the "rolling retrace" background texture (just once, for the
+        /// current display width), so that we don't have to worry about cross-
+        /// thread issues in DrawScanLine or set up a separate user render event.
+        /// Maybe we can even do some anti-aliasing to make it look more analog.
+        /// </summary>
+        void MakeBackground()
+        {
+            // Switch to our alternate texture
+            SDL.SDL_SetRenderTarget(_sdlRenderer, _freeRunTexture);
+
+            // Repaint our texture
+            SDL.SDL_SetRenderDrawColor(_sdlRenderer, Red(WARMTUBE), Green(WARMTUBE), Blue(WARMTUBE), 255);
+            SDL.SDL_RenderClear(_sdlRenderer);
+
+            // Draw the series of retrace lines downward from right to left
+            for (var i = 0; i < _freeHeight; i += LINES_PER_JIFFY)
+            {
+                var y = ((i + LINES_PER_JIFFY) > _freeHeight) ? _freeHeight : i + LINES_PER_JIFFY;
+
+                // Set line color
+                SDL.SDL_SetRenderDrawColor(_sdlRenderer, Red(WHITE), Green(WHITE), Blue(WHITE), 255);
+                SDL.SDL_RenderDrawLine(_sdlRenderer, _displayWidth - 1, i, 0, y);
+
+                // Subtler scan lines
+                SDL.SDL_SetRenderDrawColor(_sdlRenderer, Red(WARMISH), Green(WARMISH), Blue(WARMISH), 255);
+                SDL.SDL_RenderDrawLine(_sdlRenderer, _displayWidth - 1, i, 0, i);
+            }
+
+            // Restore
+            SDL.SDL_SetRenderTarget(_sdlRenderer, _defaultTexture);
+
+            // Lock and load
+            _fader = 0d;
+            _fadeCount = 0;
         }
 
         /// <summary>
@@ -579,6 +715,23 @@ namespace PERQemu.UI
         const uint WHITE = 0xfff3f3ff;
         const uint BLACK = 0xff000000;
 
+        // Colors of the tube when freerunning, and when cold
+        const uint COLDTUBE = 0xff303240;
+        const uint WARMISH = 0xffcacadf;
+        const uint WARMTUBE = 0xffbabecf;
+
+        const int EXTRA_LINES = 128;
+        const int LINES_PER_JIFFY = 69;
+        const double FADE_RATE = 0.333d;
+
+        // For tracking our animation
+        bool _warmedUp;
+        bool _enabled;
+        int _freeY;         // Y offset in the display for "scrolling"
+        int _freeHeight;    // _displayHeight + n extra lines (128?)
+        int _fadeCount;
+        double _fader;
+
         // Frame count
         long _frames;
         ulong _prevClock;
@@ -590,9 +743,12 @@ namespace PERQemu.UI
         //
         IntPtr _sdlWindow = IntPtr.Zero;
         IntPtr _sdlRenderer = IntPtr.Zero;
+        IntPtr _defaultTexture = IntPtr.Zero;
 
         // Rendering textures
+        IntPtr _freeRunTexture = IntPtr.Zero;
         IntPtr _displayTexture = IntPtr.Zero;
+        SDL.SDL_Rect _displayRect;
 
         // Events and stuff
         SDL.SDL_EventType _customEventType;

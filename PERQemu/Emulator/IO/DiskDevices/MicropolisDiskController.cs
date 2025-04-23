@@ -1,5 +1,5 @@
 ﻿//
-// MicropolisDiskController.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// MicropolisDiskController.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -55,7 +55,7 @@ namespace PERQemu.IO.DiskDevices
             _dib.Reset();
             ResetFlags();
 
-            Log.Info(Category.HardDisk, "Micropolis controller reset");
+            Log.Debug(Category.HardDisk, "Micropolis controller reset");
         }
 
         /// <summary>
@@ -209,7 +209,7 @@ namespace PERQemu.IO.DiskDevices
                     break;
 
                 default:
-                    Log.Warn(Category.HardDisk, "Command {0} unknown or not yet implemented", _command);
+                    Log.Warn(Category.HardDisk, "Command {0} unknown or unimplemented", _command);
                     break;
             }
         }
@@ -352,27 +352,32 @@ namespace PERQemu.IO.DiskDevices
             var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
 
-#if DEBUG
-            // This will always be 2?  Unless non-check reads don't xfer the header?  Hmm.
+            // The only valid values are 2 (normal read) or 0 (no PH data desired)
             var quads = _system.IOB.DMARegisters.GetHeaderCount(ChannelName.HardDisk);
 
+#if DEBUG
             if (quads != 2)
             {
                 Log.Warn(Category.HardDisk, "Bad DMA header count {0} on {1}", quads, _command);
             }
+
+            if (header > _system.Memory.MemSize)
+            {
+                Log.Warn(Category.HardDisk, "DMA header addr 0x{0:x} out of range on {1}", header, _command);
+            }
 #endif
 
-            // Copy the header to the header address
-            for (int i = 0; i < block.Header.Length; i += 2)
+            if (quads == 2)     // See comment in MFMDiskController
             {
-                int word = block.Header[i] | (block.Header[i + 1] << 8);
-                _system.Memory.StoreWord(header + (i >> 1), (ushort)word);
-            }
+                // Copy the header to the header address
+                for (int i = 0; i < block.Header.Length; i += 2)
+                {
+                    int word = block.Header[i] | (block.Header[i + 1] << 8);
+                    _system.Memory.StoreWord(header + (i >> 1), (ushort)word);
+                }
 
-            // On a ReadChk, verify that the LH matches the registers
-            if (_command == SMCommand.ReadChk)
-            {
-                if (!CheckLogicalHeaderBytes(block.Header))
+                // On a ReadChk, verify that the LH matches the registers
+                if (_command == SMCommand.ReadChk && !CheckLogicalHeaderBytes(block.Header))
                 {
                     Log.Warn(Category.HardDisk,
                              "Logical header mismatch on read from {0}/{1}/{2}",
@@ -391,8 +396,8 @@ namespace PERQemu.IO.DiskDevices
             }
 
             Log.Debug(Category.HardDisk,
-                      "Micropolis sector read from {0}/{1}/{2}, to memory at 0x{3:x6}",
-                      cyl, head, sector, data);
+                     "Micropolis sector {0} from {1}/{2}/{3}, to memory at 0x{4:x6}",
+                     _command, cyl, head, sector, data);
 
             // Are we firing the mid-sector interrupt?
             if (_flags.HasFlag(SMFlags.MidIntDisable))
@@ -447,19 +452,11 @@ namespace PERQemu.IO.DiskDevices
 
             var block = _dib.SelectedDrive.GetSector(cyl, head, sector);
 
-            var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
             var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
-
-            // Data me up, before you go go
-            for (int i = 0; i < block.Data.Length; i += 2)
-            {
-                int word = _system.Memory.FetchWord(data + (i >> 1));
-                block.Data[i] = (byte)(word & 0xff);
-                block.Data[i + 1] = (byte)(word >> 8);
-            }
+            var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
 
             // Write the LH?
-            if (_command == SMCommand.WriteChk || _command == SMCommand.Format)
+            if (_command != SMCommand.WriteChk)
             {
                 for (int i = 0; i < block.Header.Length; i += 2)
                 {
@@ -469,11 +466,20 @@ namespace PERQemu.IO.DiskDevices
                 }
             }
 
+            // Data me up, before you go go
+            for (int i = 0; i < block.Data.Length; i += 2)
+            {
+                int word = _system.Memory.FetchWord(data + (i >> 1));
+                block.Data[i] = (byte)(word & 0xff);
+                block.Data[i + 1] = (byte)(word >> 8);
+            }
+
+
             _dib.SelectedDrive.SetSector(block);
 
             Log.Debug(Category.HardDisk,
-                      "Micropolis sector write complete to {0}/{1}/{2}, from memory at 0x{3:x6}",
-                      cyl, head, sector, data);
+                     "Micropolis sector {0} to {1}/{2}/{3}, from memory at 0x{4:x6}",
+                     _command, cyl, head, sector, data);
 
             if (_flags.HasFlag(SMFlags.MidIntDisable))
             {
@@ -708,7 +714,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 _control = parent;
                 _status = new HWStatus();
-                _status.DriveType = (int)DeviceType.Unused;      // until loaded
+                _status.DriveType = (int)DeviceType.Unused;      // Until loaded
                 _disk = null;
             }
 
@@ -886,11 +892,11 @@ namespace PERQemu.IO.DiskDevices
             /// </summary>
             void DoSeek()
             {
-                if (_cylinder > _disk.Geometry.Cylinders - 1 || _head > _disk.Geometry.Heads - 1)
+                if (_cylinder >= _disk.Geometry.Cylinders || _head >= _disk.Geometry.Heads)
                 {
                     Log.Warn(Category.HardDisk, "Bad head or cylinder on seek!");
                     _status.SeekError = true;
-                    SeekComplete(0U, null);
+                    UpdateStatus();
                     return;
                 }
 
@@ -947,7 +953,7 @@ namespace PERQemu.IO.DiskDevices
 
                 // Update hardware status
                 _status.UnitReady = (_driveSelect == 0 && _disk.Ready);
-                _status.OnCylinder = (_disk.CurCylinder == _cylinder);
+                _status.OnCylinder = (_disk.SeekComplete && _disk.CurCylinder == _cylinder);
                 _status.DriveFault = _disk.Fault;
                 _status.Index = _latchedIndex;
 
@@ -955,7 +961,8 @@ namespace PERQemu.IO.DiskDevices
                 Log.Detail(Category.HardDisk, "DIB {0}", _status);      // HW status string
 
                 // Ready changes, faults, or OnCylinder asserted trigger an interrupt
-                if (oldReady != _status.UnitReady || (oldOnCyl == false && _status.OnCylinder == true))
+                if (oldReady != _status.UnitReady || _status.SeekError ||
+                    (oldOnCyl == false && _status.OnCylinder == true))
                 {
                     _control.StatusChange();
                 }
@@ -1063,8 +1070,8 @@ namespace PERQemu.IO.DiskDevices
 
             // Local registers
             byte _driveSelect;
-            ushort _cylinder;
             byte _head;
+            ushort _cylinder;
             bool _latchedIndex;
 
             // Nibble in progress

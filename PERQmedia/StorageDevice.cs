@@ -3,7 +3,7 @@
 //
 //  Author:  S. Boondoggle <skeezicsb@gmail.com>
 //
-//  Copyright (c) 2022-2024, Boondoggle Heavy Industries, Ltd.
+//  Copyright (c) 2022-2025, Boondoggle Heavy Industries, Ltd.
 //
 //  This program is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU General Public License as published by
@@ -199,6 +199,7 @@ namespace PERQmedia
             IsLoaded = false;
             IsModified = false;
             Filename = string.Empty;
+            FileInfo.Clear();
         }
 
         

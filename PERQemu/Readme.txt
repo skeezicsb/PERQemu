@@ -81,18 +81,9 @@ base expanded greatly, but it still only emulated PERQ-1 configurations.  Work
 on the experimental branch shifted to expanding emulation options, adding new
 peripheral support (Ethernet, laser printer), bug fixes, and new UI features.
 
-PERQemu v0.5.5 added Canon printer support and expanded experimental Ethernet
-support.  It was an interim release to skeezicsb/main and wasn't submitted for
-a merge into the master.
-
-PERQemu v0.5.8 introduces the first milestone in PERQ-2/EIO support, adding a
-Micropolis 8" disk driver and enough of the EIO/Z80 components to allow POS G,
-Accent S6 and PNX 2 and 3 to boot.  There are still a number of rough edges and
-missing pieces, but this interim development snapshot is reliable enough to let
-it into the wild for testing from skeezicsb/main.
-
-PERQemu v0.6.5 delivers nearly complete PERQ-2 and 2/Tx support; at this point
-only the 24-bit PERQ-2/T4 is unfinished (but in testing).
+PERQemu v0.7.5 wraps up all the work since v0.5.0 along with a batch of new
+bundled hard disk images with new software to play with.  It is a release to
+"skeezicsb/main" and a candidate to sync up with the master branch.
 
 Please check back often for updates!
 
@@ -161,6 +152,13 @@ There are several subdirectories:
             distribution, in both basic and developer (full source)
             versions.  Includes Amendments 1 & 2.
 
+        g6mic.prqm:
+        g6mfm.prqm:
+            New POS G.6 images for the PERQ-2 and PERQ-2/T2.  These are
+            somewhat cobbled together from floppy and tape images but
+            include patches through Amendment 3, full source code, and
+            lots of apps, games and demos!
+
         g7.prqm:
             The first PERQmedia-formatted Shugart image for use with the
             "CIO" board.  Contains a POS G.7 installation (binary only)
@@ -174,6 +172,13 @@ There are several subdirectories:
         pnx1.prqm:
             A bundle of the basic PNX 1.3 installation from the PERQmedia
             repository, but reformatted as a .prqm image.
+
+        pnx2.prqm:
+        pnx2mic.prqm:
+            Images of PNX 2 for the PERQ-1, and an 8" Micropolis image
+            for PERQ-2 containing the available PNX 2 software.  Many
+            improvements over PNX 1, but the man pages are missing and
+            no extra apps/demos are available.
 
         Additional "stock" hard drive or floppy images may be included as
         well.  Any custom disk images you create or import are loaded from
@@ -279,10 +284,14 @@ Fixed in v0.5.3:
 
 Added in v0.5.8:
   - PNX 3 is now also confirmed to boot and run (from floppy) with an
-    included video patch.  (I may be missing one critical floppy needed
-    to complete a full hard disk install, however.  Watch this space.)
+    included video patch.  (The available floppy installation set is
+    incomplete and needs to be re-imaged before a full hard disk
+    installation is possible, however.  Watch this space.)
   - Debug pre-release for early Micropolis disk support testing.
 
+Added in v0.6.x:
+  - 5.25" MFM disk support for PERQ-2/Tx models (POS G, Accent tested;
+    PNX 5 not yet available)
 
 NOTE: PNX 1 only supports 1MB of memory and will crash if configured with more.
 PNX 2, PNX 3, POS, MPOS and Accent have no trouble with a full megaword (2MB)
@@ -305,7 +314,7 @@ The following hardware has been implemented in the emulator:
 
   Processors:
     - 4K and 16K CPUs (20-bit) are tested and complete;
-    - 16K CPU (24-bit) is complete but not tested; waiting on PERQ-2/EIO;
+    - 16K CPU (24-bit) is complete but not fully tested;
     - The CPU, memory and video run on a separate thread.
 
   Memory/VideoController:
@@ -364,9 +373,9 @@ The following hardware has been implemented in the emulator:
       has been reinstated.
 
   GPIB:
-    - The TMS9914 controller chip is implemented to work with the new Z80, but
-      it is still incomplete and occasionally seems to confuse POS (reporting
-      non-fatal errors that don't seem to negatively affect operation);
+    - The TMS9914 controller chip is implemented to work with the new Z80, and
+      operates well with the Bitpad tablet; not extensively tested with other
+      GPIB code (and no additional peripheral emulations are available yet);
     - Supports basic System Controller, Talker and Listener features, but just
       enough to support what the PERQ needs.  Being able to drive a real GPIB
       card in the host computer would be pretty darn cool but I wouldn't hold
@@ -389,8 +398,9 @@ The following hardware has been implemented in the emulator:
       but with caveats.  Check the User Guide for details.
 
   Canon:
-    - Laser printer interface can now be enabled as an OIO option.  It provides
-      high quality output in PNG or TIFF format at 240- or 300-dpi.
+    - Laser printer interface can now be enabled as an OIO option for all valid
+      PERQ chassis/IO Board combinations.  It provides high quality output in
+      PNG or TIFF format at 240- or 300-dpi.
 
 
 There is a ton of additional detail about the internals of PERQemu itself in
@@ -462,13 +472,9 @@ C#/Mono System.IO.Ports.SerialPort implementation that will require a reworking
 of the emulator's port handling.
 
 
-PERQ-2/EIO support is still highly experimental, but if you want to try it out
-there are some known quirks/bugs to be aware of:
-
-
 4. PNX boot failure at DDS 142.
 
-Symptoms:  Attempting to boot from the PNX installation floppies causes the DDS
+Symptom:  Attempting to boot from the PNX installation floppies causes the DDS
 to stop at 142 and the process to hang.
 
 Workaround:  The version of the VFY microcode included on the available floppies
@@ -476,26 +482,31 @@ contains a bug -- or relies on a quirk of the hardware -- that causes the Victim
 test to fail when a 16K CPU is configured.  For PNX versions 2 or 3, when the
 DDS stops at 142, type "debug jump $808" to resume execution, bypassing the
 failed test.  Note that the DDS status will be off for the remainder of the
-session, and will not stop at 255 when PNX has completed booting.  A patch to
-detect and fix this has been developed and is included in PERQemu v0.5.8 and
-beyond.
+session, and will not stop at 255 when PNX has completed booting.
 
-Update: The PNX 5 boot floppy uses different microcode that fails in the same
-way but in a different location; looking to update the patch or figure out if
-the Victim register implementation needs to be relaxed to allow PNX to run, as
-this busted code DOES work on the actual hardware.  Hmmm.
+Solution:  A patch to detect and fix this automatically was included in PERQemu
+v0.5.8 through v0.6.5; the CPU was modified to correct the issue and the patch
+removed in v0.6.6 (experiments branch).  Suggest upgrade to v0.7.5.
 
 
 5. PNX video glitches.
 
-Symptoms: The PNX 2 window manager sometimes randomly paints its background 
+Symptom: The PNX 2 window manager sometimes randomly paints its background 
 pattern with strange stripes or other visual anomalies.
 
-Workaround:  While the odd background pattern is visually distracting it does
-not appear to cause any issues running the OS.  Sometimes dragging a window
-around will cause it to repaint properly.  Initial analysis shows that this
-might be a RasterOp glitch specific to the PNX 2 implementation, as it does not
-affect PNX 1 or other OSes.
+Solution:  Corrected in PERQemu v0.6.9.  Suggest upgrade to v0.7.5.
+
+
+6. PNX 5 kernel panic after boot.
+
+Symptom:  Initial PNX 5 floppy boot drops into the kernel debugger.  Attempts to
+continue eventually cause a kernel panic.
+
+Workaround:  None at this time.  Investigating whether this is a corrupted boot
+image or yet another PNX difference in how their microcode drives the hardware.
+Affects PERQ2-T2 configurations only (if anyone else is attempting to perform a
+bare metal install from the Bitsavers floppies).  Some damn source code would be
+awfully helpful, ICL.  :-(
 
 
 5.0 Version History and Roadmap
@@ -514,13 +525,19 @@ v0.9 - TBD
   - See if CIO Micropolis has any real software support?
   - Multibus and SMD disks?
 
-v0.7 - TBD
-  Leverage the new architecture to roll out new models, new peripherals and
-  open up the full range of available operating systems!
-  - Add more bundled configurations and hard disk images
-  - PERQ-2 EIO emulation support: expanded IO Board with faster Z80, second
-    serial port, RTC chip, support for two hard disks
-  - PERQ-2 peripherals: 8" and 5.25" disk drives, VT100-style keyboard
+v0.7.5 - Main branch
+  (New default release; candidate for merge to jdersch/master)
+  Rolls up all of the changes since v0.5.0 to leverage the new architecture,
+  with support for the PERQ-2 models, new peripherals and the full range of
+  available operating systems!  (See below for the details)
+  - Added more bundled configurations and hard disk images
+  - Bug fixes and documentation updates
+
+v0.7.0 - Experiments branch
+  - Comprehensive RasterOp update, refactoring to fix PNX glitches
+  - Video update so floppy activity icon is visible during slow floppy boots
+  - Update for EIO RTC chip programming and time handling
+  - Bug fixes and some documentation updates
 
 v0.6.5 - Main branch (v0.7 pre-release)
   - MFM support for PERQ-2/Tx, multiple 5.25" hard disks
@@ -561,14 +578,14 @@ v0.5.0 - New baseline
   - Expanded logging and enhanced debugging support
   - Persistent user preference settings
 
-v0.4.9 - Experimental branch (v0.5.0 pre-release) 
+v0.4.9 - Experiments branch (v0.5.0 pre-release) 
   - Added a minimal Ethernet interface, bug fixes.
   - Bundled a working Spice Lisp disk image.
 
 v0.4.8 - Main branch (v0.5.0 pre-relase)
   - Added streamer tape support!
 
-v0.4.6 - Experimental branch (v0.5.0 pre-release)
+v0.4.6 - Experiments branch (v0.5.0 pre-release)
   - All v0.5.0 features above, in a snapshot release prior to merge back into
     master.
 
@@ -643,25 +660,23 @@ v0.2 - Second release
     - GPIB support is only a stub.
     - Floppy disk support is 80% done and supports all of the functionality
       needed to deal with double-sided, single-density floppy images.
-    - Keyboard support is 100% done.
-      
+    - Keyboard support is 100% done.      
  - Hardware cursor implementation refined, vertical and horizontal positioning
    are now correct.  Vertical positioning occasionally is thrown off by a few
-   pixels.
-   
+   pixels.  
  - A few minor speed improvements (nothing major) gained from only clocking the
-   Z80 devices every 16 PERQ cpu clocks.
-   
- - Floppy disk R/W support added, Hard disk Write support added.
- 
+   Z80 devices every 16 PERQ cpu clocks.  
+ - Floppy disk R/W support added, Hard disk Write support added. 
  - Debugger commands for loading/saving and creating disk images for hard disks
    and floppies added.
 
-v0.1 - First public release.
+v0.1 - First public release
 
 
 Update history:
 
+4/22/2025 - skeezicsb - v0.7.5 (main)
+4/17/2025 - skeezicsb - v0.7.0 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)
 6/19/2024 - skeezicsb - v0.5.8 (main)
 2/18/2024 - skeezicsb - v0.5.5 (main)

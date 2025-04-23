@@ -1,5 +1,5 @@
 //
-// CPU.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// CPU.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -97,6 +97,9 @@ namespace PERQemu.Processor
 
             // Decode the next instruction
             Instruction uOp = _ustore.GetInstruction(_usequencer.PC);
+
+            // Update the victim (if not holding)
+            _usequencer.Victim = _usequencer.PC;
 
 #if DEBUG
             // Breakpoint set at this address?
@@ -233,6 +236,14 @@ namespace PERQemu.Processor
             // Jump to where we need to go...
             _usequencer.DispatchJump(uOp);
 
+#if DEBUG
+            // Watched Qcode?  Check here if we've done a NextOp _or_ NextInst
+            if ((uOp.A == AField.NextOp || uOp.JMP == JumpOperation.NextInstReviveVictim) &&
+                _system.Debugger.WatchedOpCodes.IsWatched(_lastOpcode))
+            {
+                _break = _system.Debugger.WatchedOpCodes.BreakpointReached(_lastOpcode);
+            }
+#endif
             return _break;
         }
 
@@ -484,13 +495,16 @@ namespace PERQemu.Processor
                 case AField.NextOp:
                     if (OpFileEmpty)
                     {
-                        // Only latch if Victim is empty
-                        if (_usequencer.Victim == 0)
+                        // Only latch if not already holding
+                        if (!_usequencer.HoldVictim)
                         {
-                            _usequencer.Victim = _usequencer.PC;
+                            // Block further updates until Revive/ReadVictim!
+                            _usequencer.HoldVictim = true;
 
                             Log.Debug(Category.Sequencer, "Victim register is now {0:x4}", _usequencer.Victim);
                         }
+                        // NB: There is no "else" here, on purpose!  If we execute
+                        // a NextOp while the Victim is holding, just continue.
                     }
                     else
                     {
@@ -518,13 +532,6 @@ namespace PERQemu.Processor
                     _incrementBPC = true;           // Increment BPC at start of next cycle
 
                     Log.Debug(Category.OpFile, "NextOp read from BPC[{0:x1}]={1:x2}", BPC, amux);
-#if DEBUG
-                    // Watched Qcode?
-                    if (_system.Debugger.WatchedOpCodes.IsWatched(amux))
-                    {
-                        _break = _system.Debugger.WatchedOpCodes.BreakpointReached(amux);
-                    }
-#endif
                     break;
 
                 case AField.IOD:
@@ -807,8 +814,8 @@ namespace PERQemu.Processor
                                     }
                                     Log.Debug(Category.Sequencer, "Read from Victim latch {0:x4}", _usequencer.Victim);
 
-                                    // ReadVictim clears the latch, does not set PC
-                                    _usequencer.Victim = 0;
+                                    // ReadVictim clears the hold, does not set PC
+                                    _usequencer.HoldVictim = false;
                                     break;
 
                                 case 0x1:   // Multiply / DivideStep

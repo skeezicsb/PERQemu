@@ -1,5 +1,5 @@
 ﻿//
-// ExecCommands.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// ExecCommands.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -120,21 +120,17 @@ namespace PERQemu
         [Command("bootchar", "Set the boot character (selects OS to boot)")]
         void SetBootChar(char key)
         {
-            PERQemu.Controller.BootChar = (byte)key;
+            if ((key >= 'A' && key <= 'Z') || (key >= 'a' && key <= 'z'))
+                PERQemu.Controller.BootChar = (byte)key;
+            else
+                Console.WriteLine($"'{key}' isn't a valid PERQ boot letter!");
         }
 
         [Command("bootchar", "Show the boot character")]
         void ShowBootChar()
         {
             Console.Write("Bootchar is ");
-            if (PERQemu.Controller.BootChar != 0)
-            {
-                Console.WriteLine((char)PERQemu.Controller.BootChar);
-            }
-            else
-            {
-                Console.WriteLine("unset");
-            }
+            Console.WriteLine(PERQemu.Controller.BootChar != 0 ? $"'{(char)PERQemu.Controller.BootChar}'" : "unset");
         }
 
 

@@ -1,5 +1,5 @@
 //
-// PERQSystem.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// PERQSystem.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -189,6 +189,7 @@ namespace PERQemu
 
         public CPU CPU => _cpu.Processor;
         public Scheduler Scheduler => _cpu.Scheduler;
+        public ulong Uptime => _uptime;
 
         public MemoryBoard Memory => _mem;
         public VideoController VideoController => _mem.Video;
@@ -229,6 +230,9 @@ namespace PERQemu
             }
         }
 
+        /// <summary>
+        /// Moves to a new run state as the Controller commands.
+        /// </summary>
         void OnRunStateChange(RunStateChangeEventArgs s)
         {
             _state = s.State;
@@ -319,6 +323,7 @@ namespace PERQemu
                     break;
 
                 case RunState.Reset:
+                    _uptime += _cpu.Scheduler.CurrentTimeNsec;
                     _cpu.Reset();
                     _mem.Reset();
                     _ioBus.Reset();
@@ -362,10 +367,13 @@ namespace PERQemu
         {
             // The emulation has hit a serious error.  Return to the CLI.
             Log.Error(Category.All, "\nBreak due to internal emulation error: {0}", e.Message);
-            Log.Error(Category.All, "System state may be inconsistent.\n");
 #if DEBUG
             Log.Write(e.StackTrace);
+#else
+            Log.Error(Category.All, "Source: {0}  Target: {1}", e.Source, e.TargetSite);
 #endif
+            Log.Error(Category.All, "System state may be inconsistent.\n");
+
             // Make sure both threads stop
             PERQemu.Controller.TransitionTo(RunState.Halted);
         }
@@ -381,11 +389,12 @@ namespace PERQemu
             // Now go away or I shall taunt you some more
             _inputs.Shutdown();
             _display.Shutdown();
-            _oio?.Shutdown();
-            _iob.Shutdown();
+            _ioBus.Shutdown();
             _cpu.Shutdown();
 
+            _iob = null;
             _ioBus = null;
+
             Log.Detail(Category.Emulator, "PERQSystem shutdown.");
         }
 
@@ -774,6 +783,13 @@ namespace PERQemu
                     Log.Write(Category.Emulator, "Z80 power state changed: running={0}", (bool)args[0]);
                     return;
 
+                case WhatChanged.DebugBreakpoint:
+                    // The action has already fired; if in Async mode we just want to force
+                    // the transition to Paused so the RunState isn't indeterminate)
+                    Log.Write("-- Emulation paused on breakpoint --");
+                    PERQemu.Controller.Break();
+                    return;
+
                 case WhatChanged.HaltedInLoop:
                     // We don't actually fire an event; just call Halt()
                     Log.Write("The CPU has halted in a loop at PC {0:x4}", (ushort)args[0]);
@@ -820,6 +836,9 @@ namespace PERQemu
         // Controlly bits
         ExecutionMode _mode;
         volatile RunState _state;
+
+        // This is pure Velveeta
+        ulong _uptime;
 
         delegate void RunDelegate();
     }

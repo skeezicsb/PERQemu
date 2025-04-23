@@ -1,5 +1,5 @@
 ﻿//
-// DMARegisters.cs - Copyright (c) 2006-2024 Josh Dersch (derschjo@gmail.com)
+// DMARegisters.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -111,7 +111,14 @@ namespace PERQemu.IO
 
         public void LoadDataHigh(ChannelName chan, int value)
         {
-            _channels[(int)chan].DataAddr.Hi = ~value;
+            // On the T4, addr bits <23:20> are in value<11:8>; shift them now
+            // so the address is stored already unfrobbed (no inversion on EIO)
+            if (CPUBoard.CPUBits == 24)
+            {
+                value = ((value & 0x0f00) >> 4) | (value & 0x000f);
+            }
+
+            _channels[(int)chan].DataAddr.Hi = value;
             Log.Debug(Category.DMA, "{0} data buffer addr (high) set to {1:x}", chan, value);
         }
 
@@ -123,11 +130,20 @@ namespace PERQemu.IO
 
         public void LoadHeaderHigh(ChannelName chan, int value)
         {
-            _channels[(int)chan].HeaderAddr.Hi = ~value;
-            Log.Debug(Category.DMA, "{0} header buffer addr (high) set to {1:x}", chan, value);
+            if (PERQemu.Sys.IOB.IsEIO)
+            {
+                // Header count is bits <7:4>, inverted
+                _channels[(int)chan].HeaderCount = (byte)(~(value >> 4) & 0x0f);
 
-            // If EIO header count is bits <7:4> of this word (irrelevant for IOB)
-            _channels[(int)chan].HeaderCount = (byte)(~(value >> 4) & 0x0f);
+                // And pluck the extra address bits from <11:8>, as above
+                if (CPUBoard.CPUBits == 24)
+                {
+                    value = ((value & 0x0f00) >> 4) | (value & 0x000f);
+                }
+            }
+
+            _channels[(int)chan].HeaderAddr.Hi = value;
+            Log.Debug(Category.DMA, "{0} header buffer addr (high) set to {1:x}", chan, value);
         }
 
         public void LoadHeaderLow(ChannelName chan, int value)
@@ -169,20 +185,16 @@ namespace PERQemu.IO
         ///                                 ! header address to channel ctrl.
         ///                                 ! Remember, these bits are inverted.
         /// </remarks>
-        public virtual int Unfrob(ExtendedRegister addr)
+        public int Unfrob(ExtendedRegister addr)
         {
-            int unfrobbed;
-
             if (PERQemu.Sys.IOB.IsEIO)
             {
-                // For EIO, only the upper bits are inverted
-                unfrobbed = (~addr.Hi & 0x0f0000) | addr.Lo;
+                return addr.Value;
             }
-            else
-            {
-                // Hi returns the upper 4 or 8 bits shifted; Lo needs to be unfrobbed
-                unfrobbed = addr.Hi | (~(0x3ff ^ addr.Lo) & 0xffff);
-            }
+
+            // Hi returns the upper 4 bits shifted; Lo needs to be unfrobbed
+            int unfrobbed = ~(addr.Value ^ 0x3ff) & CPUBoard.CPUMask;
+
             Log.Detail(Category.DMA, "Unfrobbed {0:x} -> {1:x}", addr.Value, unfrobbed);
 
             return unfrobbed;
