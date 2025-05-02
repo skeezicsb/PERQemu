@@ -7,6 +7,14 @@ Previous notes moved to ChangeLog-Old.txt.
 
 April, 2025:
 
+    7. It's away!  Version 0.7.5 bumped to be the default on the Gitub Releases
+    page.  After a brief pause, the experiments branch will move forward with
+    short term fixes (PNX 5 crashing, 24-bit debugging) and additional new media
+    (Accent S6 with more Spice Lisp stuff!) while the longer term projects take
+    shape (enhancements to PERQdisk, port of Stut, more UI enhancements, etc).
+    Included with this push are a few small 24-bit CPU changes (uState register
+    corrections based on recently found documentation).
+
     6. Oh bloody hell.  Missed one small fix to the MFM/Microp disk controllers.
     The BOOT ROM tells the disk controller to ship the normal two quad words for
     the logical header but sets the high address bits so the buffer will always

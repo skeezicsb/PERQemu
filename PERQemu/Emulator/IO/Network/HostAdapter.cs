@@ -105,7 +105,9 @@ namespace PERQemu.IO.Network
             int max = _pending.Count;
             int count = 0;
 
-            // Todo: check a timestamp, or maybe keep most recent packet?
+            // Todo: check a timestamp, or maybe keep most recent packet?  Or
+            // ditch broadcasts before any sent to us directly?
+
             // POS programs must explicitly be in a polling mode and may ignore
             // incoming traffic forever; Accent is more modern in that it tries
             // to dispatch packets as they arrive so queues shouldn't back up;
@@ -136,6 +138,8 @@ namespace PERQemu.IO.Network
             TimeSpan ts = DateTime.Now - _lastGreeting;
             if (ts.Seconds < GreetingInterval) return;
 
+            // Todo: would be nice to be able to flag our first greeting in case
+            // our address changed so others know to invalidate their old mapping
             try
             {
                 // Broadcast our request

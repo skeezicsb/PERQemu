@@ -90,7 +90,7 @@ namespace PERQemu.IO.Z80
             _readReady = false;
             _writeReady = false;
 
-            Log.Info(Category.DMA, "{0} reset", Name);
+            Log.Debug(Category.DMA, "{0} reset", Name);
         }
 
         /// <summary>

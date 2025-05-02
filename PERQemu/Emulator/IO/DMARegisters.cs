@@ -92,7 +92,7 @@ namespace PERQemu.IO
             _portToChannelAction.Add(hdrHi, LoadHeaderHigh);
             _portToChannelAction.Add(hdrLo, LoadHeaderLow);
 
-            Log.Info(Category.DMA, "DMA mapping assigned for ports {0:x}, {1:x}, {2:x}, {3:x}",
+            Log.Debug(Category.DMA, "DMA mapping assigned for ports {0:x}, {1:x}, {2:x}, {3:x}",
                                     dataHi, dataLo, hdrHi, hdrLo);
         }
 

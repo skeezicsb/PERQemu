@@ -83,7 +83,7 @@ namespace PERQemu.IO.Z80
             _state = DMAState.Idle;
             _interruptEnabled = false;
 
-            Log.Info(Category.Z80DMA, "i8237 reset");
+            Log.Debug(Category.Z80DMA, "i8237 reset");
         }
 
         public void AttachChannelDevice(int chan, IDMADevice dev, byte port)

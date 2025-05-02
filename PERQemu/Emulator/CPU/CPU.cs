@@ -74,7 +74,7 @@ namespace PERQemu.Processor
             _iod = 0;
             _clocks = 0;
             _lastPC = 0;
-            _lastBmux = 0;
+            _upper = 0;
             _lastOpcode = 0;
             _refillOp = false;
             _incrementBPC = false;
@@ -187,7 +187,7 @@ namespace PERQemu.Processor
             //
 
             // Select ALU inputs
-            int bmux = _lastBmux = GetBmuxInput(uOp);
+            int bmux = GetBmuxInput(uOp);
             int amux = GetAmuxInput(uOp);
 
             // If the hardware multiply unit is enabled, pass the MQ register
@@ -341,32 +341,33 @@ namespace PERQemu.Processor
         /// </summary>
         /// <remarks>
         /// The H bit on the 24 bit CPU selects a second uState register, which
-        /// is aka "Upper"; in that processor _lastbmux (bits 12:15) are always
-        /// zero.  Note that we also don't implement the CCSR0 PAL here either,
-        /// but I suspect only a few *really* esoteric diagnostics ever used that
-        /// functionality, and Tony alludes to a possible hardware bug that made
-        /// it not work on the 4k CPU anyway.  This is off into the serious
-        /// periphery of PERQ esoterica.
+        /// is aka "Upper"; in that processor uState bits 12:15 are always zero.
+        /// Note that we don't implement the CCSR0 PAL here, but I suspect only
+        /// a few *really* esoteric diagnostics ever used that functionality,
+        /// and Tony alludes to a possible hardware bug that made it not work on
+        /// the 4k CPU anyway.  This is the serious periphery of PERQ esoterica.
         /// 
         /// FYI: can't attach the DebugProperty to a virtual method, so we add
         /// those separately above.  Mild, as hackish workarounds go.
         /// </remarks>
         public int ReadMicrostateRegister(byte h)
         {
-            // On PERQ24, uState1 is the upper 8 Bmux bits
+            // On PERQ24, uState1 is the upper 8 Bmux bits, right justified
             if (CPUBoard.CPUBits == 24 && h == 1)
             {
-                return ((~_lastBmux) >> 16) & 0xff;
+                return (~(_upper >> 16) & 0xff);                // Y[23:16] => Amux[7:0]
             }
 
-            // On the 20-bit CPUs, there's only one microstate register:
+            // On the 20-bit CPUs, there's only one microstate register - but
+            // the 24-bit CPUs repurpose bit 8 to identify 24-bit mode!
             return BPC |
                     (_alu.Flags.Ovf ? 0x0010 : 0x0) |
                     (_alu.Flags.Eql ? 0x0020 : 0x0) |
                     (_alu.Flags.Cry ? 0x0040 : 0x0) |
                     (_alu.Flags.Lss ? 0x0080 : 0x0) |
-                    (_estack.StackEmpty ? 0x0 : 0x0200) |   // inverted!
-                    ((((~_lastBmux) >> 16) & 0xf) << 12);
+                    (CPUBoard.CPUBits == 24 ? 0x0100 : 0x0) |
+                    (_estack.StackEmpty ? 0x0 : 0x0200) |       // Inverted!
+                    (~(_upper >> 4) & 0x0f000);                 // Y[19:16] => uS[15:12]
         }
 
         /// <summary>
@@ -591,10 +592,12 @@ namespace PERQemu.Processor
             if (uOp.B == 0)
             {
                 bmux = _xy.ReadRegister(uOp.Y);
+                _upper = bmux;          // Save all 20 (or 24) bits
             }
             else
             {
                 bmux = uOp.BMuxInput;
+                _upper = 0;             // Hardware clears upper bits!
             }
 
             return bmux;
@@ -1086,7 +1089,7 @@ namespace PERQemu.Processor
 
         // Copy of Bmux bits in microstate register
         // for mysterious, if not nefarious purposes
-        int _lastBmux;
+        int _upper;
 
         // Trace/debugging support
         ushort _lastPC;

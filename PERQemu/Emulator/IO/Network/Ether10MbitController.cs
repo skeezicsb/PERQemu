@@ -75,8 +75,18 @@ namespace PERQemu.IO.Network
                 _dmaRx = ChannelName.ExtA;
             }
 
-            // Open the host network adapter
-            _nic = new HostAdapter(this, Settings.EtherDevice);
+            try
+            {
+                // Open the host network adapter
+                _nic = new HostAdapter(this, Settings.EtherDevice);
+            }
+            catch (Exception e)
+            {
+                // In Debug, log the exception (likely a SharpPcap.PcapException)
+                Log.Debug(Category.NetAdapter, "{0}", e.Message);
+
+                throw new UnimplementedHardwareException("Could not open Ethernet device: adapter not found or no permissions");
+            }
 
             Log.Info(Category.Ethernet, "Interface created {0}", _physAddr);
         }

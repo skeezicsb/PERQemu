@@ -78,9 +78,8 @@ namespace PERQemu.IO
             RegisterPorts(_handledPorts);
 
             // What flavor of PERQ 2 are we?
-            if ((system.Config.Chassis == ChassisType.PERQ2 ||
-                 system.Config.Chassis == ChassisType.PERQ2Tx) &&
-                 system.Config.GetDrivesOfType(DeviceType.Disk8Inch).Length > 0)
+            if (system.Config.Chassis == ChassisType.PERQ2 &&
+                system.Config.GetDrivesOfType(DeviceType.Disk8Inch).Length > 0)
             {
                 // A PERQ-2 or 2/T1
                 _hardDiskController = new MicropolisDiskController(system);
@@ -97,14 +96,9 @@ namespace PERQemu.IO
             }
 
             // Set up the on-board Ethernet
-            if (system.Config.IOBoard == IOBoardType.NIO ||
-                string.IsNullOrEmpty(Settings.EtherDevice) ||
-                Settings.EtherDevice == "null")
-            {
-                // A minimal interface to let Accent boot properly
-                _ethernetController = new NullEthernet(system);
-            }
-            else
+            if (system.Config.IOBoard == IOBoardType.EIO &&
+                !string.IsNullOrEmpty(Settings.EtherDevice) &&
+                Settings.EtherDevice != "null")
             {
                 try
                 {
@@ -112,12 +106,15 @@ namespace PERQemu.IO
                 }
                 catch (UnimplementedHardwareException e)
                 {
-                    // Failed to open - bad device, or no permissions?
                     Log.Warn(Category.All, "{0}; no Ethernet available.", e.Message);
-
-                    // Fall back to the fake one and continue
-                    _ethernetController = new NullEthernet(system);
                 }
+            }
+
+            // NIO board?  Or no adapter configured/available? Fall back to the
+            // minimal interface to let Accent boot properly
+            if (_ethernetController == null)
+            {
+                _ethernetController = new NullEthernet(system);
             }
             RegisterPorts(_etherPorts);
 
