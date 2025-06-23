@@ -240,6 +240,12 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ushort FetchWord(int address)
         {
+            if (address >= _memSize && _memSize > 1048576)
+            {
+                System.Console.WriteLine($"Fetch from 0x{address:x6} out of bounds");
+                //return 0xbad1;
+            }
+
             // Clip address to memsize range and read
             ushort data = _memory.Words[address & _memSizeMask];
 
@@ -252,9 +258,23 @@ namespace PERQemu.Memory
         /// <summary>
         /// Stores one word into memory (immediate).
         /// </summary>
+        /// <remarks>
+        /// In the Accent kernel init microcode, there is a note in the memory
+        /// sizing routine that says memory boards >2MB do _not_ wrap around, but
+        /// no mention of what happens to fetches/stores to addresses that are
+        /// out of bounds.  Here we'll try ignoring stores but clip fetches in
+        /// FetchWord() above, to see if the 24-bit kernel will properly size and
+        /// use the 4MB (and larger?) boards.  Affects DMA too.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void StoreWord(int address, ushort data)
         {
+            if (address >= _memSize && _memSize > 1048576)
+            {
+                System.Console.WriteLine($"Store 0x{data:x4} to 0x{address:x6} out of bounds");
+                //return;
+            }
+
             Log.Detail(Category.Memory, "Store addr {0:x6} <-- {1:x4}",
                                          address & _memSizeMask, data);
 
@@ -268,10 +288,12 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsFetch(MemoryCycle c)
         {
-            return c == MemoryCycle.Fetch ||
-                    c == MemoryCycle.Fetch2 ||
-                    c == MemoryCycle.Fetch4 ||
-                    c == MemoryCycle.Fetch4R;
+            return (((int)c & 0x1) == 0);   // Smaller? Faster?
+
+            // return c == MemoryCycle.Fetch ||
+            //        c == MemoryCycle.Fetch2 ||
+            //        c == MemoryCycle.Fetch4 ||
+            //        c == MemoryCycle.Fetch4R;
         }
 
 #if DEBUG

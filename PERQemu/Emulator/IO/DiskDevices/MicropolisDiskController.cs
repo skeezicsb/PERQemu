@@ -64,11 +64,8 @@ namespace PERQemu.IO.DiskDevices
         void ResetFlags()
         {
             // Figure out what stuff gets reset, but assume everything?
-            if (_busyEvent != null)
-            {
-                _system.Scheduler.Cancel(_busyEvent);
-                _busyEvent = null;
-            }
+            _system.Scheduler.Cancel(_busyEvent);
+            _busyEvent = null;
 
             _regSelect = 0;
 

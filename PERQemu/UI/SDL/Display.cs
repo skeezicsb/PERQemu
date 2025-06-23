@@ -469,8 +469,7 @@ namespace PERQemu.UI
             // Update the title bar
             if (state == RunState.Running)
             {
-                SDL.SDL_SetWindowTitle(_sdlWindow,
-                    string.Format("PERQ - {0:N2} fps, CPU {1:N2}ns, Z80 {2:N2}ns", fps, ns, zns));
+                SDL.SDL_SetWindowTitle(_sdlWindow, $"PERQ - {fps:N2} fps, CPU {ns:N2}ns, Z80 {zns:N2}ns");
             }
             else
             {

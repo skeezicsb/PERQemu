@@ -18,6 +18,7 @@
 //
 
 using System;
+using System.IO;
 using System.Text;
 using System.Diagnostics;
 using System.Collections.Generic;
@@ -393,6 +394,47 @@ namespace PERQemu
             }
         }
 
+#if DEBUG
+        [Command("debug dump memory", "Dump the entire memory array to a file")]
+        void DumpMemory()
+        {
+            if (!CheckSys()) return;
+
+            // for now:  binary dump to Output/memory.dump
+            // if this is useful, will accept file name, maybe formatting
+            var file = Paths.BuildOutputPath("memory.dump");
+
+            // Well, I *could* just update Core to include a byte[] accessor but
+            // this is a quick and dirty hack that I'll probably remove shortly
+            // so I won't mess with Memory for now.
+
+            byte[] mem = new byte[PERQemu.Sys.Memory.MemSize * 2];  // KW -> KB
+            var j = 0;
+
+            for (var i = 0; i < PERQemu.Sys.Memory.MemSize; i++)
+            {
+                var word = PERQemu.Sys.Memory.FetchWord(i);
+                mem[j++] = (byte)(word >> 8);
+                mem[j++] = (byte)word;
+                // Note: swap those if you want to run "strings" on the output :-)
+            }
+
+            try
+            {
+                using (var fs = new FileStream(file, FileMode.Create, FileAccess.Write))
+                {
+                    fs.Write(mem, 0, mem.Length);
+                }
+
+                // Made it!
+                Console.WriteLine($"Saved memory contents to {file}.");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Failed to save output: {e.Message}");
+            }
+        }
+
         [Command("debug find memory", "Find a specific value in the PERQ's memory [@start, val]")]
         void FindMemory(uint address, ushort val)
         {
@@ -412,7 +454,6 @@ namespace PERQemu
             }
         }
 
-#if DEBUG
         [Command("debug set memory", "Write a specific value in the PERQ's memory")]
         void SetMemory(uint address, ushort val)
         {
@@ -1028,23 +1069,56 @@ namespace PERQemu
             var block = dev.Read(pos);
 
             Console.WriteLine($"Block {pos} is type {block.Type}:");
+            ShowBlock(block.Data);
+        }
 
+        [Conditional("DEBUG")]
+        [Command("debug show disk block", "Show contents of a hard disk block")]
+        void ShowDiskBlock(int cyl, int head, int sect, int unit = 1)
+        {
+            if (!CheckSys()) return;
+
+            if (PERQemu.Sys.Volumes[unit] == null)
+            {
+                Console.WriteLine($"No disk mounted at unit {unit}");
+                return;
+            }
+
+            var dev = PERQemu.Sys.Volumes[unit] as IO.DiskDevices.HardDisk;
+
+            if (cyl >= dev.Geometry.Cylinders || head >= dev.Geometry.Heads || sect >= dev.Geometry.Sectors)
+            {
+                Console.WriteLine($"Block C{cyl}/H{head}/S{sect} is out of range");
+                return;
+            }
+
+            var block = dev.Read((ushort)cyl, (byte)head, (ushort)sect);
+            Console.WriteLine("Logical header:");
+            // should interpret this as an actual logical header!
+            ShowBlock(block.Header);
+
+            Console.WriteLine("Data:");
+            ShowBlock(block.Data);
+        }
+
+        void ShowBlock(byte[] block)
+        {
             // Format and display 16 bytes per line
-            for (var i = 0; i < block.Data.Length; i += 16)
+            for (var i = 0; i < block.Length; i += 16)
             {
                 var line = new StringBuilder();
                 line.AppendFormat("{0:x3}: ", i);
 
                 for (var j = i; j < i + 16; j++)
                 {
-                    line.AppendFormat("{0:x2} ", block.Data[j]);
+                    line.AppendFormat("{0:x2} ", block[j]);
                 }
 
                 // ASCII representation
                 for (var j = i; j < i + 16; j += 2)
                 {
-                    var high = (char)block.Data[j];
-                    var low = (char)block.Data[j + 1];
+                    var high = (char)block[j];
+                    var low = (char)block[j + 1];
 
                     high = PERQemu.CLI.IsPrintable(high) ? high : '.';
                     low = PERQemu.CLI.IsPrintable(low) ? low : '.';
@@ -1108,11 +1182,17 @@ namespace PERQemu
         // Miscellany and temporary/debugging hacks
         //
 
+        [Command("debug dump dma registers")]
+        void DumpDMARegisters()
+        {
+            if (CheckSys()) PERQemu.Sys.IOB.DMARegisters.DumpDMARegisters();
+        }
+
         // [Conditional("DEBUG")]
         [Command("debug dump scheduler queue")]
         void DumpScheduler()
         {
-            PERQemu.Sys.Scheduler.DumpEvents("CPU");
+            if (CheckSys()) PERQemu.Sys.Scheduler.DumpEvents("CPU");
         }
 
         // [Conditional("DEBUG")]
@@ -1120,12 +1200,6 @@ namespace PERQemu
         void DumpTimers()
         {
             HighResolutionTimer.DumpTimers();
-        }
-
-        [Command("debug dump dma registers")]
-        void DumpDMARegisters()
-        {
-            PERQemu.Sys.IOB.DMARegisters.DumpDMARegisters();
         }
 
         [Conditional("DEBUG")]
@@ -1146,7 +1220,7 @@ namespace PERQemu
 
             Console.WriteLine($"Address: {address:x8} not: {~address:x8}");
 
-            ExtendedRegister r = new ExtendedRegister(4, 16);   // 20-bit for testing
+            ExtendedRegister r = new ExtendedRegister(4, 16);       // 20-bit
             r.Lo = (ushort)(address);
             r.Hi = (address >> 16);
             Console.WriteLine($"Register encoding: {r}");
@@ -1155,9 +1229,18 @@ namespace PERQemu
             var unfrobbed = ~(r.Value ^ 0x3ff) & 0xfffff;
             Console.WriteLine($"Unfrobbed std: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
 
-            // EIO now goes straight through (20 or 24 bit)
+            // EIO now goes straight through
             unfrobbed = r.Value;
             Console.WriteLine($"Unfrobbed EIO: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
+
+            // EIO 24 bit:
+            r = new ExtendedRegister(8, 16);                        // 24-bit
+            r.Lo = (ushort)(address);
+            address = (address >> 16);                              // shift down high half
+            r.Hi = ((address & 0x0f00) >> 4) | (address & 0x000f);  // grab extra nibble
+            unfrobbed = r.Value;
+            Console.WriteLine($"\nRegister (24 bit): {r}");
+            Console.WriteLine($"Unfrobbed 24b: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
         }
 
 #if DEBUG

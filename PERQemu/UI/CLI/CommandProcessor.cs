@@ -34,6 +34,8 @@ namespace PERQemu
     {
         public CommandProcessor()
         {
+            InitDDS();
+
             // Catch interrupts in the console
             Console.CancelKeyPress += OnCtrlC;
 
@@ -54,6 +56,7 @@ namespace PERQemu
             _editor = new CommandPrompt(_exec.CommandTreeRoot);
         }
 
+        public string CurrentPrefix => _editor.CurrentPrefix;
 
         /// <summary>
         /// Enter a subsystem.
@@ -172,6 +175,8 @@ namespace PERQemu
             return Console.ReadKey(true);
         }
 
+        #region DDS Shenanigans
+
         /// <summary>
         /// Updates the DDS in the console window title bar.
         /// </summary>
@@ -182,23 +187,64 @@ namespace PERQemu
         /// the main thread bogs down the whole emulator.  Because POS G wraps
         /// the DDS around several times during boot, we buffer the updates to
         /// at most every 50ms or so (in real time).
+        /// 
+        /// Update:  FLEX OS is pathological in its use of StackReset, and makes
+        /// this rate limiting even more critical.  Left unchecked, it runs the
+        /// counter _continuously_!  We now count rollovers in the state change
+        /// event and test here if the number is absurd -- and basically force
+        /// it to display 888 (which is the effect you see on the hardware when
+        /// FLEX is running the 7-segment display at ~5MHz).
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void UpdateDDS()
         {
-            if (_lastDDS != _dds)
+            // No change?  Quick out
+            if (_ddsCount == 0 && _dds == _lastDDS) return;
+
+            // Bump the last value and update the running avg
+            var last = _ddsRate[_lastCount & 0xf];
+            _avgCount += (Math.Abs(_ddsCount - last) - _avgCount) / _ddsRate.Length;
+
+            // Save the update and reset the counter
+            _ddsRate[++_lastCount & 0xf] = _ddsCount;
+            _ddsCount = 0;
+
+            // Now clamp the DDS display at 888 if it's running amok.  If we're
+            // averaging >65 updates over 16 x 50ms samples the display is rolling
+            // over continuously.  POS G wraps several times at boot but settles
+            // at 999, so we're not in a big hurry to get here, so we'll tune this
+            // a bit purely for aesthetics.
+            var display = (_lastCount > _ddsRate.Length && last > 0 && _avgCount > 69) ? 888 : _dds;
+
+            // Update the display, if changed
+            if (_lastDDS != display)
             {
-                Console.Title = $"DDS {_dds:d3}";
-                _lastDDS = _dds;
+                Console.Title = $"DDS {display:d3}";
+                _lastDDS = display;
             }
         }
 
         /// <summary>
-        /// Update the console title when the DDS changes.
+        /// Reset the DDS and the histogram data.  For now we do all this work to
+        /// keep from bumping the Console's title line (slow) but in future we'll
+        /// be painting the actual 7-segment display on a GUI form of some kind,
+        /// so minimizing updates will be more important.  But still... 
         /// </summary>
+        void InitDDS()
+        {
+            _ddsRate = new int[16];
+
+            _dds = _lastDDS = 0;
+            _ddsCount = _lastCount = _avgCount = 0;
+        }
+
+        /// <summary>
+        /// Cache DDS changes (CPU StackReset calls) and check for rollover.
+        /// <remarks>
         void OnDDSChange(MachineStateChangeEventArgs a)
         {
             _dds = (int)a.Args[0];
+            _ddsCount += (_dds == 0 ? 1000 : 1);    // rollover?
         }
 
         /// <summary>
@@ -211,8 +257,12 @@ namespace PERQemu
             // Add or remove the DDS change hook when the machine powers up or down
             if (state == RunState.WarmingUp)
             {
-                _dds = _lastDDS = 0;
                 PERQemu.Sys.DDSChanged += OnDDSChange;
+            }
+            else if (state == RunState.Reset)
+            {
+                InitDDS();
+                _lastDDS = -1;      // Force initial update :-)
             }
             else if (state == RunState.ShuttingDown)
             {
@@ -220,6 +270,8 @@ namespace PERQemu
                 Console.Title = "PERQemu";
             }
         }
+
+        #endregion
 
         #region CLI Utility Routines
 
@@ -277,6 +329,8 @@ namespace PERQemu
         }
 
         #endregion
+
+        #region Basic Commands
 
         //
         // Basic built-in commands
@@ -344,6 +398,8 @@ namespace PERQemu
             Settings.Changed = false;               // Force the "without save" part
             _running = false;
         }
+
+        #endregion
 
         #region CLI Help (for now)
 
@@ -438,8 +494,14 @@ namespace PERQemu
         }
 
 
+        // FLEX has made the DDS handilng kind of ridiculous
         int _dds;
         int _lastDDS;
+
+        int[] _ddsRate;
+        int _ddsCount;
+        int _lastCount;
+        int _avgCount;
 
         bool _running;
 

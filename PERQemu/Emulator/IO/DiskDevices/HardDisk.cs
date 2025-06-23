@@ -93,12 +93,9 @@ namespace PERQemu.IO.DiskDevices
             MotorStart();
 
             // Stop the current index event and reset, restart it
-            if (_indexEvent != null)
-            {
-                _scheduler.Cancel(_indexEvent);
-            }
-
+            _scheduler.Cancel(_indexEvent);
             _index = false;
+
             IndexPulseStart(0, null);
         }
 
@@ -259,32 +256,26 @@ namespace PERQemu.IO.DiskDevices
             _seekComplete = true;
             _seekEvent = null;
 
-            // Schedule a callback to the registered client, if any
-            if (_seekCallback != null)
-            {
-                ulong settle = 1 * Conversion.UsecToNsec;
-
-                // If faithfully emulating the slow ass disk drives of the mid-
-                // 1980s, then add the head settling time to cap off our seek
-                // odyssey.  Otherwise a default 1us delay is reasonable.
-                if (Settings.Performance.HasFlag(RateLimit.DiskSpeed) && _stepCount > 0 && Specs.HeadSettling > 0)
-                {
-                    settle = (ulong)Specs.HeadSettling * Conversion.MsecToNsec;
-
-                    Log.Detail(Category.HardDisk, "Seek complete [settling callback in {0:n}ms]",
-                                                  settle * Conversion.NsecToMsec);
-                }
-                else
-                {
-                    Log.Detail(Category.HardDisk, "Seek complete [callback in 1us]");
-                }
-
-                _scheduler.Schedule(settle, _seekCallback);
-            }
-            else
+            // Anybody listening?
+            if (_seekCallback == null)
             {
                 Log.Detail(Category.HardDisk, "Seek complete");
+                return;
             }
+
+            // If faithfully emulating the slow ass disk drives of the mid-
+            // 1980s, then add the head settling time to cap off our seek
+            // odyssey.  Otherwise a default 1us delay is reasonable.
+            ulong settle = 1 * Conversion.UsecToNsec;
+
+            if (Settings.Performance.HasFlag(RateLimit.DiskSpeed) && _stepCount > 0 && Specs.HeadSettling > 0)
+            {
+                settle = (ulong)Specs.HeadSettling * Conversion.MsecToNsec;
+            }
+
+            Log.Detail(Category.HardDisk, "Seek complete [callback in {0:n}ms]",
+                                          settle * Conversion.NsecToMsec);
+            _scheduler.Schedule(settle, _seekCallback);
         }
 
         /// <summary>
@@ -295,11 +286,8 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         public virtual void StopSeek()
         {
-            if (_seekEvent != null)
-            {
-                _scheduler.Cancel(_seekEvent);
-                _seekEvent = null;
-            }
+            _scheduler.Cancel(_seekEvent);
+            _seekEvent = null;
 
             _seekComplete = false;
             _stepCount = 0;
@@ -370,12 +358,11 @@ namespace PERQemu.IO.DiskDevices
 
                 Log.Info(Category.HardDisk, "Drive {0} motor start (ready in {1:n} seconds)",
                                               Info.Name, delay * Conversion.MsecToSec);
+                return;
             }
-            else
-            {
-                // On a reset, just assume the drive is online
-                DriveReady(0, null);
-            }
+
+            // On a reset, just assume the drive is online
+            DriveReady(0, null);
         }
 
         /// <summary>

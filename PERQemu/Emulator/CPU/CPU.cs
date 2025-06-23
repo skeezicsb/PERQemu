@@ -278,6 +278,8 @@ namespace PERQemu.Processor
         [Debuggable("op", "The Op cache")]
         public byte[] OpFile
         {
+            // FIXME: either handle byte[] or remove (use "show opfile" instead)
+            // (or just have this show the next/current op byte)
             get { return _opFile; }
         }
 
@@ -330,7 +332,7 @@ namespace PERQemu.Processor
         /// On 24-bit CPUs, reads the Upper register (Microstate with H=1).
         /// Results on 20-bit CPUs are undefined.  This isn't ideal.
         /// </summary>
-        [Debuggable("upper", "Upper bits of XY register (valid only in 24-bit CPU)")]
+        [Debuggable("upper", "Upper byte of last XY reg (24-bit CPU only)")]
         public int Upper
         {
             get { return ReadMicrostateRegister(1); }
@@ -355,19 +357,19 @@ namespace PERQemu.Processor
             // On PERQ24, uState1 is the upper 8 Bmux bits, right justified
             if (CPUBoard.CPUBits == 24 && h == 1)
             {
-                return (~(_upper >> 16) & 0xff);                // Y[23:16] => Amux[7:0]
+                return ((~_upper >> 16) & 0xff);                // Y[23:16] => Amux[7:0]
             }
 
             // On the 20-bit CPUs, there's only one microstate register - but
             // the 24-bit CPUs repurpose bit 8 to identify 24-bit mode!
             return BPC |
-                    (_alu.Flags.Ovf ? 0x0010 : 0x0) |
-                    (_alu.Flags.Eql ? 0x0020 : 0x0) |
-                    (_alu.Flags.Cry ? 0x0040 : 0x0) |
-                    (_alu.Flags.Lss ? 0x0080 : 0x0) |
+                    (_alu.OldFlags.Ovf ? 0x0010 : 0x0) |
+                    (_alu.OldFlags.Eql ? 0x0020 : 0x0) |
+                    (_alu.OldFlags.Cry ? 0x0040 : 0x0) |
+                    (_alu.OldFlags.Lss ? 0x0080 : 0x0) |
                     (CPUBoard.CPUBits == 24 ? 0x0100 : 0x0) |
                     (_estack.StackEmpty ? 0x0 : 0x0200) |       // Inverted!
-                    (~(_upper >> 4) & 0x0f000);                 // Y[19:16] => uS[15:12]
+                    ((~_upper >> 4) & 0x0f000);                  // Y[19:16] => uS[15:12]
         }
 
         /// <summary>
@@ -462,6 +464,15 @@ namespace PERQemu.Processor
         public int MQ
         {
             get { return _mq; }
+        }
+
+        /// <summary>
+        /// Return the current output of the shifter.
+        /// </summary>
+        [Debuggable("shift", "Most recent shifter result")]
+        public ushort Shift
+        {
+            get { return _shifter.ShifterOutput; }
         }
 
         /// <summary>

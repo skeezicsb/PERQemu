@@ -888,10 +888,16 @@ namespace PERQemu.UI
         [Conditional("DEBUG")]
         public void DumpCommandTree(CommandNode node, int _indent)
         {
-            Console.Write("".PadLeft(_indent));
-            Console.WriteLine("Node: {0} - {1} (subnodes={2} hidden={3} prefix={4} repeat={5})",
-                              node.Name,
-                              node.Description,
+            Console.Write("Node: ".PadLeft(_indent + 6));
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.Write(node.Name);   // Make these stand out :-)
+            Console.ResetColor();
+            if (node.Description != "")
+            {
+                Console.WriteLine(" - {0}", node.Description);
+                Console.Write("".PadLeft(_indent + 1));
+            }
+            Console.WriteLine(" (subnodes={0} hidden={1} prefix={2} repeat={3})",
                               node.SubNodes.Count,
                               node.Hidden,
                               node.Prefix,

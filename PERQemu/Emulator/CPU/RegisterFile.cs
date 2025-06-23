@@ -76,8 +76,8 @@ namespace PERQemu.Processor
             /// </summary>
             /// <remarks>
             /// We ASSUME that the assembler sets W for R := (MQ | Victim) phrases
-            /// on PERQ1A . This appears to be true, but we'll leave that up to
-            /// the caller; this method does not enforce the W bit check.
+            /// on PERQ1A. This appears to be true, but we'll leave that up to the
+            /// caller; this method does not enforce the W bit check.
             /// </remarks>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void WriteRegister(byte addr, int val)
@@ -88,12 +88,12 @@ namespace PERQemu.Processor
                 if (addr < 0x40)
                 {
                     _registers[addr | _registerBase] = val;
-                    Log.Debug(Category.Registers, "%XY[{0:x2}]={1:x6}", (addr | _registerBase), val);
+                    Log.Detail(Category.Registers, "%XY[{0:x2}]={1:x6}", (addr | _registerBase), val);
                 }
                 else
                 {
                     _registers[addr] = val;
-                    Log.Debug(Category.Registers, "XY[{0:x2}]={1:x6}", addr, val);
+                    Log.Detail(Category.Registers, "XY[{0:x2}]={1:x6}", addr, val);
                 }
             }
 

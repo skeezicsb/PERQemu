@@ -44,15 +44,12 @@ namespace PERQemu.IO.SerialDevices
             // CIO and EIO use different sync characters (since one inverts and the
             // other doesn't).  Set this once we know _system is fully initialized
             _sync = (byte)(_system.IOB.IsEIO ? 0x7e : 0x81);
-            
+
             // Schedule the first data event, which runs once every 1/60th of
             // a second, forever.  But don't re-register it again and again...
-            if (_sendEvent != null)
-            {
-                _scheduler.Cancel(_sendEvent);
-            }
-
+            _scheduler.Cancel(_sendEvent);
             _sendEvent = _scheduler.Schedule(_dataInterval, SendData);
+
             Log.Debug(Category.Tablet, "Kriz reset");
         }
 

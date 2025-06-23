@@ -293,6 +293,11 @@ Added in v0.6.x:
   - 5.25" MFM disk support for PERQ-2/Tx models (POS G, Accent tested;
     PNX 5 not yet available)
 
+New in v0.7.7:
+  - PERQ FLEX has been recovered and support added to allow it to run.
+    This unique OS environment based on Algol-68 runs on PERQ-2 models
+    and can run standalone or co-reside with POS or PNX!  More info TBA.
+
 NOTE: PNX 1 only supports 1MB of memory and will crash if configured with more.
 PNX 2, PNX 3, POS, MPOS and Accent have no trouble with a full megaword (2MB)
 of memory.
@@ -525,6 +530,13 @@ v0.9 - TBD
   - See if CIO Micropolis has any real software support?
   - Multibus and SMD disks?
 
+v0.7.7 - Experiments branch
+  - Update for FLEX custom floppy format and DDS, Z80 DMA changes to allow
+    it to run
+  - New import/export commands for exchanging PERQemu 5.25" disk images with
+    the Gesswein MFM emulator (emulated disks <-> real PERQ!)
+  - Debugging enhancements, minor bug fixes while diagnosing PNX 5 malady
+
 v0.7.5 - Main branch
   (New default release; candidate for merge to jdersch/master)
   Rolls up all of the changes since v0.5.0 to leverage the new architecture,
@@ -675,6 +687,7 @@ v0.1 - First public release
 
 Update history:
 
+6/23/2025 - skeezicsb - v0.7.7 (experiments)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)

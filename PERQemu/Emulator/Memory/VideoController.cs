@@ -97,11 +97,8 @@ namespace PERQemu.Memory
             _lineCountOverflow = false;
             _startOver = false;
 
-            if (_currentEvent != null)
-            {
-                _system.Scheduler.Cancel(_currentEvent);
-                _currentEvent = null;
-            }
+            _system.Scheduler.Cancel(_currentEvent);
+            _currentEvent = null;
 
             Log.Debug(Category.Display, "Video controller reset");
         }
@@ -233,7 +230,7 @@ namespace PERQemu.Memory
                         // VSync on the first band!  The workaround here, to keep the
                         // state machine happy, is to force VSync back on for that
                         // band so the final count expires and fires the interrupt.
-                        value = (int)StatusRegister.EnableVSync;
+                        value |= (int)StatusRegister.EnableVSync;
                     }
 
                     // Video Ctrl (343 W) Mode control bits (see IOVideo.pas)
@@ -247,6 +244,8 @@ namespace PERQemu.Memory
                     _cursorFunc = (CursorFunction)((value & 0xe000) >> 13);
                     _videoStatus = (StatusRegister)(value & 0x1f00);
 
+                    if ((value & 0x1000) != 0) Console.WriteLine($"FORCE BAD PARITY SET (val={value})");
+
                     if (CursorEnabled)
                     {
                         _cursorY = 0;
@@ -258,6 +257,7 @@ namespace PERQemu.Memory
 
                     // Clear in case we transition at a weird time?
                     _system.Scheduler.Cancel(_currentEvent);
+                    _currentEvent = null;
 
                     // Check the enable conditions in order of priority
                     if (VSyncEnabled)
@@ -268,6 +268,7 @@ namespace PERQemu.Memory
                     {
                         _state = VideoState.Active;
                     }
+
                     RunStateMachine();
                     break;
 
@@ -444,18 +445,26 @@ namespace PERQemu.Memory
             }
         }
 
+        /// <summary>
+        /// Updates the "CRT signals" (status register).
+        /// </summary>
+        /// <remarks>
+        /// The LineCounterOverflow status bit is set independently of interrupt
+        /// status.  Once it hits zero it remains set until the line count register
+        /// is reset by an IOWrite.  Accent specifically checks for this bit!
+        ///
+        /// Note: I think the LoopThru, HSync and VSync status bits are inverted, but
+        /// _none_ of the microcode sources I've checked ever seems to test for these
+        /// so we've been getting by... the Landscape bit (active low - renamed here
+        /// because it was driving me crazy) is the only one explicitly checked besides
+        /// LineCountOverflow.
+        /// </remarks>
         void UpdateSignals()
         {
-            //
-            // The LineCounterOverflow status bit in the CRT Signals register should
-            // mirror our interrupt status; don't just raise it for the one cycle when
-            // we hit zero, but leave it set until the line counter is reset by IOWrite.
-            // Accent specifically checks for this bit!
-            //
             _crtSignals =
-                (_isPortrait ? CRTSignals.LandscapeDisplay : CRTSignals.None) |     // Inverted!
+                (_isPortrait ? CRTSignals.PortraitDisplay : CRTSignals.None) |
                 (_lineCountOverflow ? CRTSignals.LineCounterOverflow : CRTSignals.None) |
-                (_state == VideoState.VBlank ? CRTSignals.VerticalSync : CRTSignals.None) |
+                (VSyncEnabled ? CRTSignals.VerticalSync : CRTSignals.None) |
                 (_state == VideoState.HBlank ? CRTSignals.HorizontalSync : CRTSignals.None);
         }
 
@@ -609,14 +618,14 @@ namespace PERQemu.Memory
         enum CRTSignals
         {
             None = 0x0,
-            HorizontalSync = 0x1,
-            VerticalSync = 0x2,
-            LoopThrough = 0x4,
+            HorizontalSync = 0x1,       // H SYNC
+            VerticalSync = 0x2,         // V SYNC H
+            LoopThrough = 0x4,          // LOOPTHRU
             Unused0 = 0x8,
-            LineCounterOverflow = 0x10,
+            LineCounterOverflow = 0x10, // LINE CNT OVERFLOW L
             Unused1 = 0x20,
             Unused2 = 0x40,
-            LandscapeDisplay = 0x80     // set=Portrait, clear=Landscape!
+            PortraitDisplay = 0x80      // LAND H
         }
 
         [Flags]

@@ -45,16 +45,14 @@ namespace PERQemu
 
     public sealed class Transition
     {
-        public Transition(TransitionDelegate thingToDo, RunState expectedResult, bool blocking = true)
+        public Transition(TransitionDelegate thingToDo, RunState expectedResult)
         {
             DoTheThing = thingToDo;
             ExpectedResult = expectedResult;
-            WaitForIt = blocking;
         }
 
         public TransitionDelegate DoTheThing;
         public RunState ExpectedResult;
-        public bool WaitForIt;
     }
 
 
@@ -175,8 +173,8 @@ namespace PERQemu
             PERQemu.Sys.DDSChanged += PressBootKey;
             PERQemu.Sys.PowerDownRequested += SoftPowerOff;
 
-			// Set the initial state
-			SetState(RunState.WarmingUp);
+            // Set the initial state
+            SetState(RunState.WarmingUp);
 
             // Save as the default config for next time we launch
             if (PERQemu.Config.Current.Name != "default")
@@ -385,7 +383,7 @@ namespace PERQemu
                         // here until the delegate completes...
                         step.DoTheThing();
 
-                        do
+                        while (true)
                         {
                             current = State;
 
@@ -405,7 +403,14 @@ namespace PERQemu
                             // a limit to our patience...
                             Thread.Sleep(10);
 
-                        } while (step.WaitForIt);
+                            // Avoid an infinite wait where a debugging breakpoint fires
+                            // before we see the transition to Running completed -- this
+                            // is a rare but annoying occurence but exposes how truly
+                            // janky this ridiculous mechanism is and I should be ashamed
+                            // enough to rewrite it.  Which I will, surely, someday.  Ugh.
+                            if (current == RunState.Paused && step.ExpectedResult == RunState.Running)
+                                break;
+                        }
 
                         // Abandon the rest of our steps
                         if (current == RunState.Off || current == RunState.Halted)

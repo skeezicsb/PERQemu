@@ -116,9 +116,10 @@ namespace PERQemu.IO.Z80
         {
             using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read))
             {
-                if (fs.Read(_rom, 0, _rom.Length) != _rom.Length)
+                var actual = fs.Read(_rom, 0, _rom.Length);
+                if (actual != _rom.Length)
                 {
-                    throw new InvalidOperationException("Invalid Z80 ROM size");
+                    throw new InvalidOperationException($"Invalid Z80 ROM size, expected {_rom.Length}, got {actual} bytes");
                 }
 
                 Log.Info(Category.Emulator, "Loaded Z80 ROM from {0}", Paths.Canonicalize(path));

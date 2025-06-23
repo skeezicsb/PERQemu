@@ -230,7 +230,7 @@ namespace PERQemu
             }
             else
             {
-                path = file;    // Gotta go with what they gave us
+                path = Canonicalize(file);      // Go with what they gave us
             }
 
             if ((Path.HasExtension(path) && replaceExt) || !Path.HasExtension(path))
@@ -252,7 +252,7 @@ namespace PERQemu
             try
             {
                 // Special case: expand the Unix '~' to the users's home dir
-                if (PERQemu.HostIsUnix && path.Length > 0 && path[0] == '~')
+                if (PERQemu.HostIsUnix && path.StartsWith("~", StringComparison.InvariantCulture))
                 {
                     if (path == "~")
                     {

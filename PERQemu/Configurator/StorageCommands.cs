@@ -32,6 +32,10 @@ namespace PERQemu.UI
     /// </summary>
     public class StorageCommands
     {
+        public StorageCommands()
+        {
+            _safe = true;
+        }
 
         [Command("storage", "Enter the storage configuration subsystem", Prefix = true)]
         public void SetStoragePrefix()
@@ -49,6 +53,26 @@ namespace PERQemu.UI
         public void ShowStorageCommands()
         {
             PERQemu.CLI.ShowCommands("storage");
+        }
+
+        [Command("storage safe", "Do NOT allow create/export to overwrite existing files")]
+        void SafeMode()
+        {
+            if (!_safe)
+            {
+                _safe = true;
+                Console.WriteLine("Safe mode.");
+            }
+        }
+
+        [Command("storage unsafe", "Allow create/export to overwrite existing files")]
+        void UnsafeMode()
+        {
+            if (_safe)
+            {
+                _safe = false;
+                Console.WriteLine("Unsafe mode: create/export commands will overwrite existing files!");
+            }
         }
 
         [Command("storage status", "Show status of loaded storage devices")]
@@ -622,13 +646,12 @@ namespace PERQemu.UI
         /// </summary>
         [Command("storage create", "Creates a new blank, formatted floppy, disk or tape image")]
         void CreateMedia([KeywordMatch("DriveTypes")] string driveType,
-                                 [PathExpand] string filename,
-                                 bool overwrite = false)
+                                 [PathExpand] string filename)
         {
             // Is it a known/valid type?
-            var d = PERQemu.Config.GetKnownDeviceByName(driveType);
+            var dt = PERQemu.Config.GetKnownDeviceByName(driveType);
 
-            if (d == null)
+            if (dt == null)
             {
                 Console.WriteLine($"Sorry, don't know what a '{driveType}' is.");
                 return;
@@ -637,10 +660,10 @@ namespace PERQemu.UI
             // Fix up the pathname, see if it exists
             var pathname = Paths.QualifyPathname(filename, Paths.DiskDir, ".prqm", true);
 
-            if (File.Exists(pathname) && !overwrite)
+            if (File.Exists(pathname) && _safe)
             {
                 Console.WriteLine($"File '{pathname}' already exists.  Please choose another name,");
-                Console.WriteLine("or to replace the file repeat the command with overwrite 'true'.");
+                Console.WriteLine("or to replace the file issue the 'unsafe' command and try again.");
                 return;
             }
 
@@ -660,11 +683,11 @@ namespace PERQemu.UI
             }
 
             // Create a new copy
-            var newDrive = new StorageDevice(d.Info, d.Geometry, d.Specs);
-            newDrive.Filename = pathname;
+            var disk = new StorageDevice(dt.Info, dt.Geometry, dt.Specs);
+            disk.Filename = pathname;
 
             Console.Write("Formatting new drive... ");
-            newDrive.Format();
+            disk.Format();
 
             // New hard drives that are all zeros can confuse the boot code -- reading
             // all zeros fools the simple checksum and makes the PERQ attempt to load a
@@ -673,12 +696,12 @@ namespace PERQemu.UI
             // make the drive bootable.  This is a hack. :-)  We could get fancy and
             // instantiate an appropriate controller and fake up a device-specific format
             // but what's the fun in that?
-            if (newDrive.Info.Type == DeviceType.Disk8Inch ||
-                newDrive.Info.Type == DeviceType.Disk5Inch)
+            if (disk.Info.Type == DeviceType.Disk8Inch ||
+                disk.Info.Type == DeviceType.Disk5Inch)
             {
                 Console.Write("injecting bad cookie... ");
 
-                var sec = newDrive.Read(0, 0, 0);
+                var sec = disk.Read(0, 0, 0);
                 var badCookie = "UNFORMATTED!";
                 var badBytes = Encoding.UTF8.GetBytes(badCookie);
 
@@ -686,13 +709,13 @@ namespace PERQemu.UI
                 {
                     sec.WriteByte((uint)i, badBytes[i]);
                 }
-                newDrive.Write(sec);
+                disk.Write(sec);
             }
 
             Console.WriteLine("done!");
 
             Console.WriteLine("Saving the image... ");
-            newDrive.Save();
+            disk.Save();
 
             // The formatter will announce success.  All done!
         }
@@ -761,6 +784,370 @@ namespace PERQemu.UI
         }
 
         #endregion
+
+        #region IMG Import/Export
+
+        //
+        // NOTE: the "IMG" format imported and exported here is basically just a
+        // "raw" format but with a separate data file for the logical headers.
+        // The cleaner solution would be to write a PERQmedia IMGFormatter class 
+        // (or just extend the RawFormatter to leave out the PFD cookie and deal
+        // with the extra ".metadata" file.  It might also be possible to update
+        // the Gesswein mfm_util to produce and consume 528-byte blocks when the
+        // PERQ_T2 format is detected.  For now, we deal with that here.
+        //
+
+
+        /// <summary>
+        /// Create a new PRQM drive image from an extracted MFM image dump!
+        /// </summary>
+        /// <remarks>
+        /// This experimental feature assumes that you have a valid PERQ-formatted
+        /// hard disk transitions/emulation file captured with David Gesswein's MFM
+        /// emulator, extracted using "mfm_util" into ".img" and ".img.metadata"
+        /// files.  (When specifying the "imgdata" and "metadata" parameters these
+        /// extensions are assumed if not provided.)  For more information about
+        /// the MFM emulator, see https://www.pdp8online.com/mfm/
+        /// 
+        /// It can also read the custom FLEX archive format, created by extracting
+        /// the flux transitions into a ".img" file using the GreaseWeazel utilities?
+        /// </remarks>
+        [Command("storage import", "Import raw sector data from an IMG file")]
+        void ImportDiskFromIMG(string diskFile, string imgDataFile, string metaDataFile = "")
+        {
+            // Locate the disk file
+            var pathname = Paths.QualifyPathname(diskFile, Paths.DiskDir, ".prqm", true);
+            if (!File.Exists(pathname))
+            {
+                Console.WriteLine($"Can't find '{diskFile}'.");
+                return;
+            }
+
+            // Load the (presumed empty) drive
+            var disk = new StorageDevice(pathname);
+            disk.Load();
+
+            if (!disk.IsLoaded)
+            {
+                Console.WriteLine($"Failed to load disk '{pathname}'!");
+                return;
+            }
+
+            // FLEX images in .img (raw) format don't need the .metadata, so fudge
+            // it in the cheesiest way imaginable.  Since this is all sort of a
+            // one-off (until a full media set is converted to PRQM) use a couple
+            // of hints to identify them
+            var flexFlop = (disk.FileInfo.FSType == FilesystemHint.FLEX) ||
+                           (disk.Geometry.TotalBytes == 605220);    // 591360 + sector overheads UGH
+
+            if (flexFlop)
+            {
+                Console.WriteLine("This looks like a FLEX floppy!  " +
+                                  $"[FSHint={disk.FileInfo.FSType}, Size={disk.Geometry.TotalBytes}]");
+            }
+
+            // Look for the input files.  Assume <file>.img for the raw data if
+            // extension not given.  Assume <file>.img.metadata if second arg empty
+            var imgPath = Paths.QualifyPathname(imgDataFile, Paths.DiskDir, ".img", true);
+            if (!File.Exists(imgPath))
+            {
+                Console.WriteLine($"Can't find '{imgDataFile}'.");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(metaDataFile))
+            {
+                metaDataFile = imgPath + ".metadata";
+            }
+
+            var metaPath = Paths.QualifyPathname(metaDataFile, Paths.DiskDir, ".metadata", false);
+            if (!File.Exists(metaPath))
+            {
+                if (flexFlop)
+                {
+                    // This is so gross.  It's kinda temporary.  Really.
+                    metaPath = imgPath;
+                }
+                else
+                {
+                    Console.WriteLine($"Can't find '{metaDataFile}'.");
+                    return;
+                }
+            }
+
+            int ret;
+            var goodBlocks = 0;
+            var hdrOffset = 0;
+            var dataOffset = 0;
+
+            using (var db = new FileStream(imgPath, FileMode.Open, FileAccess.Read))
+            {
+                using (var lh = new FileStream(metaPath, FileMode.Open, FileAccess.Read))
+                {
+                    // Now load the data from the two input files and recombine the sectors
+                    // with their logical headers.  Will have to experiment to see if the
+                    // bad sectors can be reliably identified -- for now, if the read fails,
+                    // mark the block as bad and try to move on.  The first two test images
+                    // (Vertex V150) seem to be short by a whole cylinder!?  But always try
+                    // to read in as much as we can.
+
+                    Console.WriteLine("Starting disk reconstruction from {0} data... ",
+                                      (flexFlop ? "FLEX archive" : "raw MFM"));
+
+                    for (var c = 0; c < disk.Geometry.Cylinders; c++)
+                    {
+                        for (var h = 0; h < disk.Geometry.Heads; h++)
+                        {
+                            for (var s = 0; s < disk.Geometry.Sectors; s++)
+                            {
+                                if (!flexFlop)
+                                {
+                                    // I suppose we should try to do it the way mfm_util do:
+                                    // explicitly seek to the expected start and read the
+                                    // data.  Does Windows support sparse files?  Will it
+                                    // fill in the data with zeros implicitly or bomb?  Time
+                                    // to find out!
+                                    lh.Seek(hdrOffset, SeekOrigin.Begin);
+                                    ret = lh.Read(disk.Sectors[c, h, s].Header, 0, disk.Geometry.HeaderSize);
+
+                                    if (ret < disk.Geometry.HeaderSize)
+                                    {
+                                        Console.WriteLine($"\nShort HEADER read of {ret} bytes at {lh.Position}");
+                                        // disk.Sectors[c, h, s].IsBad = true;  -- maybe don't do this yet...
+                                    }
+                                    else
+                                    {
+                                        Console.Write($"Read C{c:d4}/H{h:d2}/S{s:d2} LH at offset {hdrOffset} ");
+                                    }
+                                }
+
+                                db.Seek(dataOffset, SeekOrigin.Begin);
+                                ret = db.Read(disk.Sectors[c, h, s].Data, 0, disk.Geometry.SectorSize);
+
+                                if (ret < disk.Geometry.SectorSize)
+                                {
+                                    Console.WriteLine($"\nShort DATA read of {ret} bytes at {db.Position}");
+                                    // disk.Sectors[c, h, s].IsBad = true; -- until FormatBlock() can reset it?
+                                }
+                                else
+                                {
+                                    Console.Write($"DB at offset {dataOffset}  \r");
+                                    goodBlocks++;
+                                }
+
+                                // Just do it the easy way
+                                hdrOffset += disk.Geometry.HeaderSize;
+                                dataOffset += disk.Geometry.SectorSize;
+                            }
+                        }
+                    }
+
+                    Console.WriteLine("\ndone!");
+                }
+            }
+
+            if (goodBlocks != disk.Geometry.TotalBlocks)
+            {
+                Console.WriteLine($"** Note: expected {disk.Geometry.TotalBlocks} but only read {goodBlocks}!");
+                Console.WriteLine("   You may need to use the OS utilities to check/repair the image!");
+            }
+
+            // Save it, assuming we got something good
+            Console.WriteLine("Saving new drive to disk... ");
+            disk.Save();
+        }
+
+        /// <summary>
+        /// Exports a configured/mounted disk to .img format.
+        /// </summary>
+        [Command("storage export unit", "Export a loaded disk to IMG format")]
+        void ExportUnitToIMG(byte unit, string imgDataFile, string metaDataFile = "")
+        {
+            // Is the unit # valid, and is a media file assigned?
+            if (unit < 0 || unit >= PERQemu.Config.Current.Drives.Length)
+            {
+                Console.WriteLine($"Unit #{unit} out of range; please select a valid mounted drive.");
+                return;
+            }
+
+            if (string.IsNullOrEmpty(PERQemu.Config.Current.Drives[unit].MediaPath))
+            {
+                Console.WriteLine($"No media is currently assigned to unit #{unit}.");
+                return;
+            }
+
+            // If the PERQ isn't powered on, hand off to the other method
+            if (PERQemu.Controller.State == RunState.Off)
+            {
+                ExportDiskToIMG(PERQemu.Config.Current.Drives[unit].MediaPath, imgDataFile, metaDataFile);
+                return;
+            }
+
+            // See if the drive is actually loaded (floppy, tape, removable)
+            var disk = PERQemu.Sys.Volumes[unit];
+            if (!disk.IsLoaded)
+            {
+                Console.WriteLine($"Disk unit #{unit} is not loaded.");
+                return;
+            }
+
+            if (!CanExportType(PERQemu.Config.Current.Drives[unit].Type)) return;
+
+            DoIMGExport(disk, imgDataFile, metaDataFile);
+        }
+
+        /// <summary>
+        /// Loads and exports a saved disk to .img format.
+        /// </summary>
+        [Command("storage export disk", "Export a saved PERQemu disk to IMG format")]
+        void ExportDiskToIMG(string diskFile, string imgDataFile, string metaDataFile = "")
+        {
+            // Locate the disk file
+            var pathname = Paths.QualifyPathname(diskFile, Paths.DiskDir, ".prqm", true);
+            if (!File.Exists(pathname))
+            {
+                Console.WriteLine($"Can't find '{diskFile}'.");
+                return;
+            }
+
+            var disk = new StorageDevice(pathname);
+            disk.Load();
+
+            if (!disk.IsLoaded)
+            {
+                Console.WriteLine($"Failed to load disk '{pathname}'!");
+                return;
+            }
+
+            if (!CanExportType(disk.Info.Type)) return;
+
+            DoIMGExport(disk, imgDataFile, metaDataFile);
+        }
+
+        /// <summary>
+        /// Common routine to check the device, output files, and write the data.
+        /// </summary>
+        void DoIMGExport(StorageDevice dev, string dataFile, string metaFile)
+        {
+            // Qualify the output path(s)  NB: we'll use Output/ by default to
+            // avoid overwriting input files (if they exist in the Disks/ dir)
+            var imgPath = Paths.QualifyPathname(dataFile, Paths.OutputDir, ".img", true);
+            if (File.Exists(imgPath) && _safe)
+            {
+                // I am such a nerd
+                var cmd = (PERQemu.CLI.CurrentPrefix == "storage") ? "unsafe" : "storage unsafe";
+                Console.WriteLine($"Output file already exists: '{imgPath}'.");
+                Console.WriteLine($"Choose another name or use '{cmd}' to overwrite.");
+                return;
+            }
+
+            // Any further checks!?
+
+            // Write the data blocks
+            ExportIMGData(dev, imgPath, false);
+
+            // If the device isn't a hard disk, skip the metafile (no block headers)
+            if (dev.Info.Type == DeviceType.Floppy ||
+                dev.Info.Type == DeviceType.TapeQIC) return;
+
+            // Qualify the output path for the metadata
+            if (string.IsNullOrEmpty(metaFile))
+            {
+                metaFile = imgPath + ".metadata";
+            }
+
+            var metaPath = Paths.QualifyPathname(metaFile, Paths.OutputDir, ".metadata", false);
+            if (File.Exists(metaPath) && _safe)
+            {
+                Console.WriteLine($"Can't find '{metaFile}'.");
+                return;
+            }
+
+            // Write the headers
+            ExportIMGData(dev, metaPath, true);
+        }
+
+        /// <summary>
+        /// Issue a note if exporting a non-MFM drive.
+        /// </summary>
+        bool CanExportType(DeviceType dType)
+        {
+            switch (dType)
+            {
+                // Currently unsupported: shouldn't even exist!?
+                case DeviceType.DCIOMicrop:
+                case DeviceType.DCIOShugart:
+                case DeviceType.DiskSMD:
+                case DeviceType.Tape9Track:
+                    Console.WriteLine("This device type is currently unsupported.");
+                    return false;
+
+                case DeviceType.Disk14Inch:
+                case DeviceType.Disk8Inch:
+                    Console.WriteLine("NOTE: only drives in class Disk5Inch (MFM/ST-506 type)");
+                    Console.WriteLine("      can be used with the MFM emulator.  Continuing...");
+                    return true;
+
+                case DeviceType.Disk5Inch:
+                    return true;
+
+                case DeviceType.Floppy:
+                case DeviceType.TapeQIC:
+                    // Technically we can just "save floppy with rawformat" (and I could
+                    // leave out the old PFD cookie) but maybe other uses for the raw data?
+                    // I suppose this is a way to dump out raw QIC tapes too?  Eh.
+                    // Todo: Say something about that?  
+                    return true;
+
+                default:
+                    Console.WriteLine($"Cannot export: bad media type '{dType}'.");
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Exports the data from dev to outpath (which is clobbered).  Assumes
+        /// error checking and output path validated by the caller.
+        /// </summary>
+        void ExportIMGData(StorageDevice dev, string outpath, bool headers)
+        {
+            Console.Write("Writing {0} to {1}...", headers ? "logical headers" : "data blocks", outpath);
+
+            try
+            {
+                using (var blk = new FileStream(outpath, FileMode.Create, FileAccess.Write))
+                {
+                    for (var c = 0; c < dev.Geometry.Cylinders; c++)
+                    {
+                        for (var h = 0; h < dev.Geometry.Heads; h++)
+                        {
+                            for (var s = 0; s < dev.Geometry.Sectors; s++)
+                            {
+                                if (headers)
+                                    blk.Write(dev.Sectors[c, h, s].Header, 0, dev.Geometry.HeaderSize);
+                                else
+                                    blk.Write(dev.Sectors[c, h, s].Data, 0, dev.Geometry.SectorSize);
+                            }
+                        }
+                    }
+                }
+
+                // Announce success 
+                var blocks = dev.Geometry.TotalBlocks;
+                var bytes = blocks * (headers ? dev.Geometry.HeaderSize : dev.Geometry.SectorSize);
+                Console.WriteLine("done!");
+                Console.WriteLine($"Wrote {blocks} blocks ({bytes} bytes).");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("failed!");
+                Console.WriteLine("Unable to export {0}: {1}",
+                                  headers ? "headers" : "data blocks", e.Message);
+            }
+        }
+
+        #endregion
+
 
         #region Define new types
 
@@ -854,5 +1241,7 @@ namespace PERQemu.UI
         #endregion
 
         static StorageDevice _dev;
+
+        bool _safe;
     }
 }

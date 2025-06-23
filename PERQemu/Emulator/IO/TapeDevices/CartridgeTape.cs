@@ -73,17 +73,14 @@ namespace PERQemu.IO.TapeDevices
         /// </summary>
         public void Reset()
         {
-            if (_motionEvent != null)
-            {
-                _scheduler.Cancel(_motionEvent);
-                _motionEvent = null;
-            }
+            _scheduler.Cancel(_motionEvent);
+            _motionEvent = null;
+            _tapeInMotion = false;
 
             if (_activityLight) ShowIcon(false);
 
             _position = 0;
             _atFileMark = false;
-            _tapeInMotion = false;
 
             Log.Info(Category.Streamer, "Drive reset");
         }
@@ -237,7 +234,7 @@ namespace PERQemu.IO.TapeDevices
                 {
                     // As with rewind, do about 1 second's worth
                     var blocks = Math.Min((Geometry.Sectors - 1) - _position, SectorsPerSecond);
-                                      
+
                     // If erasing, actually zap the sectors.  The drive's erase
                     // bar does all n tracks at once!
                     if (_command == Command.Erase)
@@ -590,7 +587,7 @@ namespace PERQemu.IO.TapeDevices
 
             Log.Info(Category.Streamer, "Tape cartridge is about to eject...");
 
-            if (_motionEvent != null) _scheduler.Cancel(_motionEvent);
+            _scheduler.Cancel(_motionEvent);
             _tapeInMotion = false;
             _atFileMark = false;
 

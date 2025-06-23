@@ -93,11 +93,8 @@ namespace PERQemu.IO.Z80
             _commandData.Clear();
             _statusData.Clear();
 
-            if (_pollEvent != null)
-            {
-                _scheduler.Cancel(_pollEvent);
-                _pollEvent = null;
-            }
+            _scheduler.Cancel(_pollEvent);
+            _pollEvent = null;
 
             // IOB/CIO uses IOReg3 to set this; EIO has no equivalent
             _interruptsEnabled = PERQemu.Sys.IOB.Z80System.IsEIO;
@@ -623,7 +620,7 @@ namespace PERQemu.IO.Z80
             _transfer.Cylinder = SelectedUnit.Cylinder;
             _transfer.Head = SelectedUnit.HeadSelect;
             _transfer.Sector = NextSector(_lastSector);
-            _transfer.Number = SelectedUnit.IsDoubleDensity ? 256 : 128;
+            _transfer.Number = (SelectedUnit.Geometry.SectorSize == 256 ? 1 : 0);
             _transfer.EndOfTrack = _transfer.Sector;        // only do once and finish
             _transfer.Aborted = true;                       // short-circuit DMA, etc.
 
@@ -692,7 +689,7 @@ namespace PERQemu.IO.Z80
             _transfer.Sector = _commandData.Dequeue();
             _transfer.Number = _commandData.Dequeue();
             _transfer.EndOfTrack = _commandData.Dequeue();
-            var gpl = _commandData.Dequeue();
+            _commandData.Dequeue();                         // GPL is unused/ignored
             var dtl = _commandData.Dequeue();
 
             _transfer.SectorLength = (_transfer.Number == 0) ? dtl : (ushort)(128 << _transfer.Number);
@@ -806,9 +803,11 @@ namespace PERQemu.IO.Z80
             }
 
             // Check sector format; expect either FM500 or MFM500, matching both
-            // the MFM flag and the drive's currently loaded media type
+            // the MFM flag and the drive's currently loaded media type.  With
+            // the addition of FLEX support, the oddball custom format requires
+            // an extra check!
             if ((_transfer.MFM && (_transfer.SectorLength != 256 || !SelectedUnit.IsDoubleDensity)) ||
-               (!_transfer.MFM && (_transfer.SectorLength != 128 || SelectedUnit.IsDoubleDensity)))
+               (!_transfer.MFM && SelectedUnit.IsDoubleDensity))
             {
                 _transfer.ST0 = SetErrorStatus(StatusRegister0.AbnormalTermination);
                 _transfer.ST1 = StatusRegister1.NoData;      // Sector not found
@@ -982,9 +981,10 @@ namespace PERQemu.IO.Z80
             // Make sure that the format matches the media; while it may be that
             // the real hardware just trusts the user to do the right thing (can
             // the drive even detect if there's a density mismatch?) we'll reject
-            // the attempt to avoid issues with our underlying storage strategy
+            // the attempt to avoid issues with our underlying storage strategy.
+            // Updated to add custom FLEX archive format.
             if ((_transfer.MFM && (_transfer.SectorLength != 256 || !SelectedUnit.IsDoubleDensity)) ||
-               (!_transfer.MFM && (_transfer.SectorLength != 128 || SelectedUnit.IsDoubleDensity)))
+               (!_transfer.MFM && SelectedUnit.IsDoubleDensity))
             {
                 _transfer.ST0 = SetErrorStatus(StatusRegister0.AbnormalTermination);
                 _transfer.ST0 |= StatusRegister0.EquipChk;  // Best guess
@@ -1130,8 +1130,7 @@ namespace PERQemu.IO.Z80
                 request.Sector = 1;
             }
 
-            Log.Detail(Category.FloppyDisk, "Transfer completed:");
-            Log.Detail(Category.FloppyDisk, "C{0}/H{1}/S{2} N{3}",
+            Log.Debug(Category.FloppyDisk, "Transfer complete: C{0}/H{1}/S{2} N{3}",
                                             request.Cylinder, request.Head,
                                             request.Sector, request.Number);
             Log.Detail(Category.FloppyDisk, "ST0 = {0}", request.ST0);
@@ -1268,6 +1267,7 @@ namespace PERQemu.IO.Z80
         }
 
         #endregion
+
 
         /// <summary>
         /// Supplemental data structure: Transfer request.
@@ -1526,4 +1526,7 @@ namespace PERQemu.IO.Z80
     The CIO/EIO (v10.017+) rewrite is a bazillion times cleaner, but it still
     has some quirks and more torture testing is needed to see how the high-level
     software, microcode and Z80 all handle exceptional conditions.  Someday.
+
+    Updated to handle the custom FLEX DSSD 15 x 256 format!  Removed a bunch of
+    assumptions that all PERQ formats stuck to the "IBM standard."
 */
