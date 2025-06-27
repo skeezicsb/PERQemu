@@ -85,11 +85,13 @@ namespace PERQemu.IO.Network
         // EIO writes them separately
         public byte LowFifth
         {
+            get { return _mac[4]; }
             set { _mac[4] = value; }
         }
 
         public byte LowSixth
         {
+            get { return _mac[5]; }
             set { _mac[5] = value; }
         }
 

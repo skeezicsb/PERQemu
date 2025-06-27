@@ -7,6 +7,15 @@ Previous notes moved to ChangeLog-Old.txt.
 
 June, 2025:
 
+    5. Many Ethernet fixes and a weird bug discovered: SharpPcap/PacketDotNet
+    don't consistently preserve OR strip the FCS bytes during raw Ethernet
+    captures -- so depending on the quirk of your controller chip (on MacOSX,
+    anyway) you'll get different receive lengths.  This is annoying.  Pushing
+    the debug/temporary changes to verify on Linux/Windows and developing the
+    workaround.  The FLEX network installer uses Ethernet multicast!  Totally
+    vindicated for the tens of minutes of my life devoted to writing that code
+    that I never thought would be used, ever.  Cool!  [Bump to v0.7.7.5]
+
     4. New storage subsystem "safe" and "unsafe" set a flag for create or export
     commands that might overwrite files.  Importing and exporting 5.25" hard
     drive images for use with the MFM emulator now included in the Release build
@@ -200,4 +209,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Mon Jun 23 00:38:34 PDT 2025
+Last update: skeezics    Thu Jun 26 22:27:24 PDT 2025

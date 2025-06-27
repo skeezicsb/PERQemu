@@ -128,11 +128,6 @@ namespace PERQemu.IO.Network
             _status = Status.None;
             _control = Control.None;
 
-            for (var i = 0; i < _mcastGroups.Length; i++)
-            {
-                _mcastGroups[i] = 0;
-            }
-
             _nic.Reset();
 
             Log.Info(Category.Ethernet, "Controller reset");
@@ -166,8 +161,8 @@ namespace PERQemu.IO.Network
                 //
                 case 0x88:      // OIO Microsecond clock control
                 case 0xdc:      // EIO
-                    // Todo: actually run the clock!?
-                    Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to usec clock (control)", value);
+                    // Todo: actually run the clock!? 
+                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to usec clock (control)", value);
                     break;
 
                 case 0x89:      // OIO uSec clock timer high byte
@@ -188,7 +183,7 @@ namespace PERQemu.IO.Network
                 case 0x8c:      // OIO Bit counter control
                 case 0xd8:      // EIO
                     // Todo: Uh, actually do something?
-                    Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to bit counter (control)", value);
+                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to bit counter (control)", value);
                     break;
 
                 case 0x8d:      // OIO Bit counter high byte
@@ -213,17 +208,17 @@ namespace PERQemu.IO.Network
                 case 0x90:  // OIO Low word of MAC address - swap the bytes
                     _recvAddr.LowFifth = (byte)(value & 0xff);
                     _recvAddr.LowSixth = (byte)(value >> 8);
-                    Log.Info(Category.Ethernet, "Wrote 0x{0:x4} to low address register 0x{1:x2}", value, address);
+                    Log.Info(Category.Ethernet, "Wrote 0x{0:x4} to low address register 0x{1:x2}", _recvAddr.Low, address);
                     break;
 
                 case 0xc9:  // EIO Low word (byte 5) of MAC address - swap with 6th
                     _recvAddr.LowSixth = (byte)(~value & 0xff);
-                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to MAC address byte 5", value);
+                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to MAC address byte 5", _recvAddr.LowSixth);
                     break;
 
                 case 0xc8:  // EIO Low word (byte 6) of MAC address - swap with 5th
                     _recvAddr.LowFifth = (byte)(~value & 0xff);
-                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to MAC address byte 6", value);
+                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to MAC address byte 6", _recvAddr.LowFifth);
                     break;
 
                 //
@@ -254,7 +249,7 @@ namespace PERQemu.IO.Network
                 case 0xc3:
                     // Todo: bit 1 enables the "bit count interrupt" when set
                     // What does that actually mean?
-                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
+                    Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
                     break;
 
                 default:
@@ -292,11 +287,28 @@ namespace PERQemu.IO.Network
             if (_control.HasFlag(Control.Go))
             {
                 // Timer: enabled, not already running, count set?
-                if (_control.HasFlag(Control.ClockEnable) && _usecClock > 0 && _timer == null)
+                if (_control.HasFlag(Control.ClockEnable))
                 {
-                    // Start it up
-                    Log.Info(Category.Ethernet, "Timer enabled: will fire in {0}usec", _usecClock);
-                    _timer = _system.Scheduler.Schedule(_usecClock * Conversion.UsecToNsec, ClockOverflow);
+                    // Not already running?
+                    if (_usecClock != 0 && _timer == null)
+                    {
+                        // Start it up
+                        Log.Debug(Category.Ethernet, "Timer enabled: will fire in {0}usec", _usecClock);
+                        _timer = _system.Scheduler.Schedule(_usecClock * Conversion.UsecToNsec, ClockOverflow);
+                    }
+                    // Otherwise writes are ignored, per eio.doc
+                }
+                else
+                {
+                    // Running?
+                    if (_timer != null)
+                    {
+                        Log.Debug(Category.Ethernet, "Timer disabled: was to fire in {0}usec",
+                                 (_system.Scheduler.CurrentTimeNsec - _timer.TimestampNsec) * 0.001);
+
+                        _system.Scheduler.Cancel(_timer);
+                        _timer = null;
+                    }
                 }
 
                 // Transmit flag?
@@ -391,7 +403,7 @@ namespace PERQemu.IO.Network
             // Assume that reading the status register clears the interrupt
             // regardless of whether the net or timer raised it -- or both!?
             _system.CPU.ClearInterrupt(_irq);
-            Log.Info(Category.Ethernet, "Read status: {0} interrupt cleared, flags {1} ({2:x})",
+            Log.Debug(Category.Ethernet, "Read status: {0} interrupt cleared, flags {1} ({2:x})",
                                          _irq, _status, retVal);
             return retVal;
         }
@@ -503,7 +515,7 @@ namespace PERQemu.IO.Network
             Log.Info(Category.Ethernet, "Receiving {0} bytes to header @ 0x{1:x6}, data @ 0x{2:x6} [{3}]",
                                          packet.Length, header, buffer,
                                          System.Threading.Thread.CurrentThread.ManagedThreadId);
-            Log.Debug(Category.Ethernet, "Receive bit count initial = {0:x} ({1})",
+            Log.Info(Category.Ethernet, "Receive bit count initial = {0:x} ({1})",
                                         _bitCount, (short)_bitCount);
 
             // Write the Ethernet frame's header to PERQ memory.  The header is
@@ -511,9 +523,9 @@ namespace PERQemu.IO.Network
             // a dummy.  We write a zero, but could just skip it?
             _system.Memory.StoreWord(header++, 0);
 
-            for (var i = 0; i < 6; i++)
+            for (var i = 0; i < 12; i += 2)
             {
-                data = (ushort)(packet[i * 2 + 1] << 8 | packet[i * 2]);
+                data = (ushort)(packet[i + 1] << 8 | packet[i]);
                 _system.Memory.StoreWord(header++, data);
             }
 
@@ -532,13 +544,12 @@ namespace PERQemu.IO.Network
             // Set the bit count as if the hardware had counted UP from the value
             // the microcode programmed; on receives the counter is intialized to
             // the 2's complement of 1518 (max frame size) because they use that
-            // to detect giant packets!  Note also that the PERQ expects that the
-            // 32-bit CRC is included in the bit count
+            // to detect giant packets!
             _bitCount += (ushort)(packet.Length * 8);
 
             // Compute delay for DMA copy and schedule the callback to complete;
             // include the "interpacket gap" so we can do back-to-back receives
-            var delay = (ulong)((packet.Length * 8 * .1) + 9.6) * Conversion.UsecToNsec;
+            var delay = (ulong)(((packet.Length + 4) * 8 * .1) + 9.6) * Conversion.UsecToNsec;
             _response = _system.Scheduler.Schedule(delay, ReceiveComplete);
 
             Log.Info(Category.Ethernet, "Received {0} bytes ({1} bits), callback in {2}usec",
@@ -613,11 +624,11 @@ namespace PERQemu.IO.Network
                 // first (unused) word.
                 addr = _system.IOB.DMARegisters.GetHeaderAddress(_dmaTx) + 1;
 
-                for (var i = 0; i < 6; i++)
+                for (var i = 0; i < 12; i += 2)
                 {
                     data = _system.Memory.FetchWord(addr++);
-                    packet[i * 2] = (byte)data;
-                    packet[i * 2 + 1] = (byte)(data >> 8);
+                    packet[i] = (byte)data;
+                    packet[i + 1] = (byte)(data >> 8);
                 }
 
                 // Do the header's Length/Type field (swapped!)
@@ -685,7 +696,7 @@ namespace PERQemu.IO.Network
         /// </summary>
         void FinishCommand()
         {
-            Log.Info(Category.Ethernet, "{0} complete, raising {1} interrupt", _state, _irq);
+            Log.Debug(Category.Ethernet, "{0} complete, raising {1} interrupt", _state, _irq);
 
             _response = null;
             _state = State.Complete;

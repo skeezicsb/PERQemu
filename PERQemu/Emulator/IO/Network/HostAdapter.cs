@@ -158,7 +158,7 @@ namespace PERQemu.IO.Network
                 _pktsSent++;
                 _lastGreeting = DateTime.Now;
 
-                Log.Info(Category.NetAdapter, "Sent RARP request from {0}", _controller.MACAddress);
+                Log.Debug(Category.NetAdapter, "Sent RARP request from {0}", _controller.MACAddress);
             }
             catch (PcapException ex)
             {
@@ -193,7 +193,7 @@ namespace PERQemu.IO.Network
                 _adapter.SendPacket(packet);
                 _pktsSent++;
 
-                Log.Info(Category.NetAdapter, "Sent RARP reply to {0}", greeting.TargetHardwareAddress);
+                Log.Debug(Category.NetAdapter, "Sent RARP reply to {0}", greeting.TargetHardwareAddress);
             }
             catch (PcapException ex)
             {
@@ -217,9 +217,9 @@ namespace PERQemu.IO.Network
                     return false;
                 }
 
-                Log.Info(Category.NetAdapter, "Sending from {0} to {1} (type {2})",
+                Log.Info(Category.NetAdapter, "Sending from {0} to {1} (type 0x{2:x})",
                           packet.SourceHwAddress, packet.DestinationHwAddress, packet.Type);
-                Log.Debug(Category.NetAdapter, "SIZES: packet {0}, header {1}, payload {2}",
+                Log.Info(Category.NetAdapter, "SIZES: packet {0}, header {1}, payload {2}",
                           packet.Bytes.Length, packet.Header.Length, packet.PayloadData?.Length);
 
                 // Always remap our source address to the host adapter
@@ -262,8 +262,8 @@ namespace PERQemu.IO.Network
 
                 // Now generate the checksum for the packet (for debugging);
                 // SharpPcap _will_ generate and append this for us, apparently
-                var crc = Crc32.Compute(packet.Bytes, 0, packet.Bytes.Length - 4);
-                Log.Debug(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
+                var crc = Crc32.Compute(packet.Bytes, 0, packet.Bytes.Length);
+                Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
 
                 // Print the (modified) packet
                 // if (Log.Level < Severity.Info) Console.WriteLine(packet.PrintHex());
@@ -321,24 +321,24 @@ namespace PERQemu.IO.Network
                 if (raw.Type == EthernetPacketType.IpV6) return;
                 if ((ushort)raw.Type == 0x0026) return;
 
-                Log.Info(Category.NetAdapter, "Received from {0} to {1} (type {2:x}) [{3}]",
+                Log.Info(Category.NetAdapter, "Received from {0} to {1} (type 0x{2:x}) [{3}]",
                           raw.SourceHwAddress, raw.DestinationHwAddress, raw.Type,
                           System.Threading.Thread.CurrentThread.ManagedThreadId);
-                Log.Debug(Category.NetAdapter, "SIZES: packet {0}, header {1}, payload {2}",
+                Log.Info(Category.NetAdapter, "SIZES: packet {0}, header {1}, payload {2}",
                           raw.Bytes.Length, raw.Header.Length, raw.PayloadData?.Length);
 
                 // Todo: wrap this in a DEBUG or report the results, else it's wasted effort
                 // Recompute the checksum for the packet
-                var len = raw.Bytes.Length - 4;
-                var crc = Crc32.Compute(raw.Bytes, 0, len);
-                Log.Debug(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
+                var crc = Crc32.Compute(raw.Bytes, 0, raw.Bytes.Length - 4);
+                Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
 
+                var len = raw.Bytes.Length - 4;
                 var check = ((raw.Bytes[len] << 24) |
                              (raw.Bytes[len + 1] << 16) |
                              (raw.Bytes[len + 2] << 8) |
                               raw.Bytes[len + 3]);
 
-                Log.Debug(Category.NetAdapter, "Received CRC is {0:x8}", check);
+                Log.Info(Category.NetAdapter, "Received CRC is {0:x8}", check);
 
                 // If this is addressed to us specifically, NAT it!
                 if (raw.DestinationHwAddress.Equals(_adapter.MacAddress))
@@ -398,7 +398,7 @@ namespace PERQemu.IO.Network
 
                 if (rarp != null)
                 {
-                    Log.Info(Category.NetAdapter, "RARP {0} received from {1}",
+                    Log.Debug(Category.NetAdapter, "RARP {0} received from {1}",
                                                    rarp.Operation, rarp.TargetHardwareAddress);
 
                     // The Op can be a Request (new host coming online) or a
@@ -439,7 +439,7 @@ namespace PERQemu.IO.Network
                         // do RARP (even under Accent).  HOWEVER, Accent's "new"
                         // message server (in S6+) will do actual IP ARPs, so we
                         // don't want to get in the way of those.
-                        Log.Info(Category.NetAdapter, "Local RARP handling complete");
+                        Log.Debug(Category.NetAdapter, "Local RARP handling complete");
                         return;
                     }
                 }
@@ -447,7 +447,7 @@ namespace PERQemu.IO.Network
             }
             catch (PcapException ex)
             {
-                Log.Info(Category.NetAdapter, "Failed to parse RARP packet: {0}", ex.Message);
+                Log.Debug(Category.NetAdapter, "Failed to parse RARP packet: {0}", ex.Message);
                 // No biggie, just continue
             }
 

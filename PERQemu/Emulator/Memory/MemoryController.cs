@@ -19,6 +19,7 @@
 
 using System;
 using System.IO;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace PERQemu.Memory
@@ -139,8 +140,8 @@ namespace PERQemu.Memory
 
         public bool Wait => _wait;
         public bool Valid => _valid;
-        public int Address => _address; 
-        public int WordIndex =>  _index;
+        public int Address => _address;
+        public int WordIndex => _index;
         public MemoryCycle Cycle => _current.CycleType;
 
 
@@ -238,12 +239,14 @@ namespace PERQemu.Memory
                     case MemoryCycle.Store4R:
                     case MemoryCycle.Store4:
                         _address = (_current.StartAddress & _quadWordMask) + _index;
-
                         break;
 
                     case MemoryCycle.Fetch2:
                     case MemoryCycle.Store2:
                         _address = (_current.StartAddress & _doubleWordMask) + _index;
+
+                        // Hack to allow misaligned addrs (w2/w3 instead of w0/w1)!
+                        if ((_current.StartAddress & 0x1) != 0) _address += 2;
                         break;
 
                     default:
@@ -266,6 +269,14 @@ namespace PERQemu.Memory
         /// Sets bookmarks for the next cycle, and modifies the current one if necessary.
         /// WARNING: THIS IS WHERE THE SAUSAGE IS MADE.
         /// </summary>
+        /// <remarks>
+        /// I used to think this was crazy and bad, a terribly improvised series of
+        /// hacks and assumptions to work around the complexity of the hardware.  Then
+        /// sources were found to the PALs and PROMs that make up the MST01/MST10 and
+        /// GMV02/BKM16.2 memory state machines and... well, it's eerie how I managed
+        /// to come closer with these wild-ass-guesses to the way the hardware actually
+        /// operates than I ever imagined.  It still cries out for refactoring, though.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void UpdateBookmarks(MemoryCycle nextCycle)
         {
@@ -367,25 +378,6 @@ namespace PERQemu.Memory
                 // Get a new set of flags -- these may modify the current cycle!
                 var flags = GetBookmarkEntry(book, _nextState);
 
-#if DEBUG
-                // If the Recognize flag is not set, we're really out in left field...
-                // ... but all of this can go away entirely once things are fully debugged.
-                if (!flags.Recognize)
-                {
-                    Console.WriteLine("-->\t{0} queue: Recognize not set for new {1} request in T{2}!", _name, nextCycle, _mem.TState);
-
-                    // If the Abort flag isn't set either, our BKM16 ROM is buggy; force an
-                    // abort and just hope for the best?
-                    if (!flags.Abort)
-                    {
-                        Console.WriteLine("-->\tForced abort in T{0} due to new request in wrong cycle", _mem.TState);
-                        Console.WriteLine("\tFlags: {0}", flags);
-                        DumpQueue();
-                        flags.Abort = true;
-                    }
-                }
-#endif
-
                 // If the done flag is set, retire the current op (may be early,
                 // if a Fetch is overlapped)
                 if (flags.Complete)
@@ -437,10 +429,10 @@ namespace PERQemu.Memory
             Log.Info(Category.Emulator, "Initialized BKM ROM lookup table");
         }
 
-#if DEBUG
         /// <summary>
         /// Dumps the current controller state and request slots. Quick and dirty debugging aid.
         /// </summary>
+        [Conditional("DEBUG")]
         public void DumpQueue()
         {
             Console.WriteLine("{0} queue:\tstate: wait={1} valid={2} index={3} addr={4:x6}",
@@ -448,7 +440,9 @@ namespace PERQemu.Memory
             Console.WriteLine("\t\tcurrent: {0}", _current);
             Console.WriteLine("\t\tpending: {0}", _pending);
         }
-#endif
+
+
+        MemoryBoard _mem;
 
         string _name;
         MemoryState _state;
@@ -469,15 +463,13 @@ namespace PERQemu.Memory
         int _nextBookmark;
 
         static BookmarkEntry[] _bkmTable;
-
-        MemoryBoard _mem;   // parent
     }
 }
 
-
-#region Hairy memory rules
 /*
-    [ This belongs in a doc file somewhere ]
+    Notes re: the Hairy Memory Rules
+    
+    [ Todo: This really belongs in a Docs/ file! ]
     
 The real PERQ memory rules are seriously hairy.  To make matters much worse, the
 wording in the Microprogrammers' Guide is terribly confusing:
@@ -582,8 +574,7 @@ detailed drawings, files and notes regarding the implementation of the memory
 state machine in the hardware, shedding new light on how some of the trickier
 overlapped cases and RasterOp pipelining actually works.  It may be possible to
 revisit this and simplify/clarify/streamline the emulation in the future, perhaps
-as part of implementing the DMA/Hold bit functionality (which may be necessary
-or desirable to make the EIO board/Ethernet emulation more accurate?).]
+as part of implementing the DMA/Hold bit functionality or to just make it less
+insane.  And faster.]
 
 */
-#endregion
