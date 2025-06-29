@@ -48,7 +48,7 @@ namespace PERQemu.IO.Network
                 throw new UnimplementedHardwareException("Host adapter not found (or not accessible)");
             }
 
-            // Open the device and register our receive callback
+            // Open the device and attach our receive handler
             _adapter.Open(DeviceMode.Promiscuous);
             _adapter.OnPacketArrival += OnPacketArrival;
 
@@ -56,6 +56,7 @@ namespace PERQemu.IO.Network
             _adapter.StopCaptureTimeout = new TimeSpan(100000000);
 
             // Initialize statistics
+            _probed = _hasFCS = false;
             _pktsSent = _pktsRecvd = _pktsIgnored = _pktsQueued = _pktsDropped = 0;
 
             Log.Info(Category.NetAdapter, "Device opened [Host MAC: {0}]", _adapter.MacAddress);
@@ -63,8 +64,12 @@ namespace PERQemu.IO.Network
 
         public string Name => _adapter?.Name;
         public string Description => _adapter?.Description;
+
         public PhysicalAddress Address => (_adapter == null ? PhysicalAddress.None : _adapter.MacAddress);
+
         public bool Running => (_adapter != null && _adapter.Started);
+        public bool FrameIncludesFCS => _hasFCS;
+
 
         /// <summary>
         /// There's nothing to reset, really; we just use this to lazily start
@@ -266,7 +271,7 @@ namespace PERQemu.IO.Network
                 Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
 
                 // Print the (modified) packet
-                // if (Log.Level < Severity.Info) Console.WriteLine(packet.PrintHex());
+                //if (Log.Level < Severity.Info) Console.WriteLine(packet.PrintHex());
 
                 // So send it already, sheesh
                 _adapter.SendPacket(packet);
@@ -327,18 +332,41 @@ namespace PERQemu.IO.Network
                 Log.Info(Category.NetAdapter, "SIZES: packet {0}, header {1}, payload {2}",
                           raw.Bytes.Length, raw.Header.Length, raw.PayloadData?.Length);
 
-                // Todo: wrap this in a DEBUG or report the results, else it's wasted effort
-                // Recompute the checksum for the packet
-                var crc = Crc32.Compute(raw.Bytes, 0, raw.Bytes.Length - 4);
-                Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
+                // See if the frame includes the FCS bytes or not -- apparently
+                // SOME Ethernet controllers include them while others don't!
+                if (!_probed)
+                {
+                    // Compute checksum based on the received length
+                    var crc = Crc32.Compute(raw.Bytes, 0, raw.Bytes.Length);
+                    Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
 
-                var len = raw.Bytes.Length - 4;
-                var check = ((raw.Bytes[len] << 24) |
-                             (raw.Bytes[len + 1] << 16) |
-                             (raw.Bytes[len + 2] << 8) |
-                              raw.Bytes[len + 3]);
+                    var len = raw.Bytes.Length - 4;
+                    var check = ((raw.Bytes[len] << 24) |
+                                 (raw.Bytes[len + 1] << 16) |
+                                 (raw.Bytes[len + 2] << 8) |
+                                  raw.Bytes[len + 3]);
+                    Log.Info(Category.NetAdapter, "Received CRC is {0:x8}", check);
 
-                Log.Info(Category.NetAdapter, "Received CRC is {0:x8}", check);
+                    // Lop off the last four bytes and recompute
+                    if (check != crc)
+                    {
+                        crc = Crc32.Compute(raw.Bytes, 0, raw.Bytes.Length - 4);
+                        Log.Info(Category.NetAdapter, "Re-computed CRC is {0:x8}", crc);
+
+                        // NOW if they match we can be certain the FCS is present
+                        // (if they don't... uh... then we have bigger problems)
+                        _hasFCS = (check == crc);
+                    }
+
+                    _probed = true;
+                }
+                //#if DEBUG
+                else
+                {
+                    var crc = Crc32.Compute(raw.Bytes, 0, _hasFCS ? raw.Bytes.Length - 4 : raw.Bytes.Length);
+                    Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
+                }
+                //#endif
 
                 // If this is addressed to us specifically, NAT it!
                 if (raw.DestinationHwAddress.Equals(_adapter.MacAddress))
@@ -466,7 +494,7 @@ namespace PERQemu.IO.Network
             //
 
             // DEBUGGING: Print the packet post-rewrites
-            // if (Log.Level < Severity.Info) Console.WriteLine(raw.PrintHex());
+            if (Log.Level < Severity.Info) Console.WriteLine(raw.PrintHex());
 
             // Shortcut: is the receiver active and ready?
             if (_controller.CanReceive)
@@ -676,7 +704,10 @@ namespace PERQemu.IO.Network
         {
             Console.WriteLine("\nHost adapter status:");
             Console.WriteLine($"  NIC: {Name} - {Description}");
+            Console.WriteLine("  [This NIC {0} include FCS bytes in the payload]",
+                              (_probed && FrameIncludesFCS) ? "DOES" : "does NOT");
             Console.WriteLine($"  Address: {Address}\tRunning: {Running}\tPending: {_pending.Count}");
+
             Console.WriteLine("\nInterface statistics:");
             Console.WriteLine($"  Total sent: {_pktsSent}\tReceived: {_pktsRecvd}\tIgnored: {_pktsIgnored}");
             Console.WriteLine($"  Deferred:   {_pktsQueued}\tDropped: {_pktsDropped}");
@@ -725,6 +756,9 @@ namespace PERQemu.IO.Network
 
         ConcurrentQueue<EthernetPacket> _pending;
         const int MaxBacklog = 15;              // Don't queue without bound
+
+        bool _probed;
+        bool _hasFCS;
 
         ulong _pktsRecvd, _pktsSent;            // Some basic statistics,
         ulong _pktsQueued, _pktsDropped;        // for debugging/curiosity

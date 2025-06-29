@@ -512,15 +512,17 @@ namespace PERQemu.IO.Network
             var header = _system.IOB.DMARegisters.GetHeaderAddress(_dmaRx);
             var buffer = _system.IOB.DMARegisters.GetDataAddress(_dmaRx);
 
+            // Adjust our size in case the frame contains the FCS bytes
+            var size = _nic.FrameIncludesFCS ? packet.Length - 4 : packet.Length;
+
             Log.Info(Category.Ethernet, "Receiving {0} bytes to header @ 0x{1:x6}, data @ 0x{2:x6} [{3}]",
-                                         packet.Length, header, buffer,
+                                         size, header, buffer,
                                          System.Threading.Thread.CurrentThread.ManagedThreadId);
             Log.Info(Category.Ethernet, "Receive bit count initial = {0:x} ({1})",
                                         _bitCount, (short)_bitCount);
 
-            // Write the Ethernet frame's header to PERQ memory.  The header is
-            // 14 bytes but the DMA always ships quad words, so the first word is
-            // a dummy.  We write a zero, but could just skip it?
+            // Write the frame's header to PERQ memory.  The header is 14 bytes
+            // but the DMA always ships quad words; the first word is skipped/zero
             _system.Memory.StoreWord(header++, 0);
 
             for (var i = 0; i < 12; i += 2)
@@ -534,26 +536,26 @@ namespace PERQemu.IO.Network
             _system.Memory.StoreWord(header, data);
 
             // DMA the packet data to the PERQ, reconstituted as 16-bit words
-            for (var i = 14; i < packet.Length; i += 2)
+            for (var i = 14; i < size; i += 2)
             {
                 data = packet[i];
-                if (i + 1 < packet.Length) data |= (ushort)(packet[i + 1] << 8);
+                if (i + 1 < size) data |= (ushort)(packet[i + 1] << 8);
                 _system.Memory.StoreWord(buffer++, data);
             }
 
             // Set the bit count as if the hardware had counted UP from the value
             // the microcode programmed; on receives the counter is intialized to
             // the 2's complement of 1518 (max frame size) because they use that
-            // to detect giant packets!
-            _bitCount += (ushort)(packet.Length * 8);
+            // to detect giant packets.  Bit count INCLUDES the FCS bytes!
+            _bitCount += (ushort)((size + 4) * 8);
 
             // Compute delay for DMA copy and schedule the callback to complete;
             // include the "interpacket gap" so we can do back-to-back receives
-            var delay = (ulong)(((packet.Length + 4) * 8 * .1) + 9.6) * Conversion.UsecToNsec;
+            var delay = (ulong)(((size + 4) * 8 * .1) + 9.6) * Conversion.UsecToNsec;
             _response = _system.Scheduler.Schedule(delay, ReceiveComplete);
 
             Log.Info(Category.Ethernet, "Received {0} bytes ({1} bits), callback in {2}usec",
-                                          packet.Length, (short)_bitCount, delay / 1000);
+                                         size, (short)_bitCount, delay / 1000);
         }
 
         /// <summary>

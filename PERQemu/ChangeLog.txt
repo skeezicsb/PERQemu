@@ -7,6 +7,12 @@ Previous notes moved to ChangeLog-Old.txt.
 
 June, 2025:
 
+    6. Let's qualify that last update for a very narrow definition of "fixes."
+    Of all the definitions of that versatile word, I think I managed to avoid
+    "to mend or repair" entirely.  Thank you, thank you, it's a talent.  Let's
+    try this again.  Bump to build v0.7.7.7 'cuz I'm feelin' lucky!  This patch
+    lets POS FTP, TestEther and Accent play a little nicer.
+
     5. Many Ethernet fixes and a weird bug discovered: SharpPcap/PacketDotNet
     don't consistently preserve OR strip the FCS bytes during raw Ethernet
     captures -- so depending on the quirk of your controller chip (on MacOSX,

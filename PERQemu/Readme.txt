@@ -687,7 +687,7 @@ v0.1 - First public release
 
 Update history:
 
-6/23/2025 - skeezicsb - v0.7.7 (experiments)
+6/28/2025 - skeezicsb - v0.7.7 (experiments)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)
