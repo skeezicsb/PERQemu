@@ -86,13 +86,13 @@ namespace PERQemu.IO.Network
         public byte LowFifth
         {
             get { return _mac[4]; }
-            set { _mac[4] = value; }
+            set { _mac[4] = value; _physAddr = new PhysicalAddress(_mac); }
         }
 
         public byte LowSixth
         {
             get { return _mac[5]; }
-            set { _mac[5] = value; }
+            set { _mac[5] = value; _physAddr = new PhysicalAddress(_mac); }
         }
 
         /// <summary>

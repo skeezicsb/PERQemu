@@ -7,6 +7,10 @@ Previous notes moved to ChangeLog-Old.txt.
 
 June, 2025:
 
+    7. Add the FLEX opcodes to the debugger.  Use "debug load qcodes flex" to
+    load them.  Chose some made-up mnemonics for debugging; see QCodes.cs and
+    the RSRE documentation for more info.  Additional small Ethernet fix.
+
     6. Let's qualify that last update for a very narrow definition of "fixes."
     Of all the definitions of that versatile word, I think I managed to avoid
     "to mend or repair" entirely.  Thank you, thank you, it's a talent.  Let's
@@ -215,4 +219,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Thu Jun 26 22:27:24 PDT 2025
+Last update: skeezics    Mon Jun 30 14:15:59 PDT 2025

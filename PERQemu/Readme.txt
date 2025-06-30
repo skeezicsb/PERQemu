@@ -394,11 +394,10 @@ The following hardware has been implemented in the emulator:
     - PERQ-2/EIO configuration support: Kriz tablet and GPIB BitPad are working.
 
   Ethernet:
-    - A "null" bare-bones interface is now available when the "Ether" option for
-      the OIO option board is configured.  This allows Accent to initialize its
+    - A "null" interface is now available when the OIO board "Ether" option
+      or an EIO board is configured.  This allows Accent to initialize its
       NetMsgServer so other peripheral server processes (floppy, serial, etc)
       can start up.  Consult the User Guide for more details!
-    - The EIO version of the interface is being tested for use with PERQ-2;
     - Implementation of a real host Ethernet interface is available for testing,
       but with caveats.  Check the User Guide for details.
 
@@ -531,10 +530,11 @@ v0.9 - TBD
   - Multibus and SMD disks?
 
 v0.7.7 - Experiments branch
-  - Update for FLEX custom floppy format and DDS, Z80 DMA changes to allow
-    it to run
+  - Update for FLEX custom floppy format, Z80 DMA changes to allow it to run
+  - Changes to the DDS since FLEX drives it a 5MHz and that's kinda silly
   - New import/export commands for exchanging PERQemu 5.25" disk images with
     the Gesswein MFM emulator (emulated disks <-> real PERQ!)
+  - Ethernet reliability and usability improvements
   - Debugging enhancements, minor bug fixes while diagnosing PNX 5 malady
 
 v0.7.5 - Main branch
@@ -687,7 +687,7 @@ v0.1 - First public release
 
 Update history:
 
-6/28/2025 - skeezicsb - v0.7.7 (experiments)
+6/30/2025 - skeezicsb - v0.7.7 (experiments)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)

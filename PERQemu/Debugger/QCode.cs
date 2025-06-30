@@ -1125,48 +1125,56 @@ namespace PERQemu.Debugger
         };
 
         /// <summary>
-        /// FLEX opcodes.  These aren't actually named (!?) but are described in
-        /// the RSRE document 85015 ch. 8, "PerqFlex instruction set".  I've used
-        /// some hastily made up mnemonics until a more definitive scheme can be
-        /// discovered or devised.
+        /// FLEX opcodes.  These are described in the RSRE document 85015, ch. 8,
+        /// "PerqFlex instruction set".  It differs from the original Flex machine
+        /// in its I/O instructions but is otherwise pretty consistent.
         /// </summary>
+        /// <remarks>
+        /// I've used some hastily made up mnemonics until a more definitive scheme
+        /// can be discovered or devised.  The file RSFLEX.PDF appears to have such
+        /// a list as part of a printed source listing of the assembler?  But many
+        /// of the mnemonics conflict with the other sources so it may be an older
+        /// version.  Hopefully a unified superset can be provided if the conflicts
+        /// in the documentation can be reconciled with the disassembled microcode?
+        /// </remarks>
         static QCode[] _flexOps =
         {
-            new QCode(0, "LD1W-Local"),         // Load_1_word
-            new QCode(1, "LD1W-Nonlocal"),
+            new QCode(0, "LD1W"),               // Load_1_word
+            new QCode(1, "LD1W-NL"),
             new QCode(2, "LD1W-Const"),
             new QCode(3, "LD1W-Block"),
-            new QCode(4, "LD2W-Local"),         // Load_2_words
-            new QCode(5, "LD2W-Nonlocal"),
+            new QCode(4, "LD2W"),               // Load_2_words
+            new QCode(5, "LD2W-NL"),
             new QCode(6, "LD2W-Const"),
             new QCode(7, "LD2W-Block"),
-            new QCode(8, "LDNW-Local"),         // Load_N_words
-            new QCode(9, "LDNW-Nonlocal"),
+            new QCode(8, "LDNW"),               // Load_N_words
+            new QCode(9, "LDNW-NL"),
             new QCode(10, "LDNW-Const"),
             new QCode(11, "LDNW-Block"),
-            new QCode(12, "LD1C-Local"),        // Load_1_character
-            new QCode(13, "LD1C-Nonlocal"),
+            new QCode(12, "LD1C"),              // Load_1_character
+            new QCode(13, "LD1C-NL"),
             new QCode(14, "LD1C-Const"),
             new QCode(15, "LD1C-Block"),
-            new QCode(16, "LD1B-Local"),        // Load_1_boolean
-            new QCode(17, "LD1B-Nonlocal"),
+            new QCode(16, "LD1B"),              // Load_1_boolean
+            new QCode(17, "LD1B-NL"),
             new QCode(18, "LD1B-Const"),
             new QCode(19, "LD1B-Block"),
             // 20..27 undefined
-            new QCode(28, "LDP2C-Nonlocal"),    // Load_ptr_to_current_areas
+            new QCode(28, "LDP2C-NL"),          // Load_ptr_to_current_areas
             new QCode(29, "LDP2C-Const"),
             new QCode(30, "LDLITC"),            // Load_literal
             new QCode(31, "LDLITB"),
             new QCode(32, "LDLITW"),
             new QCode(33, "LDVOID"),
-            new QCode(34, "LDPTR-Local"),       // Load_ptr_to_locals
+            new QCode(34, "LDSELF"),            // Load_ptr_to_locals
             new QCode(35, "LDTOD"),             // Load_timese
             new QCode(36, "LDTSLOT"),
             new QCode(37, "PAT"),               // Push_and_take
-            // 38..41 undefined
-            new QCode(42, "STUW-Local"),        // Store_U      ** Misprint? op48?
-            new QCode(43, "STUW-Block"),
-            new QCode(44, "SELU"),              // Select_from_U
+            // 38..39 undefined
+            new QCode(40, "STORE"),             // Store_U
+            // 41..42 undefined
+            new QCode(43, "STOREPTR"),
+            new QCode(44, "SELFROMU"),          // Select_from_U
             new QCode(45, "DATE"),              // Date
             new QCode(46, "SHIFT"),             // Shift
             new QCode(47, "SELREF"),            // Select_ref
@@ -1186,8 +1194,8 @@ namespace PERQemu.Debugger
             new QCode(61, "ARRSLICE"),
             new QCode(62, "UNITE"),             // Unite
             new QCode(63, "ASSIGN"),            // Assign
-            new QCode(64, "CALL-Local"),        // Procedure calls and exits
-            new QCode(65, "CALL-Nonlocal"),
+            new QCode(64, "CALL"),              // Procedure calls and exits
+            new QCode(65, "CALL-NL"),
             new QCode(66, "CALL-Const"),
             new QCode(67, "CALL-TOS"),
             new QCode(68, "EXIT"),
@@ -1199,8 +1207,8 @@ namespace PERQemu.Debugger
             new QCode(74, "NEWT3"),
             // 75 undefined
             new QCode(76, "MODNEXT"),           // Modify_next
-            new QCode(77, "STKFRONT"),          // Stack front operations
-            new QCode(78, "STKFAIL"),
+            new QCode(77, "STKSET"),            // Stack front operations
+            new QCode(78, "STKCHK"),
             new QCode(79, "DISCARD"),           // Discard
             new QCode(80, "PTRSHAKE"),          // Operations on pointers
             new QCode(81, "PTRFIRM"),
@@ -1281,7 +1289,7 @@ namespace PERQemu.Debugger
             new QCode(156, "RANGE"),            // Range checks
             new QCode(157, "BOUNDS"),
             new QCode(158, "KBNEW"),            // Keyed block operations
-            new QCode(159, "KBLOCK"),           // Lock procedure   ** Typo/conflict?
+            new QCode(159, "KBLOCK"),           // Lock procedure (privileged)
             new QCode(160, "KBOPEN"),
             new QCode(161, "KBSYS"),
             new QCode(162, "DTOB"),             // Load d_to_b
@@ -1364,6 +1372,10 @@ namespace PERQemu.Debugger
             new QCode(255, "REFILL")            // (Undefined / implicit)
         };
 
+        /// <summary>
+        /// Second byte of the FLEX I/O op prefix (194 / 0xc2) used for
+        /// hard disk and Canon laser printer calls.
+        /// </summary>
         static QCode[] _flexIOops = {
             new QCode(0, "DSKHDR"),             // Winchester disc
             new QCode(1, "DSKDATA"),
