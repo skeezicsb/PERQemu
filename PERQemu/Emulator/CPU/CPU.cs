@@ -46,6 +46,10 @@ namespace PERQemu.Processor
             _estack = new ExpressionStack();
             _shifter = new Shifter();
             _rasterOp = new RasterOp(_memory);
+
+#if DEBUG
+            _memStats = new int[2, 8];
+#endif
         }
 
         /// <summary>
@@ -67,7 +71,12 @@ namespace PERQemu.Processor
             {
                 _opFile[i] = 0xff;
             }
-
+#if DEBUG
+            for (int i = 0; i < 8; i++)
+            {
+                _memStats[0, i] = _memStats[1, i] = 0;
+            }
+#endif        
             // Reset the rest
             _dds = 0;
             _bpc = 0;
@@ -138,7 +147,7 @@ namespace PERQemu.Processor
             if (_ustore.Hold || _memory.Wait || (uOp.WantMDI && !_memory.MDIValid))
             {
                 // Waiting for the next T3 or T2 cycle to come around on the guitar
-                Log.Debug(Category.Memory,
+                Log.Detail(Category.Memory,
                     "Abort in T{0}\n\twait={1} needMDO={2} wantMDI={3} MDIvalid={4} WCShold={5}",
                     _memory.TState, _memory.Wait, _memory.MDONeeded, uOp.WantMDI, _memory.MDIValid, _ustore.Hold);
 
@@ -330,7 +339,7 @@ namespace PERQemu.Processor
 
         /// <summary>
         /// On 24-bit CPUs, reads the Upper register (Microstate with H=1).
-        /// Results on 20-bit CPUs are undefined.  This isn't ideal.
+        /// Results on 20-bit CPUs are undefined.
         /// </summary>
         [Debuggable("upper", "Upper byte of last XY reg (24-bit CPU only)")]
         public int Upper
@@ -357,7 +366,7 @@ namespace PERQemu.Processor
             // On PERQ24, uState1 is the upper 8 Bmux bits, right justified
             if (CPUBoard.CPUBits == 24 && h == 1)
             {
-                return ((~_upper >> 16) & 0xff);                // Y[23:16] => Amux[7:0]
+                return ((_upper >> 16) & 0xff);                 // Y[23:16] => Amux[7:0]
             }
 
             // On the 20-bit CPUs, there's only one microstate register - but
@@ -369,7 +378,7 @@ namespace PERQemu.Processor
                     (_alu.OldFlags.Lss ? 0x0080 : 0x0) |
                     (CPUBoard.CPUBits == 24 ? 0x0100 : 0x0) |
                     (_estack.StackEmpty ? 0x0 : 0x0200) |       // Inverted!
-                    ((~_upper >> 4) & 0x0f000);                  // Y[19:16] => uS[15:12]
+                    ((~_upper >> 4) & 0x0f000);                 // Y[19:16] => uS[15:12]
         }
 
         /// <summary>
@@ -445,7 +454,16 @@ namespace PERQemu.Processor
         [Debuggable("r", "Last ALU result")]
         public int R
         {
-            get { return _alu.R.Value; }
+            get { return _alu.OldR.Value; }
+        }
+
+        /// <summary>
+        /// The ALU's last computed flags.
+        /// </summary>
+        [Debuggable("flags", "Last ALU flags")]
+        public string Flags
+        {
+            get { return _alu.OldFlags.ToString(); }
         }
 
         /// <summary>
@@ -935,6 +953,30 @@ namespace PERQemu.Processor
                     }
                     else if (uOp.SF <= 15)
                     {
+#if DEBUG
+                        // Count total ops
+                        _memStats[0, uOp.SF - 8]++;
+
+                        if ((uOp.MemoryRequest == MemoryCycle.Fetch4 ||
+                             uOp.MemoryRequest == MemoryCycle.Fetch4R ||
+                             uOp.MemoryRequest == MemoryCycle.Store4 ||
+                             uOp.MemoryRequest == MemoryCycle.Store4R) &&
+                            (_alu.R.Value & 0x3) != 0)
+                        {
+                            _memStats[1, uOp.SF - 8]++;
+                            Log.Debug(Category.Memory, "MISALIGNED {0} addr=0x{1:x6}, PC={2:x4}",
+                                                 uOp.MemoryRequest, _alu.R.Value, _usequencer.PC);
+                        }
+
+                        if ((uOp.MemoryRequest == MemoryCycle.Fetch2 ||
+                             uOp.MemoryRequest == MemoryCycle.Store2) &&
+                            (_alu.R.Value & 0x1) != 0)
+                        {
+                            _memStats[1, uOp.SF - 8]++;
+                            Log.Debug(Category.Memory, "MISALIGNED {0} addr=0x{1:x6}, PC={2:x4}",
+                                                 uOp.MemoryRequest, _alu.R.Value, _usequencer.PC);
+                        }
+#endif
                         // Common to all CPUs: SF 8..15 are the memory ops
                         _memory.RequestMemoryCycle(_alu.R.Value, uOp.MemoryRequest);
                     }
@@ -1044,6 +1086,21 @@ namespace PERQemu.Processor
             _usequencer.DumpContents();
         }
 
+#if DEBUG
+        public void ShowMemStats()
+        {
+            string fmt = "  {0,-8}  {1,-8}  {2,-8}";
+
+            Console.WriteLine("Memory operation stats:");
+            Console.WriteLine(fmt, "Type", "Total", "Misaligned");
+
+            for (var t = MemoryCycle.Fetch4R; t <= MemoryCycle.Store; t++)
+            {
+                Console.WriteLine(fmt, t, _memStats[0, (int)t - 8], _memStats[1, (int)t - 8]);
+            }
+        }
+#endif
+
         #endregion
 
 
@@ -1105,5 +1162,10 @@ namespace PERQemu.Processor
         // Trace/debugging support
         ushort _lastPC;
         ushort _lastOpcode;
+
+#if DEBUG
+        // Gather stats on misaligned memory addresses
+        int[,] _memStats;
+#endif
     }
 }

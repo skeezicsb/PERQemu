@@ -23,14 +23,21 @@ using System.Net.NetworkInformation;
 
 namespace PERQemu.IO.Network
 {
+    public enum Status
+    {
+        Unknown = 0,
+        Active,                 // An active peer
+        Idle,                   // A peer that's gone quiet...
+        Stale                   // An inactive or invalid entry
+    }
+
     [Flags]
-    public enum Flags
+    public enum Flags           // Todo: rename/refactor/remove
     {
         None = 0x0,
-        Me = 0x1,               // This host
-        Active = 0x2,           // An active peer
-        Stale = 0x4,            // A peer that's gone quiet...
-        Encap3in10 = 0x10,      // A 3Mbit host (UDP encapsulated)
+        Me = 0x1,               // This host!
+        EncapUDP = 0x20,        // Host is using UDP encapsulation
+        Encap3in10 = 0x40,      // A 3Mbit host (UDP encapsulated)
         EncapNone = 0x80        // A REAL PERQ! (no translation)
     }
 
@@ -40,25 +47,27 @@ namespace PERQemu.IO.Network
     /// </summary>
     public class NATEntry
     {
-        public NATEntry(PhysicalAddress host, PhysicalAddress perq, bool me = false)
+        public NATEntry(PhysicalAddress host, PhysicalAddress perq, Flags flags = Flags.None)
         {
             Host = host;
             Perq = perq;
             FirstSeen = DateTime.Now;
             LastReceived = DateTime.Now;
-            Flags = me ? Flags.Me : Flags.Active;
+            Flags = flags;
+            State = Status.Active;
             Sent = Received = 0;
         }
 
         public override string ToString()
         {
-            return $"[Host: {Host}  Perq: {Perq}  Flags: {Flags}]";
+            return $"[Host: {Host}  Perq: {Perq}  State: {State}]";
         }
 
         public PhysicalAddress Host;        // Host MAC
         public PhysicalAddress Perq;        // PERQ's MAC
         public DateTime FirstSeen;          // Date/time mapping established
         public DateTime LastReceived;       // Date/time last packet/update received
+        public Status State;                // Track peer activity
         public Flags Flags;                 // Info about this entry
         public ulong Received;              // Count Host->Perq mappings
         public ulong Sent;                  // Count Perq->Host mappings
@@ -95,7 +104,7 @@ namespace PERQemu.IO.Network
         {
             _entries.Clear();
             _perqToHost.Clear();
-            Log.Info(Category.Ethernet, "NAT table flushed");
+            Log.Info(Category.Network, "NAT table flushed");
         }
 
         /// <summary>
@@ -106,7 +115,7 @@ namespace PERQemu.IO.Network
             // Make sure it isn't already there...
             if (_entries.ContainsKey(ent.Host))
             {
-                Log.Warn(Category.Ethernet, "Can't add duplicate NAT entry, ignored {0}", ent);
+                Log.Warn(Category.Network, "Can't add duplicate NAT entry, ignored {0}", ent);
                 return false;
             }
             _entries.Add(ent.Host, ent);
@@ -114,12 +123,12 @@ namespace PERQemu.IO.Network
             // Do the inverse index too
             if (_perqToHost.ContainsKey(ent.Perq))
             {
-                Log.Warn(Category.Ethernet, "PERQ {0} already in index at different host?", ent.Perq);
+                Log.Warn(Category.Network, "PERQ {0} already in index at different host?", ent.Perq);
                 return false;
             }
             _perqToHost.Add(ent.Perq, ent.Host);
 
-            Log.Info(Category.Ethernet, "NAT entry added {0}", ent);
+            Log.Info(Category.Network, "NAT entry added {0}", ent);
             return true;
         }
 
@@ -129,12 +138,7 @@ namespace PERQemu.IO.Network
         /// </summary>
         public NATEntry LookupHost(PhysicalAddress host)
         {
-            if (_entries.ContainsKey(host))
-            {
-                return _entries[host];
-            }
-
-            return null;
+            return _entries.ContainsKey(host) ? _entries[host] : null;
         }
 
         /// <summary>
@@ -143,12 +147,40 @@ namespace PERQemu.IO.Network
         /// </summary>
         public NATEntry LookupPerq(PhysicalAddress perq)
         {
-            if (_perqToHost.ContainsKey(perq))
-            {
-                return LookupHost(_perqToHost[perq]);
-            }
+            return _perqToHost.ContainsKey(perq) ? LookupHost(_perqToHost[perq]) : null;
+        }
 
-            return null;
+        /// <summary>
+        /// Drop a mapping from the tables.
+        /// </summary>
+        public void Drop()
+        {
+            // Todo: write me :-)
+        }
+
+        /// <summary>
+        /// Refresh the status of each peer entry based on elapsed time
+        /// since any observed network activity from them.
+        /// </summary>
+        public void Refresh()
+        {
+            const int IdleTime = 180;       // Three minutes?
+            const int OfflineTime = 900;    // Fifteen minutes?
+
+            foreach (var ent in _entries.Values)
+            {
+                if (ent.Flags.HasFlag(Flags.Me)) continue;
+
+                TimeSpan ts = DateTime.Now - ent.LastReceived;
+                var last = ts.Seconds;
+
+                if (last <= IdleTime)
+                    ent.State = Status.Active;
+                else if (last > IdleTime && last <= OfflineTime)
+                    ent.State = Status.Idle;
+                else
+                    ent.State = Status.Stale;
+            }
         }
 
         // Debugging
@@ -168,13 +200,14 @@ namespace PERQemu.IO.Network
 
             Console.WriteLine("\nNAT table:\n");
             Console.WriteLine(fmt1, "Host /", "PERQ", "First seen /", "Sent", "Rcvd");
-            Console.WriteLine(fmt2, "Flags", "Last received", "Age (seconds)");
+            Console.WriteLine(fmt2, "State", "Last received", "Age (hh:mm:ss)");
 
             foreach (var e in _entries.Values)
             {
                 var age = (DateTime.Now - e.LastReceived).ToString(@"hh\:mm\:ss");
+                var status = (e.Flags.HasFlag(Flags.Me) ? "Me!" : e.State.ToString());
                 Console.WriteLine(fmt1, e.Host, e.Perq, e.FirstSeen, e.Sent, e.Received);
-                Console.WriteLine(fmt2, e.Flags, e.LastReceived, age);
+                Console.WriteLine(fmt2, status, e.LastReceived, age);
             }
         }
 

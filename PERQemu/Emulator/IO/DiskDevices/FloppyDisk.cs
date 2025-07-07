@@ -200,7 +200,8 @@ namespace PERQemu.IO.DiskDevices
                 _cylinder = 1;
                 _head = 0;
                 _ready = true;
-                Log.Info(Category.FloppyDisk, "{0} online: {1}", Info.Description, Geometry);
+                Log.Info(Category.FloppyDisk, "{0} online", Info.Description);
+                Log.Info(Category.FloppyDisk, "{0}", Geometry);
             });
 
             base.OnLoad();

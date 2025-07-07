@@ -35,14 +35,15 @@ namespace PERQemu
     public enum Severity
     {
         All = 0,
-        Verbose = 1,
-        Debug = 2,
-        Info = 3,
-        Normal = 4,
-        Warning = 5,
-        Error = 6,
-        Heresy = 7,
-        None = 8
+        Verbose,
+        Detail,
+        Debug,
+        Info,
+        Normal,
+        Warning,
+        Error,
+        Heresy,
+        None
     }
 
     /// <summary>
@@ -97,12 +98,13 @@ namespace PERQemu
         Streamer    = 0x8000000000,
         Ethernet    = 0x10000000000,
         NetAdapter  = 0x20000000000,
-        Canon       = 0x40000000000,        // Canon laser printers
-        Printer     = 0x80000000000,        // Simulated GPIB/RS232 printer(s)
-        Multibus    = 0x100000000000,       // Host controller
-        SMD         = 0x200000000000,       // Ciprico
-        Tape        = 0x400000000000,       // Tapemaster
-        Formatter   = 0x1000000000000,      // Image output formatters
+        Network     = 0x40000000000,        // Network "hub" / translation / etc
+        Canon       = 0x100000000000,       // Canon laser printer
+        Printer     = 0x200000000000,       // Simulated GPIB/RS232 printer(s)
+        Formatter   = 0x400000000000,       // Image output formatters
+        Multibus    = 0x1000000000000,      // Host controller
+        SMD         = 0x2000000000000,      // Ciprico
+        Tape        = 0x4000000000000,      // Tapemaster
         MediaLoader = 0x100000000000000,    // PERQmedia loader
         UI          = 0x1000000000000000,
         Timer       = 0x2000000000000000,
@@ -561,9 +563,10 @@ namespace PERQemu
             _colors = new Dictionary<Category, ConsoleColor>();
 
             //
-            // TODO: actually put some thought into these defaults and test 'em
+            // Todo: actually put some thought into these defaults and test 'em
             // out on both Mac terminal and Win console.  Better still, make
-            // them user preferences and save 'em in the Settings file. :-)
+            // them user preferences and save 'em in the Settings file.  It
+            // would be nice to at least have a set for "dark mode" vs. light...
             //
 
             // General messages
@@ -620,6 +623,7 @@ namespace PERQemu
             _colors.Add(Category.FloppyDisk, ConsoleColor.DarkCyan);
             _colors.Add(Category.Multibus, ConsoleColor.DarkBlue);
             _colors.Add(Category.HardDisk, ConsoleColor.DarkGreen);
+            _colors.Add(Category.Network, ConsoleColor.Yellow);
             _colors.Add(Category.Ethernet, ConsoleColor.Cyan);
             _colors.Add(Category.NetAdapter, ConsoleColor.Gray);
             _colors.Add(Category.Streamer, ConsoleColor.Gray);

@@ -319,7 +319,7 @@ The following hardware has been implemented in the emulator:
 
   Processors:
     - 4K and 16K CPUs (20-bit) are tested and complete;
-    - 16K CPU (24-bit) is complete but not fully tested;
+    - 16K CPU (24-bit) is complete and is booting Accent!
     - The CPU, memory and video run on a separate thread.
 
   Memory/VideoController:
@@ -530,6 +530,7 @@ v0.9 - TBD
   - Multibus and SMD disks?
 
 v0.7.7 - Experiments branch
+  - 24-bit CPU with 4MB memory fixes (now boots Accent; more testing to do)
   - Update for FLEX custom floppy format, Z80 DMA changes to allow it to run
   - Changes to the DDS since FLEX drives it a 5MHz and that's kinda silly
   - New import/export commands for exchanging PERQemu 5.25" disk images with
@@ -687,7 +688,7 @@ v0.1 - First public release
 
 Update history:
 
-6/30/2025 - skeezicsb - v0.7.7 (experiments)
+7/7/2025 - skeezicsb - v0.7.7 (experiments)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)

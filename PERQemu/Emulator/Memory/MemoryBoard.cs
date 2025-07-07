@@ -97,7 +97,7 @@ namespace PERQemu.Memory
             _mdiQueue.Reset();
             _mdoQueue.Reset();
 
-            Log.Info(Category.Memory, "Reset");
+            Log.Info(Category.Memory, "Board reset");
         }
 
         public int MemSize => _memSize;
@@ -152,7 +152,7 @@ namespace PERQemu.Memory
             // Set the wait flag if we need to abort the current instruction.
             // If output is pending, we never wait; otherwise, let the combined
             // status of the request queues determine our result.
-            _wait = MDONeeded ? false : _mdiQueue.Wait || _mdoQueue.Wait;
+            _wait = !MDONeeded && (_mdiQueue.Wait || _mdoQueue.Wait);
         }
 
         /// <summary>
@@ -230,17 +230,11 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ushort FetchWord(int address)
         {
-            if (address >= _memSize && _memSize > 1048576)
-            {
-                System.Console.WriteLine($"Fetch from 0x{address:x6} out of bounds");
-                //return 0xbad1;
-            }
-
             // Clip address to memsize range and read
             ushort data = _memory.Words[address & _memSizeMask];
 
             Log.Detail(Category.Memory, "Fetch addr {0:x6} --> {1:x4}",
-                                         address & _memSizeMask, data);
+                                        address & _memSizeMask, data);
             return data;
         }
 
@@ -258,12 +252,6 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void StoreWord(int address, ushort data)
         {
-            if (address >= _memSize && _memSize > 1048576)
-            {
-                System.Console.WriteLine($"Store 0x{data:x4} to 0x{address:x6} out of bounds");
-                //return;
-            }
-
             Log.Detail(Category.Memory, "Store addr {0:x6} <-- {1:x4}",
                                          address & _memSizeMask, data);
 

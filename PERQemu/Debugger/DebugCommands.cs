@@ -468,7 +468,13 @@ namespace PERQemu
             PERQemu.Sys.Memory.StoreWord((int)address, val);
         }
 
-        [Command("debug show memstate", "Dump the memory controller state")]
+        [Command("debug show memory alignment stats", "Show misaligned address stats")]
+        void ShowMemStats()
+        {
+            if (CheckSys()) PERQemu.Sys.CPU.ShowMemStats();
+        }
+
+        [Command("debug show memory state", "Dump the memory controller state")]
         void ShowMemQueues()
         {
             if (CheckSys()) PERQemu.Sys.Memory.DumpQueues();
@@ -1029,9 +1035,7 @@ namespace PERQemu
         [Command("debug dump harddisk")]
         void ShowHardDiskStatus()
         {
-            if (!CheckSys()) return;
-
-            PERQemu.Sys.IOB.DiskController.DumpStatus();
+            if (CheckSys()) PERQemu.Sys.IOB.DiskController.DumpStatus();
         }
 
         [Command("debug dump streamer")]
@@ -1094,7 +1098,7 @@ namespace PERQemu
 
             var block = dev.Read((ushort)cyl, (byte)head, (ushort)sect);
             Console.WriteLine("Logical header:");
-            // should interpret this as an actual logical header!
+            // todo: should interpret this as an actual logical header!
             ShowBlock(block.Header);
 
             Console.WriteLine("Data:");
@@ -1207,40 +1211,6 @@ namespace PERQemu
         void DumpQcodes()
         {
             QCodeHelper.DumpContents();
-        }
-
-        [Conditional("DEBUG")]
-        [Command("debug unfrob")]
-        void UnfrobTest(int address)
-        {
-            // Quick and dirty test of the DMARegisters Unfrob routine -- doesn't
-            // require instantiating the DMARegisters as a proper test would but
-            // is sufficient to make sure I haven't borked everything up.  This
-            // can probably be removed once I'm satisfied things are working fine.
-
-            Console.WriteLine($"Address: {address:x8} not: {~address:x8}");
-
-            ExtendedRegister r = new ExtendedRegister(4, 16);       // 20-bit
-            r.Lo = (ushort)(address);
-            r.Hi = (address >> 16);
-            Console.WriteLine($"Register encoding: {r}");
-
-            // Invert and unfrob the low 10 bits on IOB/CIO
-            var unfrobbed = ~(r.Value ^ 0x3ff) & 0xfffff;
-            Console.WriteLine($"Unfrobbed std: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
-
-            // EIO now goes straight through
-            unfrobbed = r.Value;
-            Console.WriteLine($"Unfrobbed EIO: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
-
-            // EIO 24 bit:
-            r = new ExtendedRegister(8, 16);                        // 24-bit
-            r.Lo = (ushort)(address);
-            address = (address >> 16);                              // shift down high half
-            r.Hi = ((address & 0x0f00) >> 4) | (address & 0x000f);  // grab extra nibble
-            unfrobbed = r.Value;
-            Console.WriteLine($"\nRegister (24 bit): {r}");
-            Console.WriteLine($"Unfrobbed 24b: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
         }
 
 #if DEBUG

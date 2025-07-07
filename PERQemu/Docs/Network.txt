@@ -85,6 +85,7 @@ but we emulate the hardware's behavior just in case.  Note that for efficiency,
 we specifically strip away the (very chatty) Cisco spanning tree multicasts as
 the PERQ has no use for them.  It may be worthwhile to have a global switch to
 just turn off or ignore this extra bit of processing if it's never really used.
+[Update: The FLEX network installer does appear to use multicasts! Woo hoo!]
 
 
 Address Translation

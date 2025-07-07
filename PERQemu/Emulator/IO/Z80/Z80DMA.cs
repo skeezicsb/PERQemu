@@ -95,20 +95,6 @@ namespace PERQemu.IO.Z80
             _deviceB = device;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int Clock()
-        {
-            // Todo: handle "Interrupt on RDY" option?
-
-            // If DMA is in progress, make it happen
-            if (_enableDMA)
-            {
-                return RunStateMachine();
-            }
-
-            return 0;
-        }
-
         /// <summary>
         /// Run the DMA state machine.  We have to split the transaction into
         /// two bus cycles because the Z80 can't do two memory/port operations
@@ -123,16 +109,11 @@ namespace PERQemu.IO.Z80
         /// transaction this house of cards collapses.  If it solves the problem
         /// I'll figure out how to make it more robust...
         /// </remarks>
-        int RunStateMachine()
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public int Clock()
         {
-            DMAState nextState = _state;
-            var cycles = 0;
-
-            // Only here if enabled, so jump right in
-            if (_state == DMAState.Idle)
-            {
-                _state = nextState = DMAState.SourceRead;
-            }
+            // Bail out if nothing in progress
+            if (!_enableDMA) return 0;
 
             IDMADevice source;
             IDMADevice dest;
@@ -141,6 +122,14 @@ namespace PERQemu.IO.Z80
             bool sourceIsIO;
             ushort destAddress;
             bool destIsIO;
+            var cycles = 0;
+
+            DMAState nextState = _state;
+
+            if (_state == DMAState.Idle)
+            {
+                _state = nextState = DMAState.SourceRead;
+            }
 
             // What direction is this going in
             WR0 wr0 = (WR0)_wr[0];

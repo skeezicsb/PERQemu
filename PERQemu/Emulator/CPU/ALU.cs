@@ -198,7 +198,7 @@ namespace PERQemu.Processor
                         _r.Value = (amux - bmux);
                         arithX = true;
 
-                        carryH = !((amux - bmux) < 0);
+                        carryH = ((amux - bmux) >= 0);
                         carry15 = ((amux & 0xffff) - (bmux & 0xffff) >= 0);
                         break;
 
@@ -209,7 +209,7 @@ namespace PERQemu.Processor
                         _r.Value = (amux - bmux - lastCarry15);
                         arithX = true;
 
-                        carryH = !((amux - bmux - lastCarry15) < 0);
+                        carryH = ((amux - bmux - lastCarry15) >= 0);
                         carry15 = ((amux & 0xffff) - (bmux & 0xffff) - lastCarry15 >= 0);
                         break;
 

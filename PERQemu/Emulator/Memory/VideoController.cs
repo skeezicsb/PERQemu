@@ -52,7 +52,6 @@ namespace PERQemu.Memory
     /// </summary>
     public sealed class VideoController : IIODevice
     {
-
         public VideoController(PERQSystem system)
         {
             _system = system;
@@ -122,7 +121,6 @@ namespace PERQemu.Memory
             return false;
         }
 
-
         public int IORead(byte ioPort)
         {
             switch (ioPort)
@@ -133,11 +131,11 @@ namespace PERQemu.Memory
                     return (int)_crtSignals;
 
                 case 0x66:   // Read Hi address parity (unimplemented)
-                    Log.Debug(Category.Display, "STUB: Read Hi address parity, returned 0");
+                    Log.Debug(Category.Memory, "STUB: Read Hi address parity, returned 0");
                     return 0x0;
 
                 case 0x67:   // Read Low address parity (unimplemented)
-                    Log.Debug(Category.Display, "STUB: Read Low address parity, returned 0");
+                    Log.Debug(Category.Memory, "STUB: Read Low address parity, returned 0");
                     return 0x0;
 
                 default:
@@ -244,8 +242,6 @@ namespace PERQemu.Memory
                     _cursorFunc = (CursorFunction)((value & 0xe000) >> 13);
                     _videoStatus = (StatusRegister)(value & 0x1f00);
 
-                    if ((value & 0x1000) != 0) Console.WriteLine($"FORCE BAD PARITY SET (val={value})");
-
                     if (CursorEnabled)
                     {
                         _cursorY = 0;
@@ -331,7 +327,9 @@ namespace PERQemu.Memory
             return (((value & 0xc) << 14) | (value & 0xfff0)) << 4;
         }
 
-
+        /// <summary>
+        /// Runs the state machine on callbacks based on the video timing.
+        /// </summary>
         void RunStateMachine()
         {
             switch (_state)
@@ -451,7 +449,7 @@ namespace PERQemu.Memory
         /// <remarks>
         /// The LineCounterOverflow status bit is set independently of interrupt
         /// status.  Once it hits zero it remains set until the line count register
-        /// is reset by an IOWrite.  Accent specifically checks for this bit!
+        /// is reset by an IOWrite.  Accent and PNX specifically check for this bit!
         ///
         /// Note: I think the LoopThru, HSync and VSync status bits are inverted, but
         /// _none_ of the microcode sources I've checked ever seems to test for these
@@ -466,18 +464,6 @@ namespace PERQemu.Memory
                 (_lineCountOverflow ? CRTSignals.LineCounterOverflow : CRTSignals.None) |
                 (VSyncEnabled ? CRTSignals.VerticalSync : CRTSignals.None) |
                 (_state == VideoState.HBlank ? CRTSignals.HorizontalSync : CRTSignals.None);
-        }
-
-        // Debug
-        public void Status()
-        {
-            UpdateSignals();
-
-            Console.WriteLine("counterInit={0}, count={1}, overflow={2}, scanline={3}, startOver={4}",
-                              _lineCounterInit, _lineCounter, _lineCountOverflow, _scanLine, _startOver);
-            Console.WriteLine("screen @ 0x{0:x}, cursor @ 0x{1:X}, intrEnabled={2}",
-                              _displayAddress, _cursorAddress, InterruptEnabled);
-            Console.WriteLine("state={0}, crt={1}", _state, _crtSignals);
         }
 
         /// <summary>
@@ -612,6 +598,18 @@ namespace PERQemu.Memory
         public void Shutdown()
         {
             // Nothing extra to do
+        }
+
+        // Debug
+        public void Status()
+        {
+            UpdateSignals();
+
+            Console.WriteLine("counterInit={0}, count={1}, overflow={2}, scanline={3}, startOver={4}",
+                              _lineCounterInit, _lineCounter, _lineCountOverflow, _scanLine, _startOver);
+            Console.WriteLine("screen @ 0x{0:x}, cursor @ 0x{1:x}, intrEnabled={2}",
+                              _displayAddress, _cursorAddress, InterruptEnabled);
+            Console.WriteLine("state={0}, crt={1}", _state, _crtSignals);
         }
 
         [Flags]

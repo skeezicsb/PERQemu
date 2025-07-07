@@ -202,7 +202,7 @@ namespace PERQemu.Memory
                 _pending = old;
                 _bookmark = _current.Bookmark;
 
-                Log.Debug(Category.Memory, "{0} queue: Recognized {1}", _name, _current);
+                Log.Detail(Category.Memory, "{0} queue: Recognized {1}", _name, _current);
 
                 _pending.Clear();
             }
@@ -244,9 +244,10 @@ namespace PERQemu.Memory
                     case MemoryCycle.Fetch2:
                     case MemoryCycle.Store2:
                         _address = (_current.StartAddress & _doubleWordMask) + _index;
-
+#if ALLOW_MISALIGNED
                         // Hack to allow misaligned addrs (w2/w3 instead of w0/w1)!
                         if ((_current.StartAddress & 0x1) != 0) _address += 2;
+#endif
                         break;
 
                     default:
@@ -258,7 +259,7 @@ namespace PERQemu.Memory
             // If this is the last word in a cycle, retire the current op
             if (flags.Complete)
             {
-                Log.Debug(Category.Memory, "{0} queue: Retired {1}", _name, _current);
+                Log.Detail(Category.Memory, "{0} queue: Retired {1}", _name, _current);
 
                 _current.Clear();
                 _bookmark = 0;
@@ -382,7 +383,7 @@ namespace PERQemu.Memory
                 // if a Fetch is overlapped)
                 if (flags.Complete)
                 {
-                    Log.Debug(Category.Memory, "{0} queue: Terminated {1}", _name, _current);
+                    Log.Detail(Category.Memory, "{0} queue: Terminated {1}", _name, _current);
                     _current.Clear();
                 }
 

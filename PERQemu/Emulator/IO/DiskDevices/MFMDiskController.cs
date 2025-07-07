@@ -802,7 +802,7 @@ namespace PERQemu.IO.DiskDevices
                 // A small detail
                 _status.DriveType = (int)DeviceType.Disk5Inch;
 
-                Log.Info(Category.HardDisk, "Attached disk '{0}'", _drives[unit].Info.Name);
+                Log.Info(Category.HardDisk, "Attached drive {0} (unit {1})", _drives[unit].Info.Name, unit);
             }
 
             /// <summary>

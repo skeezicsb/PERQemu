@@ -459,7 +459,7 @@ namespace PERQemu.IO.Network
                 addr[5] != 0)
             {
                 // No groups for you!
-                if (MCB == 0xFF) return false;
+                if (MCB == 0xff) return false;
 
                 // Receive all?
                 if (MCB == 0) return true;

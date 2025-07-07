@@ -59,6 +59,8 @@ namespace PERQemu.IO.Z80
         public string Name => "i8237 DMA";
         public byte[] Ports => _ports;
 
+        public bool IsBusy => _state != DMAState.Idle;
+
         public bool IntLineIsActive => _interruptEnabled;
         public byte? ValueOnDataBus => null;        // Supplied by the Am9519
 

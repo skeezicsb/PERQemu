@@ -251,8 +251,7 @@ namespace PERQemu.UI
             // Register a timer and callback to update the FPS display
             if (_fpsTimerId < 0)
             {
-                _fpsTimerCallback = new HRTimerElapsedCallback(RefreshFPS);
-                _fpsTimerId = HighResolutionTimer.Register(2000d, _fpsTimerCallback, "FPS");
+                _fpsTimerId = HighResolutionTimer.Register(2000d, RefreshFPS, "FPS");
                 HighResolutionTimer.Enable(_fpsTimerId, true);
             }
 
@@ -758,7 +757,6 @@ namespace PERQemu.UI
         const int UPDATE_FPS = 2;
 
         int _fpsTimerId;
-        HRTimerElapsedCallback _fpsTimerCallback;
 
         // Floppy activity "light"
         IntPtr _floppyTexture = IntPtr.Zero;

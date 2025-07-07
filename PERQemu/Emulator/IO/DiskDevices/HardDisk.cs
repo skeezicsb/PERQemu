@@ -301,17 +301,18 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         public ulong ComputeRotationalDelay(ulong now, int sector)
         {
-            // t = time between pulses (in ns) = rpm / #sectors
-            var t = (long)Conversion.RPMtoNsec(Specs.RPM) / Geometry.Sectors;
+            // t = time between pulses (in ns)
+            var t = (long)_discRotationTimeNsec / Geometry.Sectors;
 
-            // cur = what sector the heads are over now (time now - last pulse) / t
+            // cur = what sector the heads are over now
             var cur = (long)(now - _lastIndexPulse) / t;
 
             // dist = distance from current to desired sector (linear, no account for interleave)
             var dist = sector - cur;
             var delay = (ulong)((dist < 0 ? dist + Geometry.Sectors : dist) * t);
 
-            Log.Detail(Category.HardDisk, "Rotational delay from cur={0} to desired={1} is {2}", cur, sector, delay);
+            Log.Detail(Category.HardDisk, "Rotational delay from sector {0} to {1} is {2:n}ms",
+                                           cur, sector, delay * Conversion.NsecToMsec);
             return delay;
         }
 
@@ -356,7 +357,7 @@ namespace PERQemu.IO.DiskDevices
 
                 _startupEvent = _scheduler.Schedule(delay * Conversion.MsecToNsec, DriveReady);
 
-                Log.Info(Category.HardDisk, "Drive {0} motor start (ready in {1:n} seconds)",
+                Log.Debug(Category.HardDisk, "Drive {0} motor start (ready in {1:n} seconds)",
                                               Info.Name, delay * Conversion.MsecToSec);
                 return;
             }
@@ -373,7 +374,8 @@ namespace PERQemu.IO.DiskDevices
             _ready = true;
             _startupEvent = null;
 
-            Log.Info(Category.HardDisk, "{0} is online: {1}", Info.Description, Geometry);
+            Log.Info(Category.HardDisk, "{0} is online", Info.Description);
+            Log.Debug(Category.HardDisk, "{0}", Geometry);
 
             // The change in Ready should trigger an interrupt, but many versions
             // of the early Boot/Vfy/SysB microcode just barf if an unexpected
@@ -422,13 +424,14 @@ namespace PERQemu.IO.DiskDevices
             _indexPulseDurationNsec = (ulong)Specs.IndexPulse;
             _lastIndexPulse = _scheduler.CurrentTimeNsec;
 
-            Log.Info(Category.HardDisk, "{0} drive loaded!  Index is {1:n}us every {2:n}ms",
-                     Info.Name, _indexPulseDurationNsec / 1000.0,
-                     _discRotationTimeNsec * Conversion.NsecToMsec);
-
             // Compute the per-seek-step time (simple linear ramp for now)
             _rampStep = (Specs.MaximumSeek - Specs.MinimumSeek) / (double)Geometry.Cylinders;
 
+            Log.Debug(Category.HardDisk, "{0} drive loaded", Info.Name);
+            Log.Detail(Category.HardDisk, "[Index is {0:n}us every {1:n}ms, ramp step {2:n}ms]",
+                                         _indexPulseDurationNsec / 1000.0,
+                                         _discRotationTimeNsec * Conversion.NsecToMsec,
+                                         _rampStep);
             base.OnLoad();
         }
 

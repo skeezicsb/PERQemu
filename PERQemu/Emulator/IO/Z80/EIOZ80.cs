@@ -209,13 +209,22 @@ namespace PERQemu.IO.Z80
 
             if (diff <= 0)
             {
+                // If about to pause mid-DMA cycle, complete it!
+                // This might be causing the PNX/FLEX weirdness (and even POS
+                // shows that messages can get "stuck" but it deals with them
+                // eventually!!?  How!?)
+                if (_dmac.IsBusy)
+                {
+                    _dmac.Clock();
+                }
+
                 if (_system.Mode == ExecutionMode.Asynchronous)
                 {
                     // If we are less than one full microcycle ahead of the CPU,
                     // just spin; otherwise, block (when we return).  The PERQ
                     // will wake us when it catches up.  The faster 4Mhz EIO Z80
-                    // still takes ~13-80 PERQ microcycles to execute a complete
-                    // instruction (using the typical 9-55 clocks per inst metric).
+                    // still takes ~6-46 PERQ microcycles to execute a complete
+                    // instruction (using the typical 4-31 clocks per inst metric)
                     diff = -diff;
 
                     if ((ulong)diff > _system.Scheduler.TimeStepNsec)
@@ -278,8 +287,7 @@ namespace PERQemu.IO.Z80
             }
 
             // Clock the EIO DMA
-            //ticks += _dmac.Clock();   // This is enough to cause FLEX to hang!
-            _dmac.Clock();
+            ticks += _dmac.Clock();
 
             // Debug - histogram of average # cycles per call
             if (ticks >= _buckets.Length)
