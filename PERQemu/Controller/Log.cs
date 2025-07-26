@@ -229,13 +229,29 @@ namespace PERQemu
         [Conditional("DEBUG")]
         [Conditional("TRACING_ENABLED")]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Detail(Category c, string fmt, params object[] args)
+        public static void Verbose(Category c, string fmt, params object[] args)
         {
             if (_minLevel > Severity.Verbose) return;
 
             if (((c & _categories) != 0) || (c == Category.All))
             {
                 WriteInternal(Severity.Verbose, c, fmt, args);
+            }
+        }
+        /// <summary>
+        /// A shortcut for logging detailed debugging output that's useful in
+        /// specific debugging situations.  Is compiled out in Release builds.
+        /// </summary>
+        [Conditional("DEBUG")]
+        [Conditional("TRACING_ENABLED")]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Detail(Category c, string fmt, params object[] args)
+        {
+            if (_minLevel > Severity.Detail) return;
+
+            if (((c & _categories) != 0) || (c == Category.All))
+            {
+                WriteInternal(Severity.Detail, c, fmt, args);
             }
         }
 

@@ -166,7 +166,7 @@ namespace PERQemu.Debugger
                 }
             }
             Log.Info(Category.Debugger, "Loaded Z80 source listing from {0} ({1} addresses)",
-                                        sourceFile, _sourceMap.Keys.Count);
+                                        Paths.Canonicalize(sourceFile), _sourceMap.Keys.Count);
         }
 
 #if DEBUG

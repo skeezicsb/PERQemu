@@ -99,7 +99,7 @@ namespace PERQemu.IO.Z80
 #endif
             _channels[chan].Device = dev;
             _channels[chan].DataPort = port;
-            Log.Info(Category.Z80DMA, "Channel {0} assigned to {1} (port 0x{2:x2})", chan, dev, port);
+            Log.Debug(Category.Z80DMA, "Channel {0} assigned to {1} (port 0x{2:x2})", chan, dev, port);
         }
 
         /// <summary>

@@ -64,12 +64,12 @@ namespace PERQemu
             Name = name;
         }
 
-        public HRTimerElapsedCallback Callback { get; set; }
-        public double NextTrigger { get; set; }
-        public double Interval { get; set; }
-        public bool Enabled { get; set; }
-        public bool Free { get; set; }
-        public string Name { get; set; }
+        public HRTimerElapsedCallback Callback;
+        public double NextTrigger;
+        public double Interval;
+        public bool Enabled;
+        public bool Free;
+        public string Name;
 
         public override string ToString()
         {
@@ -91,9 +91,8 @@ namespace PERQemu
     /// that it runs on the main thread, Timer callbacks aren't coming from a
     /// random background thread so SDL events can be scheduled directly.
     /// 
-    /// To register or unregister a timer client, the timer should probably
-    /// be stopped since I'm not locking it or using enumerators (too slow).
-    /// This is still more a proof-of-concept than a final implementation...
+    /// To register or unregister a timer client, the timer should probably be
+    /// stopped since I'm not locking it or using enumerators (too slow).
     /// </remarks>
     public static class HighResolutionTimer
     {
@@ -107,6 +106,9 @@ namespace PERQemu
 
             _runTimers = false;
             _throttle = new AutoResetEvent(true);
+
+            // Gather some efficiency stats for tuning, curiosity
+            shortSpin = longSpin = shortSleep = longSleep = 0;
         }
 
         /// <summary>
@@ -176,8 +178,9 @@ namespace PERQemu
                     _requesters[tag].Interval = interval;
                     _requesters[tag].NextTrigger = next;
                     _requesters[tag].Callback = cb;
-                    _requesters[tag].Free = false;
                     _requesters[tag].Name = (string.IsNullOrEmpty(name) ? $"Timer{tag}" : name);
+                    _requesters[tag].Free = false;
+
                     Log.Debug(Category.Timer,
                               "Registered timer {0}, interval {1:N3}, next trigger {2:N3}",
                               tag, interval, next);
@@ -290,7 +293,6 @@ namespace PERQemu
             _stopwatch.Restart();
 
             _runTimers = true;
-            //_throttle.Set();        // In case we're hanging in WaitOne()
         }
 
         /// <summary>
@@ -312,12 +314,10 @@ namespace PERQemu
             Stop();
             _throttle.Set();        // If we're in Wait(), release the hold
 
-#if DEBUG
             // For posterity
             Log.Debug(Category.Timer, "Stopwatch stopped, HRT thread exiting");
             Log.Debug(Category.Timer, "--> SpinWaits short={0} long={1}", shortSpin, longSpin);
             Log.Debug(Category.Timer, "--> Sleeps    short={0} long={1}", shortSleep, longSleep);
-#endif
         }
 
         /// <summary>
@@ -334,10 +334,6 @@ namespace PERQemu
             double now, next, diff, skew;
             now = next = ElapsedHiRes();
 
-#if DEBUG
-            // Gather some efficiency stats for tuning, curiosity
-            shortSpin = longSpin = shortSleep = longSleep = 0;
-#endif
             var looping = true;
 
             while (looping)
@@ -354,30 +350,22 @@ namespace PERQemu
 
                     if (diff < 1d)
                     {
-#if DEBUG
                         shortSpin++;
-#endif
                         Thread.SpinWait(10);
                     }
                     else if (diff < 5d)
                     {
-#if DEBUG
                         longSpin++;
-#endif
                         Thread.SpinWait(100);
                     }
                     else if (diff < 15d)
                     {
-#if DEBUG
                         shortSleep++;
-#endif
                         _throttle.WaitOne(1);
                     }
                     else
                     {
-#if DEBUG
                         longSleep++;
-#endif
                         _throttle.WaitOne(10);
                     }
                 }
@@ -396,7 +384,7 @@ namespace PERQemu
                             skew = ElapsedHiRes() - next;
                             _requesters[i].NextTrigger += _requesters[i].Interval;
 
-                            // Bit of a hack: if the delegate is null, return.
+                            // If the delegate is null, return
                             if (_requesters[i].Callback == null)
                                 looping = false;
                             else
@@ -437,13 +425,10 @@ namespace PERQemu
                 }
             }
 
-            if (found)
-            {
-                return next;
-            }
+            if (found) return next;
 
-            // hack so we don't just loop crazily
-            Thread.Yield();
+            // Hack so we don't just loop crazily - wut? we're exiting here, why would it matter?
+            //Thread.Yield();
 
             _runTimers = false;
             return now;
@@ -462,7 +447,7 @@ namespace PERQemu
             Log.Debug(Category.Timer, "Intervals reset");
         }
 
-        // [Conditional("DEBUG")]
+        // Debugging
         public static void DumpTimers()
         {
             Console.WriteLine("Event loop is " + (_runTimers ? "running" : "not running"));
@@ -475,13 +460,8 @@ namespace PERQemu
             }
         }
 
-#if DEBUG
         static long shortSpin, longSpin, shortSleep, longSleep;
-#endif
 
-        /// <summary>
-        /// The timer is running and firing events
-        /// </summary>
         static volatile bool _runTimers;
 
         static Stopwatch _stopwatch;

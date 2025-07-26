@@ -258,6 +258,7 @@ namespace PERQemu
             if (state == RunState.WarmingUp)
             {
                 PERQemu.Sys.DDSChanged += OnDDSChange;
+                Console.Title = "DDS 000";
             }
             else if (state == RunState.Reset)
             {

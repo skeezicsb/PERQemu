@@ -7,6 +7,19 @@ Previous notes moved to ChangeLog-Old.txt.
 
 July, 2025:
 
+    4. Memory state table corrections to enhance accuracy of two-word fetch and
+    store operations, add missing indirect/overlapped Fetch2 state.  Force clear
+    the two least significant bits for DMA transfers, since PNX 5 apparently 
+    violates the quad-alignment requirement there too (expecting the hardware to
+    do it) but that doesn't make a damn bit of difference either.  Additional
+    debugging and logging tweaks.  PNX 5 still f&*$)ing broken.  This has become
+    absolutely infuriating.  Interim push for platform testing.
+
+    3. Pushed udpates for Accent S6 + Lisp M3 to the PERQmedia archive.  Added
+    a reconstruction of the PNX C-Codes from PNX 5 based on scrounging through
+    binary dumps of the assembler, verified by manually reconstructing ~ 2000
+    lines of the microcode interpreter.
+
     2. Oooh.  Accent S7 booted in 24-bit mode with 4MB of memory!  Fixed bug in
     Upper() on the 24-bit CPU and restored address wraparound on the 4MB memory
     board (despite what Accent kernel comments in the sizing loop say, it DOES
@@ -235,4 +248,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Mon Jun 30 14:15:59 PDT 2025
+Last update: skeezics    Sat Jul 26 11:50:31 PDT 2025

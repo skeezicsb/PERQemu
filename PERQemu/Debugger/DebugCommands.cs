@@ -348,7 +348,6 @@ namespace PERQemu
         //
         // Memory and RasterOp
         //
-
         [Command("debug show memory", "Show contents of the PERQ's memory")]
         void ShowMemory(uint address, uint words = 64)
         {
@@ -375,14 +374,14 @@ namespace PERQemu
                 // Words in hex (Todo: add output radix support)
                 for (var j = i; j < i + 8; j++)
                 {
-                    line.AppendFormat("{0:x4} ", PERQemu.Sys.Memory.FetchWord(j));
+                    line.AppendFormat("{0:x4} ", PERQemu.Sys.Memory.Memory[j]);
                 }
 
                 // ASCII representation
                 for (var j = i; j < i + 8; j++)
                 {
-                    var high = (char)((PERQemu.Sys.Memory.FetchWord(j) & 0xff00) >> 8);
-                    var low = (char)(PERQemu.Sys.Memory.FetchWord(j) & 0xff);
+                    var high = (char)((PERQemu.Sys.Memory.Memory[j] >> 8) & 0xff);
+                    var low = (char)(PERQemu.Sys.Memory.Memory[j] & 0xff);
 
                     high = PERQemu.CLI.IsPrintable(high) ? high : '.';
                     low = PERQemu.CLI.IsPrintable(low) ? low : '.';
@@ -413,7 +412,7 @@ namespace PERQemu
 
             for (var i = 0; i < PERQemu.Sys.Memory.MemSize; i++)
             {
-                var word = PERQemu.Sys.Memory.FetchWord(i);
+                var word = PERQemu.Sys.Memory.Memory[i];
                 mem[j++] = (byte)(word >> 8);
                 mem[j++] = (byte)word;
                 // Note: swap those if you want to run "strings" on the output :-)
@@ -467,17 +466,19 @@ namespace PERQemu
 
             PERQemu.Sys.Memory.StoreWord((int)address, val);
         }
-
-        [Command("debug show memory alignment stats", "Show misaligned address stats")]
-        void ShowMemStats()
-        {
-            if (CheckSys()) PERQemu.Sys.CPU.ShowMemStats();
-        }
+#endif
 
         [Command("debug show memory state", "Dump the memory controller state")]
         void ShowMemQueues()
         {
             if (CheckSys()) PERQemu.Sys.Memory.DumpQueues();
+        }
+
+#if DEBUG
+        [Command("debug show memory alignment stats", "Show misaligned address stats")]
+        void ShowMemStats()
+        {
+            if (CheckSys()) PERQemu.Sys.CPU.ShowMemStats();
         }
 
         // The fully-instrumented debug version of the code was removed to a special
@@ -595,6 +596,12 @@ namespace PERQemu
         void LoadQCodes(QCodeSets qcodes)
         {
             QCodeHelper.LoadQCodeSet(qcodes);
+        }
+
+        [Command("debug dump qcodes")]
+        void DumpQcodes()
+        {
+            QCodeHelper.DumpContents();
         }
 
         /// <summary>
@@ -1186,6 +1193,7 @@ namespace PERQemu
         // Miscellany and temporary/debugging hacks
         //
 
+        // [Conditional("DEBUG")]
         [Command("debug dump dma registers")]
         void DumpDMARegisters()
         {
@@ -1204,13 +1212,6 @@ namespace PERQemu
         void DumpTimers()
         {
             HighResolutionTimer.DumpTimers();
-        }
-
-        [Conditional("DEBUG")]
-        [Command("debug dump qcodes")]
-        void DumpQcodes()
-        {
-            QCodeHelper.DumpContents();
         }
 
 #if DEBUG

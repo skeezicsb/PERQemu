@@ -148,7 +148,7 @@ namespace PERQemu.Processor
             {
                 // Waiting for the next T3 or T2 cycle to come around on the guitar
                 Log.Detail(Category.Memory,
-                    "Abort in T{0}\n\twait={1} needMDO={2} wantMDI={3} MDIvalid={4} WCShold={5}",
+                    "Abort in T{0}:  wait={1} needMDO={2} wantMDI={3} MDIvalid={4} WCShold={5}",
                     _memory.TState, _memory.Wait, _memory.MDONeeded, uOp.WantMDI, _memory.MDIValid, _ustore.Hold);
 
                 // On aborts, no memory writes occur - no Tock()                    
@@ -184,7 +184,7 @@ namespace PERQemu.Processor
                 _bpc++;
                 _incrementBPC = false;
 
-                Log.Debug(Category.OpFile, "BPC incremented to {0:x1}", BPC);
+                Log.Detail(Category.OpFile, "BPC incremented to {0:x1}", BPC);
             }
 
             // Latch the ALU result and flags from the last micro-op before we
@@ -196,6 +196,7 @@ namespace PERQemu.Processor
             //
 
             // Select ALU inputs
+            // N.B. Bmux input must be set first! Amux may depend on it!
             int bmux = GetBmuxInput(uOp);
             int amux = GetAmuxInput(uOp);
 
@@ -284,12 +285,10 @@ namespace PERQemu.Processor
         /// <summary>
         /// Returns the OpFile contents.
         /// </summary>
-        [Debuggable("op", "The Op cache")]
-        public byte[] OpFile
+        [Debuggable("op", "The next Op cache byte")]
+        public byte OpFile
         {
-            // FIXME: either handle byte[] or remove (use "show opfile" instead)
-            // (or just have this show the next/current op byte)
-            get { return _opFile; }
+            get { return _opFile[BPC]; }
         }
 
         /// <summary>
@@ -561,7 +560,7 @@ namespace PERQemu.Processor
                     amux = _opFile[BPC];
                     _incrementBPC = true;           // Increment BPC at start of next cycle
 
-                    Log.Debug(Category.OpFile, "NextOp read from BPC[{0:x1}]={1:x2}", BPC, amux);
+                    Log.Detail(Category.OpFile, "NextOp read from BPC[{0:x1}]={1:x2}", BPC, amux);
                     break;
 
                 case AField.IOD:
@@ -748,7 +747,7 @@ namespace PERQemu.Processor
                             {
                                 // This often appears during boot/testing and is harmless in that
                                 // case; turn off these alerts in Release builds to reduce noise
-                                Log.Debug(Category.OpFile, "LoadOp called in wrong cycle");
+                                Log.Debug(Category.OpFile, "LoadOp called in wrong cycle! T{0}", _memory.TState);
                             }
 #endif
 

@@ -128,7 +128,7 @@ namespace PERQemu.Memory
             // Bump cycle counter
             _Tstate = (_Tstate + 1) & 0x3;
 
-            Log.Detail(Category.MemCycle, "Tick! T{0} cycle={1}", _Tstate, cycleType);
+            Log.Detail(Category.Memory, "Tick! T{0} cycle={1}", _Tstate, cycleType);
 
             // Segregate Fetches and Stores into separate queues
             if (IsFetch(cycleType))
@@ -162,8 +162,8 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Tock(ushort input)
         {
-            Log.Detail(Category.MemCycle, "Tock! T{0} mdoNeeded={1} data={2:x4}",
-                                          _Tstate, MDONeeded, input);
+            Log.Detail(Category.Memory, "Tock! T{0} mdoNeeded={1} data={2:x4}",
+                                        _Tstate, MDONeeded, input);
             // Execute the store
             if (_mdoQueue.Valid)
             {
@@ -190,8 +190,8 @@ namespace PERQemu.Memory
         /// </summary>
         public void RequestMemoryCycle(int address, MemoryCycle cycleType)
         {
-            Log.Debug(Category.MemCycle, "Requested {0} in T{1} addr={2:x6}",
-                                          cycleType, _Tstate, address);
+            Log.Debug(Category.Memory, "Requested {0} in T{1} addr={2:x6}",
+                                        cycleType, _Tstate, address);
 
             //
             // Queue up the request.  We're in no-man's land at the bottom of the CPU cycle,
@@ -234,7 +234,7 @@ namespace PERQemu.Memory
             ushort data = _memory.Words[address & _memSizeMask];
 
             Log.Detail(Category.Memory, "Fetch addr {0:x6} --> {1:x4}",
-                                        address & _memSizeMask, data);
+                                         address & _memSizeMask, data);
             return data;
         }
 
@@ -273,7 +273,7 @@ namespace PERQemu.Memory
             return (((int)c & 0x1) == 0);
         }
 
-        [Conditional("DEBUG")]
+        //[Conditional("DEBUG")]
         public void DumpQueues()
         {
             _mdiQueue.DumpQueue();
