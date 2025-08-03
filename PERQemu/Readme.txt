@@ -529,7 +529,7 @@ v0.9 - TBD
   - See if CIO Micropolis has any real software support?
   - Multibus and SMD disks?
 
-v0.7.7 - Experiments branch
+v0.7.8 - Experiments branch
   - 24-bit CPU with 4MB memory fixes (now boots Accent; more testing to do)
   - Update for FLEX custom floppy format, Z80 DMA changes to allow it to run
   - Changes to the DDS since FLEX drives it a 5MHz and that's kinda silly
@@ -688,7 +688,7 @@ v0.1 - First public release
 
 Update history:
 
-7/7/2025 - skeezicsb - v0.7.7 (experiments)
+8/3/2025 - skeezicsb - v0.7.8 (experiments)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)

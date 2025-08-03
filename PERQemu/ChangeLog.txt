@@ -5,6 +5,14 @@ Summary of changes on the development branch since the v0.6.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+August, 2025:
+
+    1. Video updates.  Memory state updates.  Fixing "bugs" that improve the
+    accuracy and completeness of the emulator without actually affecting the
+    behavior of any of the software it runs: are they really bugs after all?
+    Update to push out custom build to support additional FLEX media recovery.
+
+
 July, 2025:
 
     4. Memory state table corrections to enhance accuracy of two-word fetch and
@@ -248,4 +256,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Sat Jul 26 11:50:31 PDT 2025
+Last update: skeezics    Sun Aug  3 00:04:39 PDT 2025

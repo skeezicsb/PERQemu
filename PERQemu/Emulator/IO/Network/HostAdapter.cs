@@ -502,8 +502,8 @@ namespace PERQemu.IO.Network
             // right away, pass it on through, otherwise deal with the pending queue
             //
 
-            // DEBUGGING: Print the packet post-rewrites
-            if (Log.Level < Severity.Info) Console.WriteLine(raw.PrintHex());
+            // DEBUGGING: Print the packet post-rewrites (extremely verbose)
+            if (Log.Level < Severity.Debug) Console.WriteLine(raw.PrintHex());
 
             // Shortcut: is the receiver active and ready?
             if (_controller.CanReceive)

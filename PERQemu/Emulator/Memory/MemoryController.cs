@@ -157,7 +157,7 @@ namespace PERQemu.Memory
 #if DEBUG
             if (nextCycle != MemoryCycle.None || _current.CycleType != MemoryCycle.None)
                 Log.Detail(Category.MemCycle,
-                           "{0} queue  IN: Clock T{1} cycle={2} bkm={3} next={4} state={5} next={6}",
+                           "{0} queue  IN: Clock T{1} cycle={2} bkm={3:x} next={4} state={5} next={6}",
                            _name, _mem.TState, _current.CycleType, _bookmark, nextCycle, _state, _nextState);
 #endif
 
@@ -173,7 +173,7 @@ namespace PERQemu.Memory
 #if DEBUG
             if (nextCycle != MemoryCycle.None || _current.CycleType != MemoryCycle.None)
                 Log.Detail(Category.MemCycle,
-                           "{0} queue OUT: Clock T{1} cycle={2} bkm={3} next={4} state={5} next={6}",
+                           "{0} queue OUT: Clock T{1} cycle={2} bkm={3:x} next={4} state={5} next={6}",
                            _name, _mem.TState, _current.CycleType, _bookmark, nextCycle, _state, _nextState);
 #endif
         }
@@ -192,7 +192,7 @@ namespace PERQemu.Memory
             if (_pending.Active)
                 Log.Write(Category.MemCycle, "Request {0} while {1} already pending!?",
                                               cycleType, _pending.CycleType);
-            
+
             _pending.StartAddress = startAddr;
             _pending.CycleType = cycleType;
 
@@ -208,15 +208,19 @@ namespace PERQemu.Memory
         {
             if (_pending.Active && !_current.Active)
             {
-                // Swap current with pending.
-                MemoryRequest old = _current;
-                _current = _pending;
-                _pending = old;
+                // Copy in the relevant bits
+                _current.CycleType = _pending.CycleType;
+                _current.StartAddress = _pending.StartAddress;
+                _current.Bookmark = _pending.Bookmark;
+                _current.Active = true;
+
+                // Clear the request
+                _pending.Clear();
+
+                // Set the new bookmark
                 _bookmark = _current.Bookmark;
 
                 Log.Debug(Category.MemCycle, "{0} queue: Recognized {1}", _name, _current);
-
-                _pending.Clear();
             }
         }
 
@@ -256,9 +260,6 @@ namespace PERQemu.Memory
                     case MemoryCycle.Fetch2:
                     case MemoryCycle.Store2:
                         _address = (_current.StartAddress & _doubleWordMask) + _index;
-
-                        // Allow misaligned addrs (w2/w3 instead of w0/w1)!  (Todo: 16K only?)
-                        if ((_current.StartAddress & 0x1) != 0) _address += 2;
                         break;
 
                     default:

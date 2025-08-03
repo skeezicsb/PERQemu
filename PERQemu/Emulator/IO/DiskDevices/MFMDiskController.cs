@@ -1077,11 +1077,10 @@ namespace PERQemu.IO.DiskDevices
                 _status.OnCylinder = _status.UnitReady && (_seekState == SeekState.Idle);
                 _status.Track0 = (_cylinder == 0);
 
-                Log.Detail(Category.HardDisk, "DIB status change: 0x{0:x3}", _status.Current);
-                Log.Debug(Category.HardDisk, "DIB {0}", _status);      // HW status string
+                Log.Debug(Category.HardDisk, "DIB status: 0x{0:x3} {1}", _status.Current, _status);
 
                 // Ready changes or OnCylinder asserted trigger an interrupt
-                if (oldReady != _status.UnitReady || (oldOnCyl == false && _status.OnCylinder == true))
+                if ((oldReady != _status.UnitReady) || (oldOnCyl == false && _status.OnCylinder == true))
                 {
                     _control.StatusChange();
                 }
@@ -1108,9 +1107,9 @@ namespace PERQemu.IO.DiskDevices
             {
                 public int DriveType;       // <300> 01=Undefined, 00=MFM / 5.25"
                 public bool Index;          // <100> from drive
-                public bool UnitReady;      // <080> aka DskFault or NotFault
+                public bool UnitReady;      // <080> aka DskReady or NotUnitReady
                 public bool OnCylinder;     // <040> aka DskOnCyl or NotOnCyl
-                public bool DriveFault;     // <020> aka DskReady or NotUnitReady
+                public bool DriveFault;     // <020> aka DskFault or NotFault
                 public bool Track0;         // <010> aka DskSeekErr or NotTrk0orNotSker
 
                 public int Current
