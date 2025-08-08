@@ -76,6 +76,7 @@ namespace PERQemu.Config
 
             // The default
             _etherAddr = 0;
+            _rtcOffset = 0;
 
             _validated = true;
             _modified = false;
@@ -236,6 +237,12 @@ namespace PERQemu.Config
             set { _tabletType = value; }
         }
 
+        public int RTCYearOffset
+        {
+            get { return _rtcOffset; }
+            set { _rtcOffset = value; }
+        }
+
         public Drive[] Drives
         {
             get { return _drives; }
@@ -258,11 +265,16 @@ namespace PERQemu.Config
 
             sb.AppendLine("--------------");
             sb.AppendLine("Machine type:  " + Chassis);
-            sb.AppendLine("CPU type:      " + CPU);
+            sb.AppendLine("CPU type:      " + CPU);             // todo: add description (WCS/bits)
             sb.AppendLine("Memory size:   " + MemSizeToString());
             sb.AppendLine("Display type:  " + Display);
             sb.AppendLine("Tablet type:   " + Tablet);
             sb.AppendLine("IO board:      " + IOBoard);
+
+            if ((IOBoard == IOBoardType.EIO || IOBoard == IOBoardType.NIO) && RTCYearOffset != 0)
+            {
+                sb.AppendLine("  RTC offset:  " + RTCYearOffset);
+            }
 
             if (_rsaEnabled)
             {
@@ -295,13 +307,12 @@ namespace PERQemu.Config
                 {
                     sb.AppendLine("    Ethernet:  node " + EtherAddress);
                 }
-                
+
                 // Todo: for 3Mbit Ethernet, address is a single octet, not the
                 // two-octet low word; will have to be stored separately if we
                 // are ever able to emulate the CMU 3Mbit<->10Mbit gateway config!
             }
 
-            // Todo: for PERQ-2 models, backplane serial number
 
             sb.AppendLine();
             sb.AppendLine("Storage configuration:");
@@ -390,6 +401,7 @@ namespace PERQemu.Config
         Drive[] _drives;
 
         ushort _etherAddr;
+        int _rtcOffset;
 
         bool _rsaEnabled;
         bool _rsbEnabled;

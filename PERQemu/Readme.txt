@@ -293,7 +293,7 @@ Added in v0.6.x:
   - 5.25" MFM disk support for PERQ-2/Tx models (POS G, Accent tested;
     PNX 5 not yet available)
 
-New in v0.7.7:
+New in v0.7.8:
   - PERQ FLEX has been recovered and support added to allow it to run.
     This unique OS environment based on Algol-68 runs on PERQ-2 models
     and can run standalone or co-reside with POS or PNX!  More info TBA.
@@ -531,8 +531,9 @@ v0.9 - TBD
 
 v0.7.8 - Experiments branch
   - 24-bit CPU with 4MB memory fixes (now boots Accent; more testing to do)
-  - Update for FLEX custom floppy format, Z80 DMA changes to allow it to run
-  - Changes to the DDS since FLEX drives it a 5MHz and that's kinda silly
+  - Update for FLEX custom floppy format, Z80 DMA and RTC changes to allow it
+    to run
+  - Changes to the DDS since FLEX drives it at several MHz and that's silly
   - New import/export commands for exchanging PERQemu 5.25" disk images with
     the Gesswein MFM emulator (emulated disks <-> real PERQ!)
   - Ethernet reliability and usability improvements
@@ -688,7 +689,7 @@ v0.1 - First public release
 
 Update history:
 
-8/3/2025 - skeezicsb - v0.7.8 (experiments)
+8/8/2025 - skeezicsb - v0.7.8 (experiments)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)

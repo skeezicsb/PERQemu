@@ -52,6 +52,11 @@ namespace PERQemu.IO.Z80
 
             _registers = new byte[16];
 
+            // Set the default base year
+            _yearOffset = PERQemu.Config.Current.RTCYearOffset;
+            if (_yearOffset == 0) _yearOffset = Settings.RTCYearOffset;
+            if (_yearOffset == 0) _yearOffset = 1980;
+
             // Populate the registers with the current host time
             _startDate = DateTime.Now.ToUniversalTime();
             UpdateRegistersFromHostTime();
@@ -199,7 +204,7 @@ namespace PERQemu.IO.Z80
             _registers[9] = (byte)(dt.Month % 10);
             _registers[10] = (byte)(dt.Month / 10);
             _registers[11] = (byte)(dt.Year % 10);
-            _registers[12] = (byte)((dt.Year - 1980) / 10);
+            _registers[12] = (byte)((dt.Year - _yearOffset) / 10);
 
             Log.Info(Category.RTC, "Current PERQ date/time: {0}", dt);
         }
@@ -214,7 +219,7 @@ namespace PERQemu.IO.Z80
             try
             {
                 // Convert the internal registers to a date time to make sure it's legit
-                var dt = new DateTime(_registers[12] * 10 + _registers[11] + 1980,  // yr
+                var dt = new DateTime(_registers[12] * 10 + _registers[11] + _yearOffset,
                                       _registers[10] * 10 + _registers[9],          // mon
                                       _registers[8] * 10 + _registers[7],           // day
                                       _registers[5] * 10 + _registers[4],           // hr
@@ -239,7 +244,8 @@ namespace PERQemu.IO.Z80
             var elapsed = PERQemu.Sys.Uptime + PERQemu.Sys.Scheduler.CurrentTimeNsec - _startTime;
             elapsed = (ulong)(elapsed * Conversion.NsecToMsec * Conversion.MsecToSec);
 
-            Console.WriteLine($"RTC: running since {_startDate} ({elapsed} sec since last update)");
+            Console.WriteLine($"RTC: Running since {_startDate} ({elapsed} sec since last update)");
+            Console.WriteLine($"     Year offset: {_yearOffset}");
             Console.WriteLine("Registers:");
             Console.WriteLine($"  Year: {_registers[12]}{_registers[11]}\t(+1980)");
             Console.WriteLine($"  Mon:  {_registers[10]}{_registers[9]}");
@@ -264,6 +270,7 @@ namespace PERQemu.IO.Z80
 
         DateTime _startDate;
         ulong _startTime;
+        int _yearOffset;
 
         byte[] _registers;
         byte _regSelect;

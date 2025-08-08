@@ -641,6 +641,52 @@ namespace PERQemu.UI
             }
         }
 
+        [Command("configure rtc offset", "Set the base year for the EIO RTC chip")]
+        public void SetRTCOffset(int year)
+        {
+            if (PERQemu.Config.Quietly)
+            {
+                PERQemu.Config.Current.RTCYearOffset = year;
+                return;
+            }
+
+            // If set, check the input
+            if (year != 0)
+            {
+                // Chip only stores 2 digits, so range check
+                var offset = DateTime.Now.Year - year;
+
+                if (offset < 0 || offset > 99)
+                {
+                    Console.WriteLine($"Year offset invalid; must be between 1980 and {DateTime.Now.Year}.");
+                    return;
+                }
+            }
+
+            if (year != PERQemu.Config.Current.RTCYearOffset)
+            {
+                PERQemu.Config.Current.RTCYearOffset = year;
+                PERQemu.Config.Changed = true;
+
+                if (PERQemu.Config.Current.Chassis == ChassisType.PERQ1)
+                {
+                    Console.WriteLine($"Note: The PERQ-1 I/O board does not have an RTC chip, offset is ignored.");
+                }
+                else
+                {
+                    if (year == 0)
+                        Console.WriteLine("EIO RTC will use the global Settings offset.");
+                    else
+                        Console.WriteLine($"EIO RTC Offset is now {year}.");
+
+                    if (PERQemu.Controller.State > RunState.Off)
+                    {
+                        Console.WriteLine("Note: The running PERQ won't see the change until it is restarted.");
+                    }
+                }
+            }
+        }
+
         [Command("configure display", "Configure the display device")]
         public void SetDisplay(DisplayType disp)
         {

@@ -323,9 +323,13 @@ namespace PERQemu.Config
                         }
                     }
 
-                    // Todo: For PERQ-2, save the configured serial number if set
+                    // Save the EIO RTC offset if set
+                    if (_current.Chassis != ChassisType.PERQ1 && _current.RTCYearOffset != 0)
+                    {
+                        sw.WriteLine("rtc offset " + _current.RTCYearOffset);
+                    }
 
-                    // If an Ethernet address has been set, save it
+                    // If an Ethernet address has been set, save it (this is also the S/N)
                     if (_current.EtherAddress != 0)
                     {
                         sw.WriteLine("ethernet address " + _current.EtherAddress);

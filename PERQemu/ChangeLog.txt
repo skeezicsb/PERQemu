@@ -7,6 +7,12 @@ Previous notes moved to ChangeLog-Old.txt.
 
 August, 2025:
 
+    2. Small victory: FLEX now runs, thanks to an RTC clock fix. Doh. Making
+    it think it's still 1985 does the trick.  New settings/configurator commands
+    to save an RTC offset so the virtual machine can innocently party like it's
+    still 1989.  PERQ-2 VT100-style keyboard mappings need fixin'.  Updates to
+    the UserGuide for recent changes.  Push for testing prior to v0.7.8 release.
+
     1. Video updates.  Memory state updates.  Fixing "bugs" that improve the
     accuracy and completeness of the emulator without actually affecting the
     behavior of any of the software it runs: are they really bugs after all?
@@ -256,4 +262,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Sun Aug  3 00:04:39 PDT 2025
+Last update: skeezics    Fri Aug  8 06:23:01 PDT 2025

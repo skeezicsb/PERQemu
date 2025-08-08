@@ -133,6 +133,8 @@ namespace PERQemu
             RSASettings = new SerialSettings(9600, 8, Parity.None, StopBits.One);
             RSBSettings = new SerialSettings(9600, 8, Parity.None, StopBits.One);
 
+            RTCYearOffset = 1980;
+
             Reason = "Settings reset to defaults.";
             Changed = false;
         }
@@ -178,6 +180,8 @@ namespace PERQemu
 
         public static string EtherDevice;
         //public static string AudioDevice;
+
+        public static int RTCYearOffset;
 
         // Housekeeping
         public static string Reason;
@@ -288,6 +292,11 @@ namespace PERQemu
                     sw.WriteLine($"canon output format {CanonFormat}");
                     sw.WriteLine($"canon paper size {CanonPaperSize}");
                     sw.WriteLine($"canon resolution {CanonResolution}");
+
+                    // New in v0.7.8; for limited backward compatibility don't
+                    // write the option if it hasn't been changed
+                    if (RTCYearOffset != 1980)
+                        sw.WriteLine($"rtc offset {RTCYearOffset}");
 
                     sw.WriteLine("#");
                     sw.WriteLine("# These options are not yet implemented:");
