@@ -131,8 +131,8 @@ namespace PERQemu.Processor
                 // processors the Push Long Constant special function (F=1, SF=5)
                 // selects the 16-bit constant and pushes the result onto TOS.
                 //
-                if ((IsSpecialFunction && SF == 0) ||       // Long Const
-                    (!CPUBoard.Is4K && F == 1 && SF == 5))           // Push Long Const
+                if ((IsSpecialFunction && SF == 0) ||           // Long Const
+                    (!CPUBoard.Is4K && F == 1 && SF == 5))      // Push Long Const
                 {
                     BMuxInput = LongConstant;
                 }

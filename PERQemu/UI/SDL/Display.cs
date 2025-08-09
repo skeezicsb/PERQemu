@@ -251,8 +251,7 @@ namespace PERQemu.UI
             // Register a timer and callback to update the FPS display
             if (_fpsTimerId < 0)
             {
-                _fpsTimerCallback = new HRTimerElapsedCallback(RefreshFPS);
-                _fpsTimerId = HighResolutionTimer.Register(2000d, _fpsTimerCallback, "FPS");
+                _fpsTimerId = HighResolutionTimer.Register(2000d, RefreshFPS, "FPS");
                 HighResolutionTimer.Enable(_fpsTimerId, true);
             }
 
@@ -263,7 +262,7 @@ namespace PERQemu.UI
         /// <summary>
         /// Expand the 1-bit pixels from the PERQ into a local intermediate
         /// 8-bit pixel buffer, one full scanline at a time.  This runs on the
-        /// CPU thread (ugh, fix this) so it has to be fast.
+        /// CPU thread so it has to be fast.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawScanline(int scanline, byte[] scanlineData)
@@ -340,13 +339,14 @@ namespace PERQemu.UI
 
             if (_enabled)
             {
+                //
                 // Draw the PERQ screen!
                 //
+
                 // Expand our "fake palletized" 8 bits to 32, manually, because all
                 // the faffing around with SDL-CS surfaces is just a complete waste
                 // of time.  Doing this here (on the main/SDL thread) boosts frame
                 // rates by 10fps.
-                //
                 for (int i = 0; i < _8bppDisplayBuffer.Length; i++)
                 {
                     var quad = (ulong)_8bppDisplayBuffer[i];
@@ -373,6 +373,7 @@ namespace PERQemu.UI
                 //
                 // Draw the freerunning tube!
                 //
+
                 // Paint the background
                 SDL.SDL_SetRenderDrawColor(_sdlRenderer, Red(COLDTUBE), Green(COLDTUBE), Blue(COLDTUBE), 255);
                 SDL.SDL_RenderClear(_sdlRenderer);
@@ -469,8 +470,7 @@ namespace PERQemu.UI
             // Update the title bar
             if (state == RunState.Running)
             {
-                SDL.SDL_SetWindowTitle(_sdlWindow,
-                    string.Format("PERQ - {0:N2} fps, CPU {1:N2}ns, Z80 {2:N2}ns", fps, ns, zns));
+                SDL.SDL_SetWindowTitle(_sdlWindow, $"PERQ - {fps:N2} fps, CPU {ns:N2}ns, Z80 {zns:N2}ns");
             }
             else
             {
@@ -512,7 +512,7 @@ namespace PERQemu.UI
         /// </summary>
         public void Shutdown()
         {
-            Log.Write(Category.Display, "Shutdown requested");
+            Log.Info(Category.Display, "Shutdown requested");
 
             // Disable and stop our timer
             if (_fpsTimerId >= 0)
@@ -623,14 +623,14 @@ namespace PERQemu.UI
             Console.WriteLine("renderEvent={0}, fpsUpdateEvent={1}, frames={2}",
                               _renderEvent.type, _fpsUpdateEvent.type, _frames);
 
+            Console.WriteLine("warmedUp={0}, fader={1}, enabled={2}, freeY={3}",
+                              _warmedUp, _fader, _enabled, _freeY);
+
             var flags = SDL.SDL_GetWindowFlags(_sdlWindow);
             Console.WriteLine("flags={0}", (SDL.SDL_WindowFlags)flags);
 
-            if (SDL.SDL_RenderTargetSupported(_sdlRenderer) == SDL.SDL_bool.SDL_TRUE)
-                Console.WriteLine("RENDER TARGET SUPPORTED");
-
-            Console.WriteLine("warmedUp={0}, fader={1}, enabled={2}, freeY={3}",
-                              _warmedUp, _fader, _enabled, _freeY);
+            if (SDL.SDL_RenderTargetSupported(_sdlRenderer) != SDL.SDL_bool.SDL_TRUE)
+                Console.WriteLine("RENDER TARGET NOT SUPPORTED");
         }
 
         /// <summary>
@@ -759,7 +759,6 @@ namespace PERQemu.UI
         const int UPDATE_FPS = 2;
 
         int _fpsTimerId;
-        HRTimerElapsedCallback _fpsTimerCallback;
 
         // Floppy activity "light"
         IntPtr _floppyTexture = IntPtr.Zero;

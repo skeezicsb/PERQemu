@@ -588,7 +588,6 @@
     <None Include="Docs\Hardware References\Zilog_Z80_SIO_TechManual.pdf" />
     <None Include="Docs\Hardware References\Zilog_Z8410_DMA.pdf" />
     <None Include="Docs\Hardware References\Zilog_Z8430_CTC.pdf" />
-    <None Include="Docs\Z80 Docs\pz80.asm" />
     <None Include="Docs\Z80 Docs\z80ram_addr.txt" />
     <None Include="Docs\Z80 Docs\z80rom_addr.txt" />
     <None Include="Conf\perq1.cfg">

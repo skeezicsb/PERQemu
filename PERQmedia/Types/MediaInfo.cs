@@ -52,11 +52,12 @@ namespace PERQmedia
         POSG85 = 3,     // Experimental POS 32-bit? (rare, undocumented)
         Accent = 6,     // POS extended with part-relative addressing?
         PNX = 7,        // Unix V7ish but no magic number...
-        PNXBoot = 8,    // POS boot partition + PNX root hybrid!
+        PNXBoot = 8,    // PNX boot floppy
         RT11 = 11,      // Floppy floppies
         RT11Ext = 12,   // SuperFloppy (RT-11 with extra sauce)
         Stut = 20,      // POS-ish tape dump format
-        Tar = 21        // Primitive tar-like format (Unix compatible?)
+        Tar = 21,       // Primitive tar-like format (Unix compatible?)
+        FLEX = 85       // RSRE FLEX install floppy (custom geometry)
     }
 
     /// <summary>

@@ -167,7 +167,7 @@ namespace PERQemu.IO
                 // commented out in the microcode.  The CN100 PROM and 9403 FIFO
                 // chips are partially wired up in the schematic to return the
                 // STATFULL signal but the interface was incomplete.  For now,
-                // return 0 (if this is ever called).
+                // return 0 (if this is ever called).  NOTE: PNX 5 has a call to check this!
                 Console.WriteLine("==> Canon Mechanical Status requested!! <==");   // debug
                 return 0;
             }

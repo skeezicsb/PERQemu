@@ -5,7 +5,135 @@ Summary of changes on the development branch since the v0.6.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+August, 2025:
+
+    2. Small victory: FLEX now runs, thanks to an RTC clock fix. Doh. Making
+    it think it's still 1985 does the trick.  New settings/configurator commands
+    to save an RTC offset so the virtual machine can innocently party like it's
+    still 1989.  PERQ-2 VT100-style keyboard mappings need fixin'.  Updates to
+    the UserGuide for recent changes.  Push for testing prior to v0.7.8 release.
+
+    1. Video updates.  Memory state updates.  Fixing "bugs" that improve the
+    accuracy and completeness of the emulator without actually affecting the
+    behavior of any of the software it runs: are they really bugs after all?
+    Update to push out custom build to support additional FLEX media recovery.
+
+
+July, 2025:
+
+    4. Memory state table corrections to enhance accuracy of two-word fetch and
+    store operations, add missing indirect/overlapped Fetch2 state.  Force clear
+    the two least significant bits for DMA transfers, since PNX 5 apparently 
+    violates the quad-alignment requirement there too (expecting the hardware to
+    do it) but that doesn't make a damn bit of difference either.  Additional
+    debugging and logging tweaks.  PNX 5 still f&*$)ing broken.  This has become
+    absolutely infuriating.  Interim push for platform testing.
+
+    3. Pushed udpates for Accent S6 + Lisp M3 to the PERQmedia archive.  Added
+    a reconstruction of the PNX C-Codes from PNX 5 based on scrounging through
+    binary dumps of the assembler, verified by manually reconstructing ~ 2000
+    lines of the microcode interpreter.
+
+    2. Oooh.  Accent S7 booted in 24-bit mode with 4MB of memory!  Fixed bug in
+    Upper() on the 24-bit CPU and restored address wraparound on the 4MB memory
+    board (despite what Accent kernel comments in the sizing loop say, it DOES
+    wrap, otherwise VFY fails -- there's no 24-bit VFY microcode to be found.)
+
+    1. More debugging. More Ethernet tweaks. No success with PNX 5 or FLEX yet.
+    Discovered the cause and removed the hack for the Z80 DMA issue manifested
+    by FLEX thinking the Z80 load was timing out.  Discovered that telling the
+    Z80 to execute the version number bytes when jumping to the (wrong) start
+    address in RAM is perfectly fine, apparently.  Slight update to the debug
+    logging so I can crank the verbosity to Proustian levels.  Added NAT table
+    entry aging, but forget why.  How can we hack when the world is burning?
+
+
+June, 2025:
+
+    7. Add the FLEX opcodes to the debugger.  Use "debug load qcodes flex" to
+    load them.  Chose some made-up mnemonics for debugging; see QCodes.cs and
+    the RSRE documentation for more info.  Additional small Ethernet fix.
+
+    6. Let's qualify that last update for a very narrow definition of "fixes."
+    Of all the definitions of that versatile word, I think I managed to avoid
+    "to mend or repair" entirely.  Thank you, thank you, it's a talent.  Let's
+    try this again.  Bump to build v0.7.7.7 'cuz I'm feelin' lucky!  This patch
+    lets POS FTP, TestEther and Accent play a little nicer.
+
+    5. Many Ethernet fixes and a weird bug discovered: SharpPcap/PacketDotNet
+    don't consistently preserve OR strip the FCS bytes during raw Ethernet
+    captures -- so depending on the quirk of your controller chip (on MacOSX,
+    anyway) you'll get different receive lengths.  This is annoying.  Pushing
+    the debug/temporary changes to verify on Linux/Windows and developing the
+    workaround.  The FLEX network installer uses Ethernet multicast!  Totally
+    vindicated for the tens of minutes of my life devoted to writing that code
+    that I never thought would be used, ever.  Cool!  [Bump to v0.7.7.5]
+
+    4. New storage subsystem commands "safe" and "unsafe" set a flag for create
+    or export operations that might overwrite files.  Importing and exporting
+    5.25" hard drive images for use with the MFM emulator now included in the
+    Release build with some preliminary updates to the UserGuide to explain how
+    they work.  Pushing this interim build as v0.7.7 to sync up test platforms
+    and continue debugging PNX 5 issues.
+    
+    3. Okay, so I've lost my mind.  This update is out of control.  My walls are
+    metaphorically covered in spaghetti.  Changes to the Z80 DMA cycle timing,
+    addition of a custom floppy format and a new FSHint code for FLEX, and tons
+    of debugging tweaks to support the FLEX/PNX debugging efforts.  Consistency
+    update for handling Scheduler event cancellation (nitpicky stuff mostly) and
+    many little tweaks/corrections made as the deep dive into the mysterious /
+    infuriating by-hand-reassembly of the PNX 5 kernel microcode uncovered some
+    seriously picayune little "bugs."  As in, code that works with 6 or 7 other
+    OSes but deviated sliiiiightly from the hardware schematics was "fixed",
+    even though it didn't affect anything or solve the PNX issue.  Hmmm.  :-|
+
+    Version bumped for a custom test build.  Debugging continues.
+
+    2. FLEX IS BOOTING!  Thanks to the efforts of several folks in the UK, an
+    archive of a full floppy set has been successfully converted for use with
+    PERQemu, and it boots!  Several changes needed to accommodate the custom
+    floppy format (15 x 256 byte sectors, single density) but these weren't too
+    egregious.  Bumped the version number to identify the custom build used for
+    testing.  PNX 5 problem still eludes.
+
+    1. PNX 5 is insane.  That is all.
+
+
+May, 2025:
+
+    4. Updated mfm_util and reimported the PNX 5 hard disk images but STILL no
+    joy booting them; both hard disk and floppy still drop into the PNX kernel
+    debugger after printing the banner.  Combing the disassembled microcode and
+    it's s-l-o-w going.  Former PNX kernel hacks with illicit stashed copies of
+    the source code, feel free to chime in any time now!
+
+    3. Debugging check in, reset, try to get back up to speed after a week in
+    hell, shivering under the covers.  Attempting to reverse the PNX 5 SysB code
+    to figure out why the emulator won't boot, even from a known working hard
+    disk image.  Update the microcode disassembler to output the H field (Hold
+    bit) and format the UState register correctly for 20- and 24-bit CPUs.
+
+
+    2. COVID. EFFING. SUCKS.  :-(
+
+
+    1. Thanks to some live hard drive images dumped using the Gesswein MFM disk
+    emulator, made some headway into figuring out why PNX 5 is crashing.  Added
+    some experimental commands (available in Debug mode) to import ".img" files
+    into a .prqm image, and additional debugging support for interrogating hard
+    disk blocks directly.  Shout out to Tom Stepleton for the PNX 5.02 and 5.03 
+    images to work with!
+
+
 April, 2025:
+
+    7. It's away!  Version 0.7.5 bumped to be the default on the Gitub Releases
+    page.  After a brief pause, the experiments branch will move forward with
+    short term fixes (PNX 5 crashing, 24-bit debugging) and additional new media
+    (Accent S6 with more Spice Lisp stuff!) while the longer term projects take
+    shape (enhancements to PERQdisk, port of Stut, more UI enhancements, etc).
+    Included with this push are a few small 24-bit CPU changes (uState register
+    corrections based on recently found documentation).
 
     6. Oh bloody hell.  Missed one small fix to the MFM/Microp disk controllers.
     The BOOT ROM tells the disk controller to ship the normal two quad words for
@@ -134,4 +262,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Tue Apr 22 02:18:22 PDT 2025
+Last update: skeezics    Fri Aug  8 06:23:01 PDT 2025

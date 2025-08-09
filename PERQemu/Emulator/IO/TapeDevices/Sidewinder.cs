@@ -91,11 +91,8 @@ namespace PERQemu.IO.TapeDevices
         /// </summary>
         public void Reset()
         {
-            if (_protocolEvent != null)
-            {
-                _scheduler.Cancel(_protocolEvent);
-                _protocolEvent = null;
-            }
+            _scheduler.Cancel(_protocolEvent);
+            _protocolEvent = null;
 
             ResetBuffers();
 
@@ -1309,9 +1306,10 @@ namespace PERQemu.IO.TapeDevices
         {
             Log.Debug(Category.Streamer, "Drive reports cartridge ejected");
 
-            if (_protocolEvent != null) _scheduler.Cancel(_protocolEvent);
+            // Premature ejectulation? Clear anything in flight
+            _scheduler.Cancel(_protocolEvent);
+            _protocolEvent = null;
 
-            // Premature ejectulation?
             _ready = false;
             _exception = true;
             _state = FinishCommand();

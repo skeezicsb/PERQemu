@@ -59,11 +59,8 @@ namespace PERQemu.IO.DiskDevices
         public void Reset()
         {
             // Stop any seek in progress
-            if (_seekDelayEvent != null)
-            {
-                _scheduler.Cancel(_seekDelayEvent);
-                _seekDelayEvent = null;
-            }
+            _scheduler.Cancel(_seekDelayEvent);
+            _seekDelayEvent = null;
 
             _head = 0;          // Reselect head 0 on reset
             _cylinder = 1;      // Force a Step Out to find track 0 on startup
@@ -189,7 +186,7 @@ namespace PERQemu.IO.DiskDevices
             _driveSelect = false;
             _diskChange = true;
             _isSingleSided = (Geometry.Heads == 1);
-            _isDoubleDensity = (Geometry.SectorSize == 256);
+            _isDoubleDensity = (Geometry.SectorSize == 256 && Geometry.Sectors == 26);
 
             // SA851 manual says that Ready comes true after two index holes are
             // sensed, or _three_ revolutions for a double density floppy!
@@ -203,7 +200,8 @@ namespace PERQemu.IO.DiskDevices
                 _cylinder = 1;
                 _head = 0;
                 _ready = true;
-                Log.Info(Category.FloppyDisk, "{0} online: {1}", Info.Description, Geometry);
+                Log.Info(Category.FloppyDisk, "{0} online", Info.Description);
+                Log.Info(Category.FloppyDisk, "{0}", Geometry);
             });
 
             base.OnLoad();

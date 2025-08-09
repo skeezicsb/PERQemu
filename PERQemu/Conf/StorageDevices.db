@@ -34,6 +34,13 @@ performance SA851
 removable true
 done
 
+define Floppy FlexFloppy
+description "Shugart SA851 FLEX (577KB) floppy disk"
+geometry FlexArchive 77 2 15 256
+performance SA851
+removable true
+done
+
 # Standard 14" drives
 # Shugart12 and Shugart24 geometries are built-in
 # SA4000 performance specs are built-in

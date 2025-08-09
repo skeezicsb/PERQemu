@@ -125,7 +125,6 @@ namespace PERQemu.Debugger
 
                 if (v.Property.PropertyType.IsArray)
                 {
-
                     if (!isArray)
                     {
                         // Print the contents of the entire array
@@ -204,7 +203,18 @@ namespace PERQemu.Debugger
         void PrintVariable(DebuggerVariable v)
         {
             // todo: consult the user settings for preferred output radix!
-            Console.WriteLine(v.Property.GetValue(v.Instance, null));
+            // for now: if numeric, show decimal and hex
+            if (v.Property.PropertyType == typeof(byte) ||
+                v.Property.PropertyType == typeof(ushort) ||
+                v.Property.PropertyType == typeof(int))
+            {
+                Console.WriteLine("{0} (0x{1:x})", v.Property.GetValue(v.Instance),
+                                                   v.Property.GetValue(v.Instance));
+            }
+            else
+            {
+                Console.WriteLine(v.Property.GetValue(v.Instance, null));
+            }
         }
 
 
@@ -317,7 +327,10 @@ namespace PERQemu.Debugger
         {
             foreach (DebuggerVariable var in _variableList)
             {
-                Console.WriteLine("{0} - {1}", var.Name, var.Description);
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.Write($"{var.Name}".PadLeft(6));
+                Console.ResetColor();
+                Console.WriteLine($" - {var.Description}");
             }
         }
 

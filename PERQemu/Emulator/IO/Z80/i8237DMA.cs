@@ -59,6 +59,8 @@ namespace PERQemu.IO.Z80
         public string Name => "i8237 DMA";
         public byte[] Ports => _ports;
 
+        public bool IsBusy => _state != DMAState.Idle;
+
         public bool IntLineIsActive => _interruptEnabled;
         public byte? ValueOnDataBus => null;        // Supplied by the Am9519
 
@@ -83,7 +85,7 @@ namespace PERQemu.IO.Z80
             _state = DMAState.Idle;
             _interruptEnabled = false;
 
-            Log.Info(Category.Z80DMA, "i8237 reset");
+            Log.Debug(Category.Z80DMA, "i8237 reset");
         }
 
         public void AttachChannelDevice(int chan, IDMADevice dev, byte port)
@@ -97,7 +99,7 @@ namespace PERQemu.IO.Z80
 #endif
             _channels[chan].Device = dev;
             _channels[chan].DataPort = port;
-            Log.Info(Category.Z80DMA, "Channel {0} assigned to {1} (port 0x{2:x2})", chan, dev, port);
+            Log.Debug(Category.Z80DMA, "Channel {0} assigned to {1} (port 0x{2:x2})", chan, dev, port);
         }
 
         /// <summary>

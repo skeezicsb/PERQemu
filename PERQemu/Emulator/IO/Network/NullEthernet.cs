@@ -80,16 +80,10 @@ namespace PERQemu.IO.Network
 
         public void Reset()
         {
-            if (_timer != null)
-            {
-                _system.Scheduler.Cancel(_timer);
-            }
+            _system.Scheduler.Cancel(_timer);
             _timer = null;
 
-            if (_response != null)
-            {
-                _system.Scheduler.Cancel(_response);
-            }
+            _system.Scheduler.Cancel(_response);
             _response = null;
 
             if (_clockInterrupt || _netInterrupt)
@@ -255,11 +249,28 @@ namespace PERQemu.IO.Network
             if (_control.HasFlag(Control.Go))
             {
                 // Timer: enabled, not already running, count set?
-                if (_control.HasFlag(Control.ClockEnable) && _usecClock > 0 && _timer == null)
+                if (_control.HasFlag(Control.ClockEnable))
                 {
-                    // Start it up
-                    Log.Debug(Category.Ethernet, "Timer enabled: will fire in {0}usec", _usecClock);
-                    _timer = _system.Scheduler.Schedule(_usecClock * Conversion.UsecToNsec, ClockOverflow);
+                    // Not already running?
+                    if (_usecClock != 0 && _timer == null)
+                    {
+                        // Start it up
+                        Log.Debug(Category.Ethernet, "Timer enabled: will fire in {0}usec", _usecClock);
+                        _timer = _system.Scheduler.Schedule(_usecClock * Conversion.UsecToNsec, ClockOverflow);
+                    }
+                    // Otherwise writes are ignored, per eio.doc
+                }
+                else
+                {
+                    // Running?
+                    if (_timer != null)
+                    {
+                        Log.Debug(Category.Ethernet, "Timer disabled: was to fire in {0}usec",
+                                 (_system.Scheduler.CurrentTimeNsec - _timer.TimestampNsec) * 0.001);
+
+                        _system.Scheduler.Cancel(_timer);
+                        _timer = null;
+                    }
                 }
 
                 // Transmit flag?

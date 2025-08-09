@@ -85,6 +85,7 @@ but we emulate the hardware's behavior just in case.  Note that for efficiency,
 we specifically strip away the (very chatty) Cisco spanning tree multicasts as
 the PERQ has no use for them.  It may be worthwhile to have a global switch to
 just turn off or ignore this extra bit of processing if it's never really used.
+[Update: The FLEX network installer does appear to use multicasts! Woo hoo!]
 
 
 Address Translation
@@ -208,7 +209,7 @@ above to the 0xB000-0xB5FF range which is "uncharted territory" (an unassigned
 range) according to recent EtherType lists.  Basically, PERQemu does an xor with
 0xb000 at both the sending and receiving stations as part of the NAT rewriting
 so the packets on the wire aren't dropped.  It's cheesy, but seems a reasonably
-clean solution, especially as it's limited to rewriting when a PERQ vendor
+clean solution, especially as it's limited to rewriting only when a PERQ vendor
 prefix (0x021c7c) is the source address.  In preliminary testing the virtual
 PERQs send and receive the original EtherType codes while the host and any
 intervening switches/hubs pass them along as some mysterious but valid type.
@@ -248,14 +249,6 @@ is received.  PERQemu currently only filters out IPv6 traffic -- there's just
 no way the PERQ will ever support that and the protocol (even on a host NIC
 that's "turned off" still seems to produce a stupid amount of chatter).
 
-Transmits are assumed to always succeed; it doesn't appear there's any reliable
-or meaningful way to get an error status back from SharpPcap on failure?  The
-PERQ expects to do collision and error processing, but it's unlikely any modern
-interface or host OS network stack interfaced through LibPcap is going to expose
-the programmer to that, so a failure on Send will either go undetected or be
-reported as a CRC error (avoiding any need for the microcode to do collision
-backoff and retransmit).
-
 
 Organization
 ------------
@@ -270,7 +263,7 @@ for Accent to boot properly, since it seems to require that the hardware be
 present even if the network isn't "plugged in".
 
 NullEthernet is the "fake" implementation that doesn't transmit or receive any
-packets and doesn't attempt to open the host device; it doesn't require that
+packets and doesn't attempt to open the host device; it does not require that
 PERQemu be run with elevated priviliges.
 
 Ether10MbitController is the "standard" implementation that adapts itself for
@@ -291,8 +284,9 @@ is tested on a live, busy network instead of an isolated test hub.)
 
 MachineAddress is a wrapper around the PERQ's 48-bit MAC address as returned
 by the hardware.  It handles unscrambling the bits based on the slightly crazy
-packing scheme used by the OIO and EIO implementations.  [TBD: it also maps to
-the PhysicalAddress class used by SharpPcap/NetworkInformation?]
+packing scheme used by the OIO and EIO implementations.  It also maps to the
+PhysicalAddress class used by SharpPcap/NetworkInformation.
+
 
 Operation
 ---------
@@ -340,8 +334,10 @@ check/queue packets in the background; this allows for some limited debugging
 (on a quiet network).  A maximum backlog (compiled, but could be user settable)
 prevents the queue from growing too long.  If the queue fills up and the PERQ
 isn't reading them (or can't keep up) the oldest packet is dropped so a newer
-one can take its place.  The default (for now) is 8; lots of testing/tuning is
-required to determine if that's reasonable.
+one can take its place.  The default (for now) is 15; lots of testing/tuning is
+required to determine if that's reasonable.  (Somewhere in the code or docs the
+phrase "can have up to 14 receives pending" stuck in my brain, but maybe that's
+POS specific based on memory allocation?)
 
 When the microcode enables the receiver, the Controller always checks for any
 queued packets, otherwise it simply waits for the OnPacketArrival event to
@@ -362,32 +358,41 @@ that normal packet processing would take is simulated so the throughput of the
 emulator shouldn't wildly exceed that of a real 10Mbit/half-duplex Ethernet.
 
 
-NAT and Checksums
------------------
+Errors and Checksums
+--------------------
 
-SharpPcap makes just about ZERO mention of how checksums are handled.  At least
-I haven't found any obvious documentation references so far.  I guess they just
-ASSUME that you ASSUME they're handled, since through experimentation I've
-verified that SendPacket() always adds the CRC bytes automatically, which is
-convenient: that's how the PERQ does it too!  Upon receive, the full frame WITH
-the FCS (CRC) bytes is delivered, which again (thankfully) is aligned with the
-PERQ hardware.
+The PERQ hardware streams packets directly to and from the controller's FIFO
+with only the limited buffering it provides.  The CPU's memory state machine
+prioritizes DMA access and will preempt the processor to avoid starving or
+overrunning the FIFO and dropping data.  However, in the emulator the Ethernet
+controller buffers entire packets at once, since there's no interface (and no
+need :-) to operate at such a low level on a modern host.  Delays are calculated
+such that the virtual PERQ receives network interrupts at a rate expected for a
+10Mbit interface operating under optimal conditions.
 
-When sending, the PERQ sends the header (14 bytes) and data (usual Ethernet
-min/max of 46-1500 bytes) via DMA to the hardware, and programs the bit counter
-with the total packet size (in bits) _not_ including the FCS.  As the bits are
-sent and the counter reaches zero, the state machine automatically streams the
-32-bit CRC to complete the transmission.  When sending, PERQemu calculates the
-checksum on the full packet _after_ translation (if any) takes place, but this
-is only used for debugging; SharpPcap/LibPcap/the host OS/network stack actually
-appends the outgoing checksum.
+To whit: there isn't any meaningful way to communicate transmit errors from the
+host other than through the collision status bit, whereupon the PERQ would
+attempt to do its own backoff and retries.  That would, frankly, be pointless
+to emulate (although the microsecond clock is in fact supported).  Similarly,
+the host libraries won't pass along any incoming runts, giants, CRC errors or
+other link-layer problems on receive, and every transmission "succeeds."
 
-At the receiver, we validate the CRC of the payload and compare it to the actual
-received FCS.  Initial testing indicates that (at the Ethernet frame) checksums
-are perfect -- but it's likely that any incoming traffic with a bad CRC is just
-being dumped before LibPcap even sees it?  Thus, currently the emulated PERQ
-never sees any incoming runts, giants, CRC errors, collisions or other error
-conditions.
+SharpPcap makes just about ZERO mention of how checksums are handled, and the
+PacketDotNet library doesn't provide an accessor for the FCS bytes separate
+from the payload data.  To the author's surprise and dismay, it seems that SOME
+host adapters DO include the FCS bytes in the payload when "raw" captures are
+used; most do not.  PERQemu now performs a check to dynamically account for this
+and avoid DMA overruns.  CRCs for all packets can be computed and displayed to
+assist in debugging but are turned off in Release builds.
+
+    One small quirk in the PERQ Ethernet stack is that it expects the packet
+    payload to be received (and transferred by DMA) _without_ the checksum
+    bytes but _with_ those 32 bits reflected in the final bit count!  (This
+    is usually hidden from the programmer by the library interface in most
+    PERQ operating systems.)
+
+PERQemu _may_ in future capture "network changed" events so that it can adjust
+to host problems but that remains TBD.
 
 
 Miscellany
@@ -439,4 +444,4 @@ get paid by the word.
 
 
 ---
-Last update: skeezics    Thu Mar  9 19:41:31 PST 2023
+Last update: skeezics    Mon Jun 30 10:28:14 PDT 2025

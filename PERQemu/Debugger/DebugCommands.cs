@@ -18,6 +18,7 @@
 //
 
 using System;
+using System.IO;
 using System.Text;
 using System.Diagnostics;
 using System.Collections.Generic;
@@ -347,7 +348,6 @@ namespace PERQemu
         //
         // Memory and RasterOp
         //
-
         [Command("debug show memory", "Show contents of the PERQ's memory")]
         void ShowMemory(uint address, uint words = 64)
         {
@@ -374,14 +374,14 @@ namespace PERQemu
                 // Words in hex (Todo: add output radix support)
                 for (var j = i; j < i + 8; j++)
                 {
-                    line.AppendFormat("{0:x4} ", PERQemu.Sys.Memory.FetchWord(j));
+                    line.AppendFormat("{0:x4} ", PERQemu.Sys.Memory.Memory[j]);
                 }
 
                 // ASCII representation
                 for (var j = i; j < i + 8; j++)
                 {
-                    var high = (char)((PERQemu.Sys.Memory.FetchWord(j) & 0xff00) >> 8);
-                    var low = (char)(PERQemu.Sys.Memory.FetchWord(j) & 0xff);
+                    var high = (char)((PERQemu.Sys.Memory.Memory[j] >> 8) & 0xff);
+                    var low = (char)(PERQemu.Sys.Memory.Memory[j] & 0xff);
 
                     high = PERQemu.CLI.IsPrintable(high) ? high : '.';
                     low = PERQemu.CLI.IsPrintable(low) ? low : '.';
@@ -390,6 +390,47 @@ namespace PERQemu
                 }
 
                 Console.WriteLine(line);
+            }
+        }
+
+#if DEBUG
+        [Command("debug dump memory", "Dump the entire memory array to a file")]
+        void DumpMemory()
+        {
+            if (!CheckSys()) return;
+
+            // for now:  binary dump to Output/memory.dump
+            // if this is useful, will accept file name, maybe formatting
+            var file = Paths.BuildOutputPath("memory.dump");
+
+            // Well, I *could* just update Core to include a byte[] accessor but
+            // this is a quick and dirty hack that I'll probably remove shortly
+            // so I won't mess with Memory for now.
+
+            byte[] mem = new byte[PERQemu.Sys.Memory.MemSize * 2];  // KW -> KB
+            var j = 0;
+
+            for (var i = 0; i < PERQemu.Sys.Memory.MemSize; i++)
+            {
+                var word = PERQemu.Sys.Memory.Memory[i];
+                mem[j++] = (byte)(word >> 8);
+                mem[j++] = (byte)word;
+                // Note: swap those if you want to run "strings" on the output :-)
+            }
+
+            try
+            {
+                using (var fs = new FileStream(file, FileMode.Create, FileAccess.Write))
+                {
+                    fs.Write(mem, 0, mem.Length);
+                }
+
+                // Made it!
+                Console.WriteLine($"Saved memory contents to {file}.");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Failed to save output: {e.Message}");
             }
         }
 
@@ -412,7 +453,6 @@ namespace PERQemu
             }
         }
 
-#if DEBUG
         [Command("debug set memory", "Write a specific value in the PERQ's memory")]
         void SetMemory(uint address, ushort val)
         {
@@ -426,11 +466,19 @@ namespace PERQemu
 
             PERQemu.Sys.Memory.StoreWord((int)address, val);
         }
+#endif
 
-        [Command("debug show memstate", "Dump the memory controller state")]
+        [Command("debug show memory state", "Dump the memory controller state")]
         void ShowMemQueues()
         {
             if (CheckSys()) PERQemu.Sys.Memory.DumpQueues();
+        }
+
+#if DEBUG
+        [Command("debug show memory alignment stats", "Show misaligned address stats")]
+        void ShowMemStats()
+        {
+            if (CheckSys()) PERQemu.Sys.CPU.ShowMemStats();
         }
 
         // The fully-instrumented debug version of the code was removed to a special
@@ -548,6 +596,12 @@ namespace PERQemu
         void LoadQCodes(QCodeSets qcodes)
         {
             QCodeHelper.LoadQCodeSet(qcodes);
+        }
+
+        [Command("debug dump qcodes")]
+        void DumpQcodes()
+        {
+            QCodeHelper.DumpContents();
         }
 
         /// <summary>
@@ -988,9 +1042,7 @@ namespace PERQemu
         [Command("debug dump harddisk")]
         void ShowHardDiskStatus()
         {
-            if (!CheckSys()) return;
-
-            PERQemu.Sys.IOB.DiskController.DumpStatus();
+            if (CheckSys()) PERQemu.Sys.IOB.DiskController.DumpStatus();
         }
 
         [Command("debug dump streamer")]
@@ -1028,23 +1080,56 @@ namespace PERQemu
             var block = dev.Read(pos);
 
             Console.WriteLine($"Block {pos} is type {block.Type}:");
+            ShowBlock(block.Data);
+        }
 
+        [Conditional("DEBUG")]
+        [Command("debug show disk block", "Show contents of a hard disk block")]
+        void ShowDiskBlock(int cyl, int head, int sect, int unit = 1)
+        {
+            if (!CheckSys()) return;
+
+            if (PERQemu.Sys.Volumes[unit] == null)
+            {
+                Console.WriteLine($"No disk mounted at unit {unit}");
+                return;
+            }
+
+            var dev = PERQemu.Sys.Volumes[unit] as IO.DiskDevices.HardDisk;
+
+            if (cyl >= dev.Geometry.Cylinders || head >= dev.Geometry.Heads || sect >= dev.Geometry.Sectors)
+            {
+                Console.WriteLine($"Block C{cyl}/H{head}/S{sect} is out of range");
+                return;
+            }
+
+            var block = dev.Read((ushort)cyl, (byte)head, (ushort)sect);
+            Console.WriteLine("Logical header:");
+            // todo: should interpret this as an actual logical header!
+            ShowBlock(block.Header);
+
+            Console.WriteLine("Data:");
+            ShowBlock(block.Data);
+        }
+
+        void ShowBlock(byte[] block)
+        {
             // Format and display 16 bytes per line
-            for (var i = 0; i < block.Data.Length; i += 16)
+            for (var i = 0; i < block.Length; i += 16)
             {
                 var line = new StringBuilder();
                 line.AppendFormat("{0:x3}: ", i);
 
                 for (var j = i; j < i + 16; j++)
                 {
-                    line.AppendFormat("{0:x2} ", block.Data[j]);
+                    line.AppendFormat("{0:x2} ", block[j]);
                 }
 
                 // ASCII representation
                 for (var j = i; j < i + 16; j += 2)
                 {
-                    var high = (char)block.Data[j];
-                    var low = (char)block.Data[j + 1];
+                    var high = (char)block[j];
+                    var low = (char)block[j + 1];
 
                     high = PERQemu.CLI.IsPrintable(high) ? high : '.';
                     low = PERQemu.CLI.IsPrintable(low) ? low : '.';
@@ -1109,10 +1194,17 @@ namespace PERQemu
         //
 
         // [Conditional("DEBUG")]
+        [Command("debug dump dma registers")]
+        void DumpDMARegisters()
+        {
+            if (CheckSys()) PERQemu.Sys.IOB.DMARegisters.DumpDMARegisters();
+        }
+
+        // [Conditional("DEBUG")]
         [Command("debug dump scheduler queue")]
         void DumpScheduler()
         {
-            PERQemu.Sys.Scheduler.DumpEvents("CPU");
+            if (CheckSys()) PERQemu.Sys.Scheduler.DumpEvents("CPU");
         }
 
         // [Conditional("DEBUG")]
@@ -1120,44 +1212,6 @@ namespace PERQemu
         void DumpTimers()
         {
             HighResolutionTimer.DumpTimers();
-        }
-
-        [Command("debug dump dma registers")]
-        void DumpDMARegisters()
-        {
-            PERQemu.Sys.IOB.DMARegisters.DumpDMARegisters();
-        }
-
-        [Conditional("DEBUG")]
-        [Command("debug dump qcodes")]
-        void DumpQcodes()
-        {
-            QCodeHelper.DumpContents();
-        }
-
-        [Conditional("DEBUG")]
-        [Command("debug unfrob")]
-        void UnfrobTest(int address)
-        {
-            // Quick and dirty test of the DMARegisters Unfrob routine -- doesn't
-            // require instantiating the DMARegisters as a proper test would but
-            // is sufficient to make sure I haven't borked everything up.  This
-            // can probably be removed once I'm satisfied things are working fine.
-
-            Console.WriteLine($"Address: {address:x8} not: {~address:x8}");
-
-            ExtendedRegister r = new ExtendedRegister(4, 16);   // 20-bit for testing
-            r.Lo = (ushort)(address);
-            r.Hi = (address >> 16);
-            Console.WriteLine($"Register encoding: {r}");
-
-            // Invert and unfrob the low 10 bits on IOB/CIO
-            var unfrobbed = ~(r.Value ^ 0x3ff) & 0xfffff;
-            Console.WriteLine($"Unfrobbed std: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
-
-            // EIO now goes straight through (20 or 24 bit)
-            unfrobbed = r.Value;
-            Console.WriteLine($"Unfrobbed EIO: 0x{unfrobbed:x6} ({Convert.ToString(unfrobbed, 8)})");
         }
 
 #if DEBUG

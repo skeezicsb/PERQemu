@@ -71,6 +71,11 @@ namespace PERQemu.Processor
             /// </summary>
             public void PushLo(ushort address)
             {
+#if DEBUG
+                if (StackFull)
+                    Log.Warn(Category.Sequencer, "Call stack overflow! PushLo clobbering {0:x4}",
+                                                 _loStack[_loStackPtr]);
+#endif
                 if (_loStackPtr < StackLimit) { _loStackPtr++; }
 
                 _loStack[_loStackPtr] = (ushort)(address & 0xfff);
@@ -105,6 +110,11 @@ namespace PERQemu.Processor
             /// </summary>
             public void PushFull(ushort address)
             {
+#if DEBUG
+                if (StackFull)
+                    Log.Warn(Category.Sequencer, "Call stack overflow! PushFull clobbering {0:x4}",
+                                                 _loStack[_loStackPtr] & _hiStack[_hiStackPtr]);
+#endif
                 if (_loStackPtr < StackLimit) { _loStackPtr++; }
                 if (_hiStackPtr < StackLimit) { _hiStackPtr++; }
 

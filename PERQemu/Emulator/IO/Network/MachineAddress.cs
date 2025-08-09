@@ -85,12 +85,14 @@ namespace PERQemu.IO.Network
         // EIO writes them separately
         public byte LowFifth
         {
-            set { _mac[4] = value; }
+            get { return _mac[4]; }
+            set { _mac[4] = value; _physAddr = new PhysicalAddress(_mac); }
         }
 
         public byte LowSixth
         {
-            set { _mac[5] = value; }
+            get { return _mac[5]; }
+            set { _mac[5] = value; _physAddr = new PhysicalAddress(_mac); }
         }
 
         /// <summary>

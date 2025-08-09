@@ -73,6 +73,9 @@ namespace PERQemu.IO
                 new DMAChannel(ChannelName.NetRecv),
                 new DMAChannel(ChannelName.Idle)
             };
+
+            // LOOK WHAT YOU MADE ME DO, PNX 5.
+            _unfrobMask = 0xfffffc & CPUBoard.CPUMask;
         }
 
         public void Clear()
@@ -92,7 +95,7 @@ namespace PERQemu.IO
             _portToChannelAction.Add(hdrHi, LoadHeaderHigh);
             _portToChannelAction.Add(hdrLo, LoadHeaderLow);
 
-            Log.Info(Category.DMA, "DMA mapping assigned for ports {0:x}, {1:x}, {2:x}, {3:x}",
+            Log.Debug(Category.DMA, "DMA mapping assigned for ports {0:x}, {1:x}, {2:x}, {3:x}",
                                     dataHi, dataLo, hdrHi, hdrLo);
         }
 
@@ -184,16 +187,20 @@ namespace PERQemu.IO
         /// not 0, IOB(LHeadAdrH);          ! Send higher 4 bits of logical
         ///                                 ! header address to channel ctrl.
         ///                                 ! Remember, these bits are inverted.
+        /// 
+        /// NB: All DMA transfers are quad-word aligned, but PNX5 appears to be
+        /// sloppy with the low address bits and may not clear the two LSBs!?
+        /// Fix that here to avoid misalignments.  Ugh.
         /// </remarks>
         public int Unfrob(ExtendedRegister addr)
         {
             if (PERQemu.Sys.IOB.IsEIO)
             {
-                return addr.Value;
+                return addr.Value & _unfrobMask;
             }
 
             // Hi returns the upper 4 bits shifted; Lo needs to be unfrobbed
-            int unfrobbed = ~(addr.Value ^ 0x3ff) & CPUBoard.CPUMask;
+            int unfrobbed = ~(addr.Value ^ 0x3ff) & _unfrobMask;
 
             Log.Detail(Category.DMA, "Unfrobbed {0:x} -> {1:x}", addr.Value, unfrobbed);
 
@@ -241,6 +248,7 @@ namespace PERQemu.IO
             public byte HeaderCount;
         }
 
+        int _unfrobMask;
         DMAChannel[] _channels;
         Dictionary<byte, LoadRegisterDelegate> _portToChannelAction;
     }

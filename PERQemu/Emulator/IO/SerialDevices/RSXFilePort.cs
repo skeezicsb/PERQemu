@@ -93,11 +93,8 @@ namespace PERQemu.IO.SerialDevices
 
         public override void Reset()
         {
-            if (_sendEvent != null)
-            {
-                _system.Scheduler.Cancel(_sendEvent);
-                _sendEvent = null;
-            }
+            _system.Scheduler.Cancel(_sendEvent);
+            _sendEvent = null;
 
             if (_fileStream != null)
             {

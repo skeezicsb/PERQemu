@@ -59,11 +59,8 @@ namespace PERQemu.IO.DiskDevices
         void ResetFlags()
         {
             // Figure out what stuff gets reset, but assume everything?
-            if (_busyEvent != null)
-            {
-                _system.Scheduler.Cancel(_busyEvent);
-                _busyEvent = null;
-            }
+            _system.Scheduler.Cancel(_busyEvent);
+            _busyEvent = null;
 
             _regSelect = 0;
 
@@ -120,15 +117,16 @@ namespace PERQemu.IO.DiskDevices
                     // Loads byte into the register file and increments the
                     // address pointer.  Data is inverted.
                     //
-                    if (_regSelect > _registerFile.Length - 1)
+                    if (_regSelect >= _registerFile.Length)
                     {
                         Log.Warn(Category.HardDisk, "Register pointer overflow!");
                         _regSelect = 0;
                     }
 
+                    _registerFile[_regSelect] = (byte)~value;
                     Log.Detail(Category.HardDisk, "MFM register file[{0}]=0x{1:x2}",
-                                                  _regSelect, (byte)~value);
-                    _registerFile[_regSelect++] = (byte)~value;
+                                                  _regSelect, _registerFile[_regSelect]);
+                    _regSelect++;
                     break;
 
                 case 0xd2:      // SMCTL
@@ -342,7 +340,7 @@ namespace PERQemu.IO.DiskDevices
             // Sanity checks
             if (!CheckBlockParameters(cyl, head))
             {
-                FinishCommand(delay, SMStatus.SMError);
+                FinishCommand(delay, SMStatus.PHMismatch);
                 return;
             }
 
@@ -402,8 +400,11 @@ namespace PERQemu.IO.DiskDevices
                       "MFM sector {0} from {1}/{2}/{3}, to memory at 0x{4:x6} (LH at 0x{5:x6})",
                       _command, cyl, head, sector, data, header);
 
-            // For MFM, no separate flag to ignore mid-sector interrupts
-            if (_flags.HasFlag(SMControl.InterruptsOn))
+            // For MFM, no separate flag to ignore mid-sector interrupts.  EXCEPT
+            // that apparently there IS, because PNX 5 sets the "T" bit in order
+            // to turn off mid-sector interrupts even though the documentation
+            // doesn't mention this.  Confirmed in NDSK7.MAS.
+            if (_flags.HasFlag(SMControl.InterruptsOn) && !_flags.HasFlag(SMControl.T))
             {
                 MidSectorFinish(delay, SMStatus.Idle);
             }
@@ -432,7 +433,7 @@ namespace PERQemu.IO.DiskDevices
 
             if (!CheckBlockParameters(cyl, head))
             {
-                FinishCommand(delay, SMStatus.SMError);
+                FinishCommand(delay, SMStatus.PHMismatch);
                 return;
             }
 
@@ -464,7 +465,7 @@ namespace PERQemu.IO.DiskDevices
                       "MFM sector {0} to {1}/{2}/{3}, from memory at 0x{4:x6}",
                       _command, cyl, head, sector, data);
 
-            if (_flags.HasFlag(SMControl.InterruptsOn))
+            if (_flags.HasFlag(SMControl.InterruptsOn) && !_flags.HasFlag(SMControl.T))
             {
                 MidSectorFinish(delay, SMStatus.Idle);
             }
@@ -693,7 +694,7 @@ namespace PERQemu.IO.DiskDevices
             None = 0x0,
             Enable = 0x08,          // Enable controller when H (Reset when L)
             InterruptsOn = 0x10,    // Disk Interrupt Enable when H
-            T = 0x20,               // T bit: ?
+            T = 0x20,               // T bit: PNX 5 uses this to disable mid-sector int!
             Format = 0x40,          // Write sector marks on the track when H
             T2 = 0x80               // T2 bit: ?
         }
@@ -801,7 +802,7 @@ namespace PERQemu.IO.DiskDevices
                 // A small detail
                 _status.DriveType = (int)DeviceType.Disk5Inch;
 
-                Log.Info(Category.HardDisk, "Attached disk '{0}'", _drives[unit].Info.Name);
+                Log.Info(Category.HardDisk, "Attached drive {0} (unit {1})", _drives[unit].Info.Name, unit);
             }
 
             /// <summary>
@@ -842,7 +843,7 @@ namespace PERQemu.IO.DiskDevices
                 }
 
                 // Step count from the microcode is one less than the desired number!
-                _seekCount++;
+                _seekCount = (_seekHi << 6 | _seekLo) + 1;
 
                 if (_seekCount <= 0)
                 {
@@ -866,16 +867,29 @@ namespace PERQemu.IO.DiskDevices
                 // Set our destination and check it / clip to range
                 if (_seekDir > 0)
                 {
-                    _cylinder = (ushort)Math.Min(SelectedDrive.CurCylinder + _seekCount,
-                                                 SelectedDrive.Geometry.Cylinders - 1);
+                    // Don't seek past the end!
+                    if (SelectedDrive.CurCylinder + _seekCount >= SelectedDrive.Geometry.Cylinders)
+                    {
+                        _seekCount = SelectedDrive.Geometry.Cylinders - SelectedDrive.CurCylinder;
+                        Log.Warn(Category.HardDisk, "MFM unit {0} seek past last cylinder!  Clipped to {1} steps",
+                                                    _selected, _seekCount);
+                    }
+                    _cylinder = (ushort)(SelectedDrive.CurCylinder + _seekCount);
                 }
                 else
                 {
-                    _cylinder = (ushort)Math.Max(SelectedDrive.CurCylinder - _seekCount, 0);
+                    // Don't slam into the spindle stop! :-)
+                    if (_seekCount > SelectedDrive.CurCylinder)
+                    {
+                        _seekCount = SelectedDrive.CurCylinder;
+                        Log.Warn(Category.HardDisk, "MFM unit {0} seek past first cylinder!  Clipped to {1} steps",
+                                                    _selected, _seekCount);
+                    }
+                    _cylinder = (ushort)(SelectedDrive.CurCylinder - _seekCount);
                 }
 
                 Log.Debug(Category.HardDisk, "MFM unit {0} starting seek from {1} to {2} ({3} steps)",
-                                            _selected, SelectedDrive.CurCylinder, _cylinder, _seekCount);
+                                             _selected, SelectedDrive.CurCylinder, _cylinder, _seekCount);
 
                 _seekEvent = _control._system.Scheduler.Schedule(StepRate, SeekStepPulse);
             }
@@ -903,6 +917,7 @@ namespace PERQemu.IO.DiskDevices
                 }
                 else
                 {
+                    _seekHi = _seekLo = 0;
                     _seekEvent = null;
                     _seekState = SeekState.WaitingForSeekComplete;
                 }
@@ -1003,13 +1018,13 @@ namespace PERQemu.IO.DiskDevices
                         if (rwc && SelectedDrive.Geometry.Heads > 7)
                         {
                             _head = (byte)(val & 0x0f);
-                            Log.Debug(Category.HardDisk, "MFM disk control: unit {0}, dir {1}, head {2}",
+                            Log.Debug(Category.HardDisk, "DIB control: unit {0}, dir {1}, head {2}",
                                                         _selected, _seekDir, _head);
                         }
                         else
                         {
                             _head = (byte)(val & 0x07);
-                            Log.Debug(Category.HardDisk, "MFM disk control: unit {0}, dir {1}, rwc {2}, head {3}",
+                            Log.Debug(Category.HardDisk, "DIB control: unit {0}, dir {1}, rwc {2}, head {3}",
                                                         _selected, _seekDir, rwc, _head);
                         }
 
@@ -1018,19 +1033,22 @@ namespace PERQemu.IO.DiskDevices
                         break;
 
                     case RegSelect.SeekHiReg:
-                        _seekCount = (val & 0x3f) << 6;
-                        Log.Detail(Category.HardDisk, "DIB: seek count (high): 0x{0:x}", _seekCount);
+                        // These are direct six bit inputs to the STEP20 PAL
+                        _seekHi = (byte)(val & 0x3f);
+                        Log.Detail(Category.HardDisk, "DIB seek count (high): 0x{0:x}", _seekHi);
                         break;
 
                     case RegSelect.SeekLowReg:
-                        _seekCount |= (val & 0x3f);
-                        Log.Detail(Category.HardDisk, "DIB: seek count (low): 0x{0:x} ({1})", (val & 0x3f), _seekCount);
+                        // Six bit input to the STEP10 PAL
+                        _seekLo = (byte)(val & 0x3f);
+                        Log.Detail(Category.HardDisk, "DIB seek count (low): 0x{0:x}", _seekLo);
 
                         StartSeek();
                         break;
 
                     case RegSelect.Illegal:
-                        Log.Warn(Category.HardDisk, "DIB: write to illegal register (ignored)");
+                        // No point in warning; select Y3 on the 74S139 is NC, so no harm no foul
+                        Log.Debug(Category.HardDisk, "DIB: write to illegal register (ignored)");
                         break;
 
                     default:
@@ -1059,11 +1077,10 @@ namespace PERQemu.IO.DiskDevices
                 _status.OnCylinder = _status.UnitReady && (_seekState == SeekState.Idle);
                 _status.Track0 = (_cylinder == 0);
 
-                Log.Detail(Category.HardDisk, "DIB status change: 0x{0:x3}", _status.Current);
-                Log.Debug(Category.HardDisk, "DIB {0}", _status);      // HW status string
+                Log.Debug(Category.HardDisk, "DIB status: 0x{0:x3} {1}", _status.Current, _status);
 
                 // Ready changes or OnCylinder asserted trigger an interrupt
-                if (oldReady != _status.UnitReady || (oldOnCyl == false && _status.OnCylinder == true))
+                if ((oldReady != _status.UnitReady) || (oldOnCyl == false && _status.OnCylinder == true))
                 {
                     _control.StatusChange();
                 }
@@ -1090,9 +1107,9 @@ namespace PERQemu.IO.DiskDevices
             {
                 public int DriveType;       // <300> 01=Undefined, 00=MFM / 5.25"
                 public bool Index;          // <100> from drive
-                public bool UnitReady;      // <080> aka DskFault or NotFault
+                public bool UnitReady;      // <080> aka DskReady or NotUnitReady
                 public bool OnCylinder;     // <040> aka DskOnCyl or NotOnCyl
-                public bool DriveFault;     // <020> aka DskReady or NotUnitReady
+                public bool DriveFault;     // <020> aka DskFault or NotFault
                 public bool Track0;         // <010> aka DskSeekErr or NotTrk0orNotSker
 
                 public int Current
@@ -1162,6 +1179,8 @@ namespace PERQemu.IO.DiskDevices
 
             int _seekDir;
             int _seekCount;
+            byte _seekHi;
+            byte _seekLo;
             SeekState _seekState;
             SchedulerEvent _seekEvent;
 

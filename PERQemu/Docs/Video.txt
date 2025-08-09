@@ -284,13 +284,32 @@ VSync set in the second band, which throws off the emulator's state machine.
 Why, ICL?  Why?  Somehow all of these crazy variations in the control register
 programming must work on the hardware, but I cannot fathom why they do it this
 way, when POS, MPOS and Accent, the ROMs and all the diagnostic microcode pretty
-consistently does it the same way.
+consistently does it the same way.  All of it seems to stem from yet another
+different interpretation of a poorly documented or misunderstood implementation:
+the StartOver bit is *not actually used by the hardware*, and ICL interprets it
+as the _beginning_ of the display list whereas the other OSes use it to tell the
+software to restart the display list at the _end_ of the band.  In the emulator
+the scanline counter affects the placement on-screen of the cursor in Y, while
+the hardware doesn't actually track that in absolute terms.
 
 The workaround in place for PNX 1 has been extended slighly to let PNX 2 drive
 the display properly now too, while the PNX 3 fix involves simply forcing the
 VSync bit back on when the control register is _cleared_ for the second band.
 (The PNX 3 fix is similar to the Accent S6 glitch where they program a bogus
 value that tries to set ALL the bits, rather than none.  Sigh.)
+
+This was subtly changed in v0.7.8 to NOT force the register bit back on (affects
+status, which PNX and Accent check A LOT) but remain in VBlank for both bands.
+It was thought that PNX 5's aggressive checking of the status register might be
+causing the clock processing or "lbolt" interrupt to be off, but no, it didn't
+change a damn thing.  POS sets the VBlank bit on BOTH fields, but it doesn't
+appear to matter either way as the hardware (VST PROM) just looks at the rising
+edge and sets up the VBlank signal with a fixed duration based on clock cycle
+count (i.e., the software never cares about front/back porch and sync pulse
+timings, the PROMs take care of that in both H and V).  That must happen early
+enough in the VBlank period that not setting the bit in the second band doesn't
+screw up the visible display, but it's a gratuitous change that accomplishes
+nothing.  Sigh.
 
 
 The first four CursorFunctions just show the cursor over a blank screen.  This
@@ -311,6 +330,7 @@ the UserGuide.
 
 Note that the "CRT signals" register bit for LandscapeDisplay is inverted
 (i.e., active low) so the code is a little twisted.  Just trust that it works.
+I renamed it to PortraitDisplay in v0.7.x because it drove me nuts.
 
 
 "Image Performance in CRT Displays" by Kenneth Compton, SPIE Press, 2003 has a
@@ -325,4 +345,4 @@ rendered by Windows (on a Sun-branded 23" display using the same panel).  Sigh.
 
 
 ---
-Last update: skeezics    Sat Apr  5 13:43:22 PDT 2025
+Last update: skeezics    Thu Jul 31 15:47:45 PDT 2025

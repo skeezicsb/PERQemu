@@ -74,6 +74,7 @@ namespace PERQemu.UI
             Console.WriteLine($"Canon output file format:   {Settings.CanonFormat}");
             Console.WriteLine($"Canon default paper type:   {Settings.CanonPaperSize}");
             Console.WriteLine($"Canon default resolution:   {Settings.CanonResolution}dpi");
+            Console.WriteLine($"EIO RTC chip year offset:   {Settings.RTCYearOffset}");
             Console.WriteLine();
             Console.Write("Host serial port A device:  ");
             Console.WriteLine(Settings.RSADevice == string.Empty ? "<unassigned>" :
@@ -471,6 +472,26 @@ namespace PERQemu.UI
             }
 
             QuietWrite("Ethernet device unassigned.");
+        }
+
+        [Command("settings rtc offset", "Set the base year for the EIO RTC chip")]
+        public void SetRTCOffset(int year)
+        {
+            // Chip only stores 2 digits, so range check
+            var offset = DateTime.Now.Year - year;
+
+            if (offset < 0 || offset > 99)
+            {
+                Console.WriteLine($"Year offset invalid; must be between 1980 and {DateTime.Now.Year}.");
+                return;
+            }
+
+            if (year != Settings.RTCYearOffset)
+            {
+                Settings.RTCYearOffset = year;
+                Settings.Changed = true;
+                QuietWrite($"EIO RTC Offset is now {year}.");
+            }
         }
 
         // Pure cheese.  Don't spew messages when reading on startup.

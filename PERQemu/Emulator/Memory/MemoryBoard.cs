@@ -17,12 +17,15 @@
 // along with PERQemu.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 
 namespace PERQemu.Memory
 {
-
+    /// <summary>
+    /// Memory cycle types (from the microinstruction SF encoding).
+    /// </summary>
     public enum MemoryCycle
     {
         None = 0x0,
@@ -94,7 +97,7 @@ namespace PERQemu.Memory
             _mdiQueue.Reset();
             _mdoQueue.Reset();
 
-            Log.Info(Category.Memory, "Reset");
+            Log.Info(Category.Memory, "Board reset");
         }
 
         public int MemSize => _memSize;
@@ -125,7 +128,7 @@ namespace PERQemu.Memory
             // Bump cycle counter
             _Tstate = (_Tstate + 1) & 0x3;
 
-            Log.Detail(Category.MemCycle, "Tick! T{0} cycle={1}", _Tstate, cycleType);
+            Log.Detail(Category.Memory, "Tick! T{0} cycle={1}", _Tstate, cycleType);
 
             // Segregate Fetches and Stores into separate queues
             if (IsFetch(cycleType))
@@ -149,14 +152,7 @@ namespace PERQemu.Memory
             // Set the wait flag if we need to abort the current instruction.
             // If output is pending, we never wait; otherwise, let the combined
             // status of the request queues determine our result.
-            if (MDONeeded)
-            {
-                _wait = false;
-            }
-            else
-            {
-                _wait = _mdiQueue.Wait || _mdoQueue.Wait;
-            }
+            _wait = !MDONeeded && (_mdiQueue.Wait || _mdoQueue.Wait);
         }
 
         /// <summary>
@@ -166,9 +162,8 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Tock(ushort input)
         {
-            Log.Detail(Category.MemCycle, "Tock! T{0} mdoNeeded={1} data={2:x4}",
-                                          _Tstate, MDONeeded, input);
-
+            Log.Detail(Category.Memory, "Tock! T{0} mdoNeeded={1} data={2:x4}",
+                                        _Tstate, MDONeeded, input);
             // Execute the store
             if (_mdoQueue.Valid)
             {
@@ -185,13 +180,8 @@ namespace PERQemu.Memory
         {
             // If currently executing a Fetch4, start the refill on the
             // next T2 state (i.e., next cycle)
-            if (_mdiQueue.Cycle == MemoryCycle.Fetch4 && _Tstate == 1)
-            {
-                return true;
-            }
-            return false;
+            return (_mdiQueue.Cycle == MemoryCycle.Fetch4 && _Tstate == 1);
         }
-
 
         /// <summary>
         /// Requests a specific memory cycle type at the specified address.
@@ -200,8 +190,8 @@ namespace PERQemu.Memory
         /// </summary>
         public void RequestMemoryCycle(int address, MemoryCycle cycleType)
         {
-            Log.Debug(Category.MemCycle, "Requested {0} in T{1} addr={2:x6}",
-                                          cycleType, _Tstate, address);
+            Log.Debug(Category.Memory, "Requested {0} in T{1} addr={2:x6}",
+                                        cycleType, _Tstate, address);
 
             //
             // Queue up the request.  We're in no-man's land at the bottom of the CPU cycle,
@@ -231,7 +221,7 @@ namespace PERQemu.Memory
 
             // Buuuuut... to be useful, it has to be byte swapped.
             // Welp, there goes our salvage, guys.
-            return ((data & 0x00ff00ff00ff00ff) << 8) | ((data & 0xff00ff00ff00ff00) >> 8);
+            return ((data << 8) & 0xff00ff00ff00ff00) | ((data >> 8) & 0x00ff00ff00ff00ff);
         }
 
         /// <summary>
@@ -245,13 +235,20 @@ namespace PERQemu.Memory
 
             Log.Detail(Category.Memory, "Fetch addr {0:x6} --> {1:x4}",
                                          address & _memSizeMask, data);
-
             return data;
         }
 
         /// <summary>
         /// Stores one word into memory (immediate).
         /// </summary>
+        /// <remarks>
+        /// In the Accent kernel init microcode, there is a note in the memory
+        /// sizing routine that says memory boards >2MB do _not_ wrap around, but
+        /// no mention of what happens to fetches/stores to addresses that are
+        /// out of bounds.  Here we'll try ignoring stores but clip fetches in
+        /// FetchWord() above, to see if the 24-bit kernel will properly size and
+        /// use the 4MB (and larger?) boards.  Affects DMA too.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void StoreWord(int address, ushort data)
         {
@@ -265,45 +262,28 @@ namespace PERQemu.Memory
         /// <summary>
         /// Return true if the memory request type is a Fetch.
         /// </summary>
+        /// <remarks>
+        /// The SF encodings are very specific: the hardware/firmware uses the
+        /// fact that all Fetch types are even-numbered, Stores types are odd.
+        /// In case you were wondering.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsFetch(MemoryCycle c)
         {
-            return c == MemoryCycle.Fetch ||
-                    c == MemoryCycle.Fetch2 ||
-                    c == MemoryCycle.Fetch4 ||
-                    c == MemoryCycle.Fetch4R;
+            return (((int)c & 0x1) == 0);
         }
 
-#if DEBUG
+        //[Conditional("DEBUG")]
         public void DumpQueues()
         {
             _mdiQueue.DumpQueue();
             _mdoQueue.DumpQueue();
         }
-#endif
-
-        #region Implementation notes
-        //
-        // All references to MDI (Memory Data IN) and MDO (Memory Data OUT) are from
-        // the CPU's point of view - the opposite of the Memory Board's (and the
-        // hardware schematics') point of view!
-        //
-        // Memory requests from the CPU/RasterOp unit are queued up according to
-        // some elaborate timing rules.  Because there are several scenarios where
-        // requests may overlap, fetches and stores are queued up in separate FIFOs.
-        // (This is for emulation only; the hardware doesn't do it that way.)
-        //
-        // Currently the IO / DMA subsystem cheats and performs its memory accesses
-        // directly, but it could at some point be integrated -- allowing us to more
-        // accurately emulate the real PERQ which must give up processor cycles for
-        // DMA. Thus, the "Hold" field of the microinstruction is basically ignored.
-        //
-        #endregion
 
 
         Core _memory;
-        MemoryController _mdiQueue;		// Queue for Fetch requests
-        MemoryController _mdoQueue;     // Queue for Store requests
+        MemoryController _mdiQueue;         // Queue for Fetch requests
+        MemoryController _mdoQueue;         // Queue for Store requests
         VideoController _videoController;
 
         int _memSize;
@@ -318,3 +298,22 @@ namespace PERQemu.Memory
         PERQSystem _system;
     }
 }
+
+/*
+    Notes:
+
+    All references here to MDI (Memory Data IN) and MDO (Memory Data OUT) are
+    from the CPU's point of view - the opposite of the Memory Board's (and the
+    hardware schematics') point of view!
+
+    Memory requests from the CPU/RasterOp unit are queued up according to
+    some elaborate timing rules.  Because there are several scenarios where
+    requests may overlap, fetches and stores are queued up in separate FIFOs.
+    (This is for emulation only; the hardware doesn't do it that way.)
+
+    Currently the IO / DMA subsystem cheats and performs its memory accesses
+    directly, but it could at some point be integrated -- allowing us to more
+    accurately emulate the real PERQ which must give up processor cycles for
+    DMA. Thus, the "Hold" field of the microinstruction is basically ignored.
+
+*/

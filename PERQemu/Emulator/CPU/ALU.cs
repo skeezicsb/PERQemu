@@ -27,7 +27,7 @@ namespace PERQemu.Processor
         /// <summary>
         /// Represents the ALU's flags.  These are used internally by the
         /// emulator; they are reflected in the micromachine through the
-        /// microstate register.
+        /// microstate register and used by the sequencer as jump conditions.
         /// </summary>
         public struct ALUFlags
         {
@@ -85,6 +85,7 @@ namespace PERQemu.Processor
                 _r = new ExtendedRegister((_bits - 16), 16);
                 _oldR = new ExtendedRegister((_bits - 16), 16);
                 _flags = new ALUFlags();
+                _oldFlags = new ALUFlags();
             }
 
             public void Reset()
@@ -110,11 +111,11 @@ namespace PERQemu.Processor
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Execute(ALUOperation op, int amux, int bmux)
             {
-                Log.Detail(Category.ALU, "In: Amux={0} Bmux={1}", amux, bmux);
+                Log.Detail(Category.ALU, "In: Amux={0} Bmux={1} Op={2}", amux, bmux, op);
 
                 // Reset carry flag (arithmetic ops will set it as necessary)
                 // but save the original value for use in addition/subtraction w/carry
-                int lastCarry15 = _flags.Cry ? 1 : 0;
+                int lastCarry15 = _oldFlags.Cry ? 1 : 0;
 
                 bool carryH = false;
                 bool carry15 = false;
@@ -197,28 +198,30 @@ namespace PERQemu.Processor
                         _r.Value = (amux - bmux);
                         arithX = true;
 
-                        carryH = !((amux - bmux) < 0);
+                        carryH = ((amux - bmux) >= 0);
                         carry15 = ((amux & 0xffff) - (bmux & 0xffff) >= 0);
                         break;
 
                     case ALUOperation.AminusBminusCarry:
-                        _r.Value = (amux - bmux - (~lastCarry15 & 0x1));
+                        // invert for use as a borrow bit
+                        lastCarry15 = (~lastCarry15 & 0x1);
+
+                        _r.Value = (amux - bmux - lastCarry15);
                         arithX = true;
 
-                        carryH = !((amux - bmux - (~lastCarry15 & 0x1)) < 0);
-                        carry15 = ((amux & 0xffff) - (bmux & 0xffff) - (~lastCarry15 & 0x1) >= 0);
+                        carryH = ((amux - bmux - lastCarry15) >= 0);
+                        carry15 = ((amux & 0xffff) - (bmux & 0xffff) - lastCarry15 >= 0);
                         break;
 
                     default:
                         throw new UnimplementedInstructionException($"Unhandled ALU operation {op:x1}");
                 }
 
-                // Inputs to the condition code PAL, used to build an index into
-                // the PAL array.  Are these the CCSR0 bits in the uState register?
+                // Inputs to build an index into the condition code PAL
                 bool r15 = (_r.Value & 0x8000) == 0;
                 bool LAeqB = (_r.Value & 0xffff) != 0;      // 16-bit equality
-                bool Lb15 = (bmux & 0x8000) != 0;
                 bool La15 = (amux & 0x8000) != 0;
+                bool Lb15 = (bmux & 0x8000) != 0;
 
                 int index = (r15 ? 0x1 : 0) |
                             (La15 ? 0x2 : 0) |

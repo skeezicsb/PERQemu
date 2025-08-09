@@ -52,12 +52,7 @@ namespace PERQemu.IO
 
             if (_sys.Config.IOOptions.HasFlag(IOOptionType.Ether))
             {
-                if (string.IsNullOrEmpty(Settings.EtherDevice) || Settings.EtherDevice == "null")
-                {
-                    // A minimal interface to let Accent boot properly
-                    _ethernet = new NullEthernet(_sys);
-                }
-                else
+                if (!string.IsNullOrEmpty(Settings.EtherDevice) && Settings.EtherDevice != "null")
                 {
                     try
                     {
@@ -68,10 +63,13 @@ namespace PERQemu.IO
                     {
                         // Failed to open - bad device, or no permissions?
                         Log.Warn(Category.All, "{0}; no Ethernet available.", e.Message);
-
-                        // Fall back to the fake one and continue
-                        _ethernet = new NullEthernet(_sys);
                     }
+                }
+
+                // Fall back and continue
+                if (_ethernet == null)
+                {
+                    _ethernet = new NullEthernet(_sys);
                 }
                 RegisterPorts(_etherPorts);
             }

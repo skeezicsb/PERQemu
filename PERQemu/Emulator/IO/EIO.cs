@@ -43,12 +43,10 @@ namespace PERQemu.IO
             _z80CycleTime = 250;    // 4Mhz!
 
             //
-            // The EIO schematic very clearly shows that the board contains 8x
-            // 16Kx1 SRAMs (2167s), but the EIO sources have very strange values
-            // for the base address and length.  It must be that they reserve
-            // around 10K for loading from the Zboot file at startup, and only
-            // use 6K for data?  The MEM4 decoder PAL shows that the 16K range
-            // from 0x4000:0x7fff is mapped to RAM select.  Hmm.
+            // The EIO board contains 16K of SRAMs (2167s), with RAM select mapped
+            // by the MEM4 decoder PAL from 0x4000:0x7fff.  In the EIO Z80 sources
+            // the data area starts at 0x6800, leaving around 10K for loading code
+            // from the Zboot file at startup, and 6K for data, buffers, etc.
             // 
             // Similarly, there's an 8Kx8 ROM (2764) chip on the schematic but the
             // actual chip used is a 4Kx8 (2732) -- another spectacular own goal,
@@ -78,9 +76,8 @@ namespace PERQemu.IO
             RegisterPorts(_handledPorts);
 
             // What flavor of PERQ 2 are we?
-            if ((system.Config.Chassis == ChassisType.PERQ2 ||
-                 system.Config.Chassis == ChassisType.PERQ2Tx) &&
-                 system.Config.GetDrivesOfType(DeviceType.Disk8Inch).Length > 0)
+            if (system.Config.Chassis == ChassisType.PERQ2 &&
+                system.Config.GetDrivesOfType(DeviceType.Disk8Inch).Length > 0)
             {
                 // A PERQ-2 or 2/T1
                 _hardDiskController = new MicropolisDiskController(system);
@@ -97,14 +94,9 @@ namespace PERQemu.IO
             }
 
             // Set up the on-board Ethernet
-            if (system.Config.IOBoard == IOBoardType.NIO ||
-                string.IsNullOrEmpty(Settings.EtherDevice) ||
-                Settings.EtherDevice == "null")
-            {
-                // A minimal interface to let Accent boot properly
-                _ethernetController = new NullEthernet(system);
-            }
-            else
+            if (system.Config.IOBoard == IOBoardType.EIO &&
+                !string.IsNullOrEmpty(Settings.EtherDevice) &&
+                Settings.EtherDevice != "null")
             {
                 try
                 {
@@ -112,12 +104,15 @@ namespace PERQemu.IO
                 }
                 catch (UnimplementedHardwareException e)
                 {
-                    // Failed to open - bad device, or no permissions?
                     Log.Warn(Category.All, "{0}; no Ethernet available.", e.Message);
-
-                    // Fall back to the fake one and continue
-                    _ethernetController = new NullEthernet(system);
                 }
+            }
+
+            // NIO board?  Or no adapter configured/available? Fall back to the
+            // minimal interface to let Accent boot properly
+            if (_ethernetController == null)
+            {
+                _ethernetController = new NullEthernet(system);
             }
             RegisterPorts(_etherPorts);
 
@@ -227,6 +222,7 @@ namespace PERQemu.IO
                 case 0xc9:
                 case 0xca:
                 case 0xcb:
+                case 0xcc:
                 case 0xcd:
                 case 0xce:
                 case 0xcf:

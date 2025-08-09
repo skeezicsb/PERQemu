@@ -72,6 +72,8 @@ namespace PERQemu.IO.Z80
 
         // For debugging mostly
         public Oki5832RTC RTC => _rtc;
+        public int[] CPI => _buckets;
+
 
         /// <summary>
         /// Initializes the EIO devices and attaches them to the bus.
@@ -207,13 +209,22 @@ namespace PERQemu.IO.Z80
 
             if (diff <= 0)
             {
+                // If about to pause mid-DMA cycle, complete it!
+                // This might be causing the PNX/FLEX weirdness (and even POS
+                // shows that messages can get "stuck" but it deals with them
+                // eventually!!?  How!?)
+                if (_dmac.IsBusy)
+                {
+                    _dmac.Clock();
+                }
+
                 if (_system.Mode == ExecutionMode.Asynchronous)
                 {
                     // If we are less than one full microcycle ahead of the CPU,
                     // just spin; otherwise, block (when we return).  The PERQ
                     // will wake us when it catches up.  The faster 4Mhz EIO Z80
-                    // still takes ~13-80 PERQ microcycles to execute a complete
-                    // instruction (using the typical 9-55 clocks per inst metric).
+                    // still takes ~6-46 PERQ microcycles to execute a complete
+                    // instruction (using the typical 4-31 clocks per inst metric)
                     diff = -diff;
 
                     if ((ulong)diff > _system.Scheduler.TimeStepNsec)
@@ -278,11 +289,17 @@ namespace PERQemu.IO.Z80
             // Clock the EIO DMA
             ticks += _dmac.Clock();
 
-            // Advance our wakeup time now so the CPU can chill a bit
-            _wakeup = (long)(_scheduler.CurrentTimeNsec + ((ulong)ticks * IOBoard.Z80CycleTime));
+            // Debug - histogram of average # cycles per call
+            if (ticks >= _buckets.Length)
+                _buckets[_buckets.Length - 1]++;
+            else
+                _buckets[ticks]++;
 
             // Run the scheduler
             _scheduler.Clock(ticks);
+
+            // Advance our wakeup time now so the CPU can chill a bit
+            _wakeup = (long)_scheduler.CurrentTimeNsec;
         }
 
         /// <summary>
@@ -405,6 +422,9 @@ namespace PERQemu.IO.Z80
         SerialKeyboard _keyboard;
         PERQToZ80FIFO _perqToZ80Fifo;
         Z80ToPERQFIFO _z80ToPerqFifo;
+
+        // Debugging the DMAC/Z80 "slowness" that trips up FLEX
+        int[] _buckets = new int[32];
     }
 }
 

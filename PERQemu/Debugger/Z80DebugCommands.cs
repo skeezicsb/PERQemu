@@ -262,7 +262,7 @@ namespace PERQemu
 #endif
         #endregion
 
-        //[Conditional("DEBUG")]
+        [Conditional("DEBUG")]
         [Command("debug z80 poke")]
         void PokeZ80Mem(ushort addr = 0x6800, byte val = 0)
         {
@@ -304,15 +304,40 @@ namespace PERQemu
             // If the PERQ is running and has an EIO, dump the active RTC!
             if (!CheckSys()) return;
 
-            if (PERQemu.Config.Current.IOBoard == Config.IOBoardType.EIO)
+            if (PERQemu.Config.Current.IOBoard != Config.IOBoardType.EIO)
             {
-                var eio = PERQemu.Sys.IOB.Z80System as EIOZ80;
-
-                eio.RTC.DumpRTC();
+                Console.WriteLine("This PERQ doesn't have an RTC chip.");
                 return;
             }
 
-            Console.WriteLine("This PERQ doesn't have an RTC chip.");
+            var eio = PERQemu.Sys.IOB.Z80System as EIOZ80;
+
+            eio.RTC.DumpRTC();
+        }
+
+        [Command("debug z80 dump cpi histogram")]
+        void CPIHistogram()
+        {
+            if (!CheckSys()) return;
+            if (PERQemu.Config.Current.IOBoard != Config.IOBoardType.EIO) return;
+
+            var eio = PERQemu.Sys.IOB.Z80System as EIOZ80;
+            var total = 0;
+
+            // Add up the instructions
+            for (var i = 0; i < eio.CPI.Length; i++) total += eio.CPI[i];
+
+            Console.WriteLine("Z80 cycle counts (including interrupts, DMA):");
+            for (var i = 0; i < eio.CPI.Length; i++)
+            {
+                if (eio.CPI[i] > 0)
+                {
+                    var pct = (double)eio.CPI[i] / total * 100.0;
+                    Console.WriteLine($"  Cycles: {i}\tCount: {eio.CPI[i]}\t{pct:N2}%");
+                }
+            }
+
+            Console.WriteLine($"  Total instructions: {total}");
         }
 
         // todo: ram & rom disassembler, like the perq microcode disassembler?

@@ -43,6 +43,12 @@ namespace PERQemu.Debugger
             var amux = DisassembleAmuxInput(op);
             var bmux = DisassembleBmuxInput(op);
 
+            // UState requires some extra attention
+            if (op.A == AField.UState)
+            {
+                amux = DisassembleUState(bmux, op);
+            }
+
             // Append ALU op
             if (op.W == 0)
             {
@@ -60,6 +66,12 @@ namespace PERQemu.Debugger
                 {
                     sb.AppendFormat("R{0:x2} := {1}. ", op.X, DisassembleALUOp(amux, bmux, op));
                 }
+            }
+
+            // If H is set and we're NOT reading UState, note the memory hold
+            if (op.H != 0 && op.A != AField.UState)
+            {
+                sb.Append("Hold, ");
             }
 
             // Append function, if any
@@ -139,12 +151,27 @@ namespace PERQemu.Debugger
             return bmux;
         }
 
+        static string DisassembleUState(string bmux, CPU.Instruction uOp)
+        {
+            // On the 24-bit CPU, H=1 is Upper(); assume B as well
+            if (CPUBoard.CPUBits == 24 && uOp.H != 0)
+            {
+                return $"Upper({bmux})";
+            }
 
-        static string DisassembleALUOp(string amux, string bmux, CPU.Instruction op)
+            // Otherwise, account for B and H bits separately
+            string ustate = "UState";
+            if (uOp.B == 0) ustate += $"({bmux})";
+            if (uOp.H != 0) ustate += ", Hold";
+
+            return ustate;
+        }
+
+        static string DisassembleALUOp(string amux, string bmux, CPU.Instruction uOp)
         {
             string alu = "<invalid>";
 
-            switch (op.ALU)
+            switch (uOp.ALU)
             {
                 case ALUOperation.A:
                     alu = amux;
@@ -199,7 +226,7 @@ namespace PERQemu.Debugger
                     break;
 
                 case ALUOperation.AplusBplusCarry:
-                    alu = $"{amux} + {bmux} + Cry";
+                    alu = $"{amux} + {bmux} + OldCarry";
                     break;
 
                 case ALUOperation.AminusB:
@@ -207,7 +234,7 @@ namespace PERQemu.Debugger
                     break;
 
                 case ALUOperation.AminusBminusCarry:
-                    alu = $"{amux} - {bmux} - Cry";
+                    alu = $"{amux} - {bmux} - OldCarry";
                     break;
             }
 
@@ -432,7 +459,7 @@ namespace PERQemu.Debugger
                     break;
 
                 case Condition.False:   // False -- never jump
-                    jump = "Never {0}";
+                    jump = "If False, {0}";
                     break;
 
                 case Condition.IntrPend: // IntrPend

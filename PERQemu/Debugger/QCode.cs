@@ -32,7 +32,8 @@ namespace PERQemu.Debugger
         POSV4 = 0,
         AccentV4,
         AccentV5,
-        PNXCCodes
+        PNXCCodes,
+        FLEX
     }
 
     /// <summary>
@@ -142,8 +143,19 @@ namespace PERQemu.Debugger
                     AddToDictionary(252, _qCodesAccentV5kops);
                     break;
 
+                case QCodeSets.PNXCCodes:
+                    Clear();
+                    AddToTable(_cCodes);
+                    break;
+
+                case QCodeSets.FLEX:
+                    Clear();
+                    AddToTable(_flexOps);
+                    AddToDictionary(194, _flexIOops);
+                    break;
+
                 default:
-                    throw new InvalidOperationException($"Unknown Qcode set {which}");
+                    throw new InvalidOperationException($"Unknown/undocumented Qcode set {which}");
             }
 
             _loaded = which;
@@ -1115,6 +1127,507 @@ namespace PERQemu.Debugger
             new QCode(21, "KSEARCHADDR"),
             new QCode(22, "KSEARCHPV"),
             new QCode(23, "KCOPYPAGE")
+        };
+
+
+        /// <summary>
+        /// PNX 5 C-Codes -- a rough guess based on pulling strings out of the
+        /// assembler binary.  THANKS ICL.  REAL HELPFUL KEEPING YOUR INSTRUCTION
+        /// SET TOP SECRET.  NO documentation?  SERIOUSLY?  What follows may be
+        /// wrong and two-byte ops (if any) are sure to be off/unknown.
+        /// </summary>
+        static QCode[] _cCodes =
+        {
+            new QCode(0, "halt"),
+            new QCode(1, "ilp1"),
+            new QCode(2, "ilp2"),
+            new QCode(3, "ilp3"),
+            new QCode(4, "ilp4"),
+            new QCode(5, "ill1"),
+            new QCode(6, "ill2"),
+            new QCode(7, "ill3"),
+            new QCode(8, "ill4"),
+            new QCode(9, "ill5"),
+            new QCode(10, "ill6"),
+            new QCode(11, "ill7"),
+            new QCode(12, "ill8"),
+            new QCode(13, "ills"),
+            new QCode(14, "illl"),
+            new QCode(15, "iadd"),
+            new QCode(16, "isub"),
+            new QCode(17, "ineg"),
+            new QCode(18, "iland"),
+            new QCode(19, "ilor"),
+            new QCode(20, "ilnot"),
+            new QCode(21, "inot"),
+            new QCode(22, "ixor"),
+            new QCode(23, "las"),
+            new QCode(24, "call"),
+            new QCode(25, "callt"),
+            new QCode(26, "jump"),
+            new QCode(27, "jfalse"),
+            new QCode(28, "jtrue"),
+            new QCode(29, "ijlt"),
+            new QCode(30, "ijle"),
+            new QCode(31, "ijgt"),
+            new QCode(32, "ijge"),
+            new QCode(33, "ijeq"),
+            new QCode(34, "ijne"),
+            new QCode(35, "lgpo"),
+            new QCode(36, "lhgpo"),
+            new QCode(37, "sgpo"),
+            new QCode(38, "shgpo"),
+            new QCode(39, "lgi"),
+            new QCode(40, "sgi"),
+            new QCode(41, "esave"),
+            new QCode(42, "eres"),
+            new QCode(43, "lga"),
+            new QCode(44, "return"),
+            new QCode(45, "return2"),
+            new QCode(46, "return4"),
+            new QCode(47, "indxjump"),
+            new QCode(48, "sr0"),
+            new QCode(49, "sr1"),
+            new QCode(50, "sr2"),
+            new QCode(51, "sr3"),
+            new QCode(52, "lr0"),
+            new QCode(53, "lr1"),
+            new QCode(54, "lr2"),
+            new QCode(55, "lr3"),
+            new QCode(56, "xsave"),
+            new QCode(57, "resume"),
+            new QCode(58, "asfw"),
+            new QCode(59, "mv4"),
+            new QCode(60, "idle"),
+            new QCode(61, "sfa"),
+            new QCode(62, "resfunc"),
+            new QCode(63, "goto"),
+            new QCode(64, "lro0"),
+            new QCode(65, "lro1"),
+            new QCode(66, "lro2"),
+            new QCode(67, "lro3"),
+            new QCode(68, "sro0"),
+            new QCode(69, "sro1"),
+            new QCode(70, "sro2"),
+            new QCode(71, "sro3"),
+            new QCode(72, "lroa0"),
+            new QCode(73, "lroa1"),
+            new QCode(74, "lroa2"),
+            new QCode(75, "lroa3"),
+            new QCode(76, "save2"),
+            new QCode(77, "save4"),
+            new QCode(78, "align"),
+            new QCode(79, "indint"),
+            new QCode(80, "ci0"),
+            new QCode(81, "ci1"),
+            new QCode(82, "ci2"),
+            new QCode(83, "ci3"),
+            new QCode(84, "ci4"),
+            new QCode(85, "ci5"),
+            new QCode(86, "ci6"),
+            new QCode(87, "ci7"),
+            new QCode(88, "ci8"),
+            new QCode(89, "cim1"),
+            new QCode(90, "cim2"),
+            new QCode(91, "cim3"),
+            new QCode(92, "cim4"),
+            new QCode(93, "cim5"),
+            new QCode(94, "cim6"),
+            new QCode(95, "cim7"),
+            new QCode(96, "cim8"),
+            new QCode(97, "cis"),
+            new QCode(98, "cims"),
+            new QCode(99, "cii"),
+            new QCode(100, "cimi"),
+            new QCode(101, "cil"),
+            new QCode(102, "itwb"),
+            new QCode(103, "urem"),
+            new QCode(104, "lbui"),
+            new QCode(105, "umult"),
+            new QCode(106, "udiv"),
+            new QCode(107, "idrem"),
+            new QCode(108, "imult"),
+            new QCode(109, "idiv"),
+            new QCode(110, "irem"),
+            new QCode(111, "switch"),
+            new QCode(112, "isrls"),
+            new QCode(113, "isrll"),
+            new QCode(114, "isras"),
+            new QCode(115, "isral"),
+            new QCode(116, "islls"),
+            new QCode(117, "islll"),
+            new QCode(118, "isrlt"),
+            new QCode(119, "israt"),
+            new QCode(120, "isllt"),
+            // 121 undefined
+            new QCode(122, "mvwd"),
+            // 123 undefined
+            new QCode(124, "unle"),
+            new QCode(125, "lde"),
+            new QCode(126, "ipush"),
+            // 127 undefined                -- but has code!?
+            new QCode(128, "isp1"),
+            new QCode(129, "isp2"),
+            new QCode(130, "isp3"),
+            new QCode(131, "isp4"),
+            new QCode(132, "isl1"),
+            new QCode(133, "isl2"),
+            new QCode(134, "isl3"),
+            new QCode(135, "isl4"),
+            new QCode(136, "isl5"),
+            new QCode(137, "isl6"),
+            new QCode(138, "isl7"),
+            new QCode(139, "isl8"),
+            new QCode(140, "isls"),
+            new QCode(141, "isll"),
+            new QCode(142, "ass"),
+            new QCode(143, "assh"),
+            new QCode(144, "assb"),
+            new QCode(145, "oaadd"),
+            new QCode(146, "oasub"),
+            new QCode(147, "oamult"),
+            new QCode(148, "oadiv"),
+            new QCode(149, "oaand"),
+            new QCode(150, "oaor"),
+            new QCode(151, "oaxor"),
+            new QCode(152, "oasrl"),
+            new QCode(153, "oasll"),
+            new QCode(154, "oarem"),
+            new QCode(155, "li"),
+            new QCode(156, "hli"),
+            // 157..160 undefined           -- all have microcode
+            new QCode(161, "llos"),
+            new QCode(162, "llol"),
+            new QCode(163, "lhlos"),
+            new QCode(164, "lhlol"),
+            new QCode(165, "slos"),
+            new QCode(166, "slol"),
+            new QCode(167, "shlos"),
+            new QCode(168, "shlol"),
+            new QCode(169, "ieq"),
+            new QCode(170, "ine"),
+            new QCode(171, "ile"),
+            new QCode(172, "ilt"),
+            new QCode(173, "igt"),
+            new QCode(174, "ige"),
+            new QCode(175, "ule"),
+            new QCode(176, "ult"),
+            new QCode(177, "uge"),
+            new QCode(178, "ugt"),
+            // 179..181 undefined           -- all have microcode
+            new QCode(182, "ipop"),
+            new QCode(183, "oasra"),
+            new QCode(184, "lhui"),
+            new QCode(185, "cvba"),
+            // 186..187 undefined           -- both are defined
+            new QCode(188, "deposit"),
+            new QCode(189, "field"),
+            // 190..191 undefined
+            new QCode(192, "exch"),
+            new QCode(193, "dupl"),
+            new QCode(194, "index"),
+            new QCode(195, "maskb"),
+            new QCode(196, "maskh"),
+            new QCode(197, "erst"),
+            new QCode(198, "cvia"),
+            new QCode(199, "extendh"),
+            new QCode(200, "sfr0"),
+            new QCode(201, "sfr1"),
+            new QCode(202, "sfr2"),
+            new QCode(203, "sfr3"),
+            new QCode(204, "atr0"),
+            new QCode(205, "atr1"),
+            new QCode(206, "atr2"),
+            new QCode(207, "atr3"),
+            // 208..209 undefined
+            new QCode(210, "pfield"),
+            new QCode(211, "pdeposit"),
+            // 212..232 undefined           -- 216..227 are defined
+            new QCode(233, "umenter"),
+            new QCode(234, "wcs"),
+            // 235..243 undefined           -- all have microcode
+            new QCode(244, "rop0"),
+            new QCode(245, "rop1"),
+            new QCode(246, "sys"),
+            new QCode(247, "sio"),
+            new QCode(248, "sps"),
+            new QCode(249, "drawline"),
+            new QCode(250, "rasterop"),
+            new QCode(251, "drawbyte"),
+            new QCode(252, "trapp"),
+            new QCode(253, "null"),
+            // 254 undefined                -- has code
+            new QCode(255, "refill")        // Implicit (hardware)
+        };
+
+        /// <summary>
+        /// FLEX opcodes.  These are described in the RSRE document 85015, ch. 8,
+        /// "PerqFlex instruction set".  It differs from the original Flex machine
+        /// in its I/O instructions but is otherwise pretty consistent.
+        /// </summary>
+        /// <remarks>
+        /// I've used some hastily made up mnemonics until a more definitive scheme
+        /// can be discovered or devised.  The file RSFLEX.PDF appears to have such
+        /// a list as part of a printed source listing of the assembler?  But many
+        /// of the mnemonics conflict with the other sources so it may be an older
+        /// version.  Hopefully a unified superset can be provided if the conflicts
+        /// in the documentation can be reconciled with the disassembled microcode?
+        /// </remarks>
+        static QCode[] _flexOps =
+        {
+            new QCode(0, "LD1W"),               // Load_1_word
+            new QCode(1, "LD1W-NL"),
+            new QCode(2, "LD1W-Const"),
+            new QCode(3, "LD1W-Block"),
+            new QCode(4, "LD2W"),               // Load_2_words
+            new QCode(5, "LD2W-NL"),
+            new QCode(6, "LD2W-Const"),
+            new QCode(7, "LD2W-Block"),
+            new QCode(8, "LDNW"),               // Load_N_words
+            new QCode(9, "LDNW-NL"),
+            new QCode(10, "LDNW-Const"),
+            new QCode(11, "LDNW-Block"),
+            new QCode(12, "LD1C"),              // Load_1_character
+            new QCode(13, "LD1C-NL"),
+            new QCode(14, "LD1C-Const"),
+            new QCode(15, "LD1C-Block"),
+            new QCode(16, "LD1B"),              // Load_1_boolean
+            new QCode(17, "LD1B-NL"),
+            new QCode(18, "LD1B-Const"),
+            new QCode(19, "LD1B-Block"),
+            // 20..27 undefined
+            new QCode(28, "LDP2C-NL"),          // Load_ptr_to_current_areas
+            new QCode(29, "LDP2C-Const"),
+            new QCode(30, "LDLITC"),            // Load_literal
+            new QCode(31, "LDLITB"),
+            new QCode(32, "LDLITW"),
+            new QCode(33, "LDVOID"),
+            new QCode(34, "LDSELF"),            // Load_ptr_to_locals
+            new QCode(35, "LDTOD"),             // Load_timese
+            new QCode(36, "LDTSLOT"),
+            new QCode(37, "PAT"),               // Push_and_take
+            // 38..39 undefined
+            new QCode(40, "STORE"),             // Store_U
+            // 41..42 undefined
+            new QCode(43, "STOREPTR"),
+            new QCode(44, "SELFROMU"),          // Select_from_U
+            new QCode(45, "DATE"),              // Date
+            new QCode(46, "SHIFT"),             // Shift
+            new QCode(47, "SELREF"),            // Select_ref
+            new QCode(48, "DREFUVEC"),          // Deref
+            new QCode(49, "DREFW"),
+            // 50 undefined
+            new QCode(51, "DREFC"),
+            // 52 undefined
+            new QCode(53, "DREFB"),
+            new QCode(54, "UNPACK"),            // Pack and Unpack
+            new QCode(55, "PACK"),
+            new QCode(56, "VECIDX"),            // Vector operations
+            new QCode(57, "VECTRIM"),
+            new QCode(58, "VECCMP"),
+            new QCode(59, "ARRIDX"),            // Array operations
+            new QCode(60, "ARRTRIM"),
+            new QCode(61, "ARRSLICE"),
+            new QCode(62, "UNITE"),             // Unite
+            new QCode(63, "ASSIGN"),            // Assign
+            new QCode(64, "CALL"),              // Procedure calls and exits
+            new QCode(65, "CALL-NL"),
+            new QCode(66, "CALL-Const"),
+            new QCode(67, "CALL-TOS"),
+            new QCode(68, "EXIT"),
+            new QCode(69, "EXITFAIL"),
+            // 70 undefined
+            new QCode(71, "GOTO"),              // Goto
+            new QCode(72, "NEWT5"),             // Generate new blocks
+            new QCode(73, "NEWT4"),
+            new QCode(74, "NEWT3"),
+            // 75 undefined
+            new QCode(76, "MODNEXT"),           // Modify_next
+            new QCode(77, "STKSET"),            // Stack front operations
+            new QCode(78, "STKCHK"),
+            new QCode(79, "DISCARD"),           // Discard
+            new QCode(80, "PTRSHAKE"),          // Operations on pointers
+            new QCode(81, "PTRFIRM"),
+            new QCode(82, "PTRW2B"),
+            new QCode(83, "PTRBLK"),
+            new QCode(84, "PTRBYTBLK"),
+            new QCode(85, "NULL"),              // Null instructions
+            new QCode(86, "NULL86"),
+            new QCode(87, "MODIFY"),            // Modify_next_dynamically
+            new QCode(88, "JMP"),               // Jumps and branches
+            new QCode(89, "JMPNOT"),
+            new QCode(90, "JMPFWD"),
+            new QCode(91, "JMPFWDNOT"),
+            new QCode(92, "JMPUILL"),
+            new QCode(93, "JMPP"),
+            new QCode(94, "DSTATE"),            // Set failure state
+            new QCode(95, "TSTATE"),
+            new QCode(96, "FORTST"),            // FOR instructions
+            new QCode(97, "FORSTEP"),
+            new QCode(98, "CASE"),              // Switches
+            new QCode(99, "SWITCH"),
+            new QCode(100, "ADD"),              // Integer arithmetic
+            new QCode(101, "SUB"),
+            new QCode(102, "MUL"),
+            new QCode(103, "DIV"),
+            new QCode(104, "GEQ"),              // Integer tests
+            new QCode(105, "LT"),
+            new QCode(106, "LEQ"),
+            new QCode(107, "GTR"),
+            new QCode(108, "ABSI"),             // Monadic operations
+            new QCode(109, "NEG"),
+            new QCode(110, "ABS"),
+            // 111 undefined
+            new QCode(112, "INT2C"),            // "REPR U"?
+            new QCode(113, "ODD"),
+            new QCode(114, "EQ"),               // Equality
+            new QCode(115, "NEQ"),
+            new QCode(116, "OR"),               // Logical operations
+            new QCode(117, "AND"),
+            new QCode(118, "XOR"),
+            new QCode(119, "EQUIV"),
+            // 120 undefined
+            new QCode(121, "NOT"),
+            new QCode(122, "STREQ"),            // String equality
+            new QCode(123, "STRNEQ"),
+            new QCode(124, "ADDR"),             // Real arithmetic
+            new QCode(125, "SUBR"),
+            new QCode(126, "MULR"),
+            new QCode(127, "DIVR"),
+            new QCode(128, "GEQR"),             // Real tests
+            new QCode(129, "LTR"),
+            new QCode(130, "LEQR"),
+            new QCode(131, "GTRR"),
+            new QCode(132, "ABSR"),             // Real monadic operations
+            new QCode(133, "NEGR"),
+            new QCode(134, "TRUNCRI"),
+            new QCode(135, "ROUNDRI"),
+            new QCode(136, "CONVISR"),
+            new QCode(137, "CONVIR"),
+            new QCode(138, "TRUNCRL"),
+            new QCode(139, "ROUNDRL"),
+            new QCode(140, "ADDL"),             // Long arithmetic
+            new QCode(141, "SUBL"),
+            new QCode(142, "MULL"),
+            new QCode(143, "DIVL"),
+            new QCode(144, "L2DEC"),            // Long to decimal
+            new QCode(145, "STRETCH"),          // Long conversions
+            new QCode(146, "SHRINK"),
+            new QCode(147, "DEC2L"),            // Decimal to long
+            new QCode(148, "GEQL"),             // Long tests
+            new QCode(149, "LTL"),
+            new QCode(150, "LEQL"),
+            new QCode(151, "GTRL"),
+            new QCode(152, "CONVSRR"),          // Real conversion
+            new QCode(153, "APPEND"),           // Append (privileged)
+            new QCode(154, "MAX"),              // Max and Min
+            new QCode(155, "MIN"),
+            new QCode(156, "RANGE"),            // Range checks
+            new QCode(157, "BOUNDS"),
+            new QCode(158, "KBNEW"),            // Keyed block operations
+            new QCode(159, "KBLOCK"),           // Lock procedure (privileged)
+            new QCode(160, "KBOPEN"),
+            new QCode(161, "KBSYS"),
+            new QCode(162, "DTOB"),             // Load d_to_b
+            new QCode(163, "EXPRI"),            // Decimal exponent conversions
+            new QCode(164, "EXPIR"),
+            new QCode(165, "UNITEX"),           // Unite with Exception
+            new QCode(166, "PACKV"),            // Vector pack and unpack
+            new QCode(167, "UNPACKV"),
+            // 168..171 undefined
+            new QCode(172, "NULL172"),          // Null instruction
+            new QCode(173, "FAIL"),             // Fail             ** Multiply defined!?
+            new QCode(174, "NEWT3C"),           // Generate Char, Bool and Code blocks
+            new QCode(175, "NEWT11"),
+            new QCode(176, "NEWT2"),
+            // 177..179 undefined
+            new QCode(180, "ASSIGNCV"),         // Char and Bool multiple assignments
+            new QCode(181, "ASSIGNBV"),
+            new QCode(182, "ASSIGNBA"),
+            new QCode(183, "SHRINKR"),          // Real conversion
+            new QCode(184, "LDLITSTR"),         // Load literal string
+            new QCode(185, "NOTBA"),            // Bool array operations
+            new QCode(186, "ANDBA"),
+            new QCode(187, "NANDBA"),
+            new QCode(188, "ORBA"),
+            new QCode(189, "NORBA"),
+            new QCode(190, "XORBA"),
+            new QCode(191, "XNORBA"),
+            new QCode(192, "ADDVEC"),           // Multiple adds and subtracts
+            new QCode(193, "SUBVEC"),
+            new QCode(194, "IOOP", true),       // I/O operation prefix
+            // 195..200 undefined
+            new QCode(201, "ENABLE"),           // Set non-privileged state
+            // 202..203 undefined
+            new QCode(204, "SCAVENGE"),         // Scavenge
+            // 205 undefined
+            new QCode(206, "DUMPU"),            // Dump and reset U
+            new QCode(207, "RESETU"),
+            new QCode(208, "ETHACCEPT"),        // Ethernet channel
+            new QCode(209, "ETHREAD"),
+            new QCode(210, "ETHSEND"),
+            // 211 undefined
+            new QCode(212, "Z80PUSH"),          // Z80 devices
+            new QCode(213, "Z80FOUT"),
+            new QCode(214, "Z80STAT"),
+            new QCode(215, "SETTIME"),          // Set times
+            new QCode(216, "SETIVAL"),
+            new QCode(217, "LDUREF"),           // Load ref to system_block
+            // 218 undefined
+            new QCode(219, "IOWRPBO"),          // I/O buffers
+            new QCode(220, "IOSEL"),
+            new QCode(221, "IOWRCBO"),
+            new QCode(222, "IOWRITE"),
+            // 223..224 undefined
+            new QCode(225, "IOWRCAP"),
+            new QCode(226, "IOSETBUF"),
+            new QCode(227, "IOPUSHPBO"),
+            new QCode(228, "IOPUSH"),
+            new QCode(229, "IOPUSHCBO"),
+            new QCode(230, "IOPUSH2"),
+            new QCode(231, "IOPUSH4"),
+            // 232 undefined
+            new QCode(233, "IONEXTCAP"),
+            // 234 undefined
+            new QCode(235, "IOPUSHU"),
+            // 236..238 undefined
+            new QCode(239, "BREAKPTR"),         // Make and break blocks
+            new QCode(240, "MAKEPTR"),
+            // 241 undefined
+            new QCode(242, "GETFONT"),          // Special Areas
+            new QCode(243, "GETIOBLK"),
+            new QCode(244, "GETSCREEN"),
+            new QCode(245, "Z80CTRL"),          // Z80 devices
+            new QCode(246, "Z80DEVSEL"),
+            new QCode(247, "Z80SEND"),
+            new QCode(248, "CURSFUNC"),         // Screen pointers
+            new QCode(249, "CURSORY"),
+            new QCode(250, "CURSORX"),
+            new QCode(251, "SETTABLET"),        // High resolution tablet
+            // 252..254 undefined
+            new QCode(255, "REFILL")            // (Undefined / implicit)
+        };
+
+        /// <summary>
+        /// Second byte of the FLEX I/O op prefix (194 / 0xc2) used for
+        /// hard disk and Canon laser printer calls.
+        /// </summary>
+        static QCode[] _flexIOops = {
+            new QCode(0, "DSKHDR"),             // Winchester disc
+            new QCode(1, "DSKDATA"),
+            new QCode(2, "DSKSTART"),
+            new QCode(3, "DSKSTAT"),
+            new QCode(4, "DSKAD2U"),
+            new QCode(5, "DSKU2AD"),
+            new QCode(6, "DSKMAXAD"),
+            new QCode(7, "DSKINTLV"),
+            new QCode(8, "DSKGEOM"),
+            new QCode(9, "DSKADCHK"),
+            // 10..15 undefined
+            new QCode(16, "CANMARG"),           // Laser printer
+            new QCode(17, "CANSTART"),
+            new QCode(18, "CANSTAT"),
+            new QCode(19, "CANPRINT")
         };
     }
 }

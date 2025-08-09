@@ -46,6 +46,10 @@ namespace PERQemu.Processor
             _estack = new ExpressionStack();
             _shifter = new Shifter();
             _rasterOp = new RasterOp(_memory);
+
+#if DEBUG
+            _memStats = new int[2, 8];
+#endif
         }
 
         /// <summary>
@@ -67,14 +71,19 @@ namespace PERQemu.Processor
             {
                 _opFile[i] = 0xff;
             }
-
+#if DEBUG
+            for (int i = 0; i < 8; i++)
+            {
+                _memStats[0, i] = _memStats[1, i] = 0;
+            }
+#endif        
             // Reset the rest
             _dds = 0;
             _bpc = 0;
             _iod = 0;
             _clocks = 0;
             _lastPC = 0;
-            _lastBmux = 0;
+            _upper = 0;
             _lastOpcode = 0;
             _refillOp = false;
             _incrementBPC = false;
@@ -138,8 +147,8 @@ namespace PERQemu.Processor
             if (_ustore.Hold || _memory.Wait || (uOp.WantMDI && !_memory.MDIValid))
             {
                 // Waiting for the next T3 or T2 cycle to come around on the guitar
-                Log.Debug(Category.Memory,
-                    "Abort in T{0}\n\twait={1} needMDO={2} wantMDI={3} MDIvalid={4} WCShold={5}",
+                Log.Detail(Category.Memory,
+                    "Abort in T{0}:  wait={1} needMDO={2} wantMDI={3} MDIvalid={4} WCShold={5}",
                     _memory.TState, _memory.Wait, _memory.MDONeeded, uOp.WantMDI, _memory.MDIValid, _ustore.Hold);
 
                 // On aborts, no memory writes occur - no Tock()                    
@@ -175,7 +184,7 @@ namespace PERQemu.Processor
                 _bpc++;
                 _incrementBPC = false;
 
-                Log.Debug(Category.OpFile, "BPC incremented to {0:x1}", BPC);
+                Log.Detail(Category.OpFile, "BPC incremented to {0:x1}", BPC);
             }
 
             // Latch the ALU result and flags from the last micro-op before we
@@ -187,7 +196,8 @@ namespace PERQemu.Processor
             //
 
             // Select ALU inputs
-            int bmux = _lastBmux = GetBmuxInput(uOp);
+            // N.B. Bmux input must be set first! Amux may depend on it!
+            int bmux = GetBmuxInput(uOp);
             int amux = GetAmuxInput(uOp);
 
             // If the hardware multiply unit is enabled, pass the MQ register
@@ -275,10 +285,10 @@ namespace PERQemu.Processor
         /// <summary>
         /// Returns the OpFile contents.
         /// </summary>
-        [Debuggable("op", "The Op cache")]
-        public byte[] OpFile
+        [Debuggable("op", "The next Op cache byte")]
+        public byte OpFile
         {
-            get { return _opFile; }
+            get { return _opFile[BPC]; }
         }
 
         /// <summary>
@@ -328,9 +338,9 @@ namespace PERQemu.Processor
 
         /// <summary>
         /// On 24-bit CPUs, reads the Upper register (Microstate with H=1).
-        /// Results on 20-bit CPUs are undefined.  This isn't ideal.
+        /// Results on 20-bit CPUs are undefined.
         /// </summary>
-        [Debuggable("upper", "Upper bits of XY register (valid only in 24-bit CPU)")]
+        [Debuggable("upper", "Upper byte of last XY reg (24-bit CPU only)")]
         public int Upper
         {
             get { return ReadMicrostateRegister(1); }
@@ -341,32 +351,33 @@ namespace PERQemu.Processor
         /// </summary>
         /// <remarks>
         /// The H bit on the 24 bit CPU selects a second uState register, which
-        /// is aka "Upper"; in that processor _lastbmux (bits 12:15) are always
-        /// zero.  Note that we also don't implement the CCSR0 PAL here either,
-        /// but I suspect only a few *really* esoteric diagnostics ever used that
-        /// functionality, and Tony alludes to a possible hardware bug that made
-        /// it not work on the 4k CPU anyway.  This is off into the serious
-        /// periphery of PERQ esoterica.
+        /// is aka "Upper"; in that processor uState bits 12:15 are always zero.
+        /// Note that we don't implement the CCSR0 PAL here, but I suspect only
+        /// a few *really* esoteric diagnostics ever used that functionality,
+        /// and Tony alludes to a possible hardware bug that made it not work on
+        /// the 4k CPU anyway.  This is the serious periphery of PERQ esoterica.
         /// 
         /// FYI: can't attach the DebugProperty to a virtual method, so we add
         /// those separately above.  Mild, as hackish workarounds go.
         /// </remarks>
         public int ReadMicrostateRegister(byte h)
         {
-            // On PERQ24, uState1 is the upper 8 Bmux bits
+            // On PERQ24, uState1 is the upper 8 Bmux bits, right justified
             if (CPUBoard.CPUBits == 24 && h == 1)
             {
-                return ((~_lastBmux) >> 16) & 0xff;
+                return ((_upper >> 16) & 0xff);                 // Y[23:16] => Amux[7:0]
             }
 
-            // On the 20-bit CPUs, there's only one microstate register:
+            // On the 20-bit CPUs, there's only one microstate register - but
+            // the 24-bit CPUs repurpose bit 8 to identify 24-bit mode!
             return BPC |
-                    (_alu.Flags.Ovf ? 0x0010 : 0x0) |
-                    (_alu.Flags.Eql ? 0x0020 : 0x0) |
-                    (_alu.Flags.Cry ? 0x0040 : 0x0) |
-                    (_alu.Flags.Lss ? 0x0080 : 0x0) |
-                    (_estack.StackEmpty ? 0x0 : 0x0200) |   // inverted!
-                    ((((~_lastBmux) >> 16) & 0xf) << 12);
+                    (_alu.OldFlags.Ovf ? 0x0010 : 0x0) |
+                    (_alu.OldFlags.Eql ? 0x0020 : 0x0) |
+                    (_alu.OldFlags.Cry ? 0x0040 : 0x0) |
+                    (_alu.OldFlags.Lss ? 0x0080 : 0x0) |
+                    (CPUBoard.CPUBits == 24 ? 0x0100 : 0x0) |
+                    (_estack.StackEmpty ? 0x0 : 0x0200) |       // Inverted!
+                    ((~_upper >> 4) & 0x0f000);                 // Y[19:16] => uS[15:12]
         }
 
         /// <summary>
@@ -442,7 +453,16 @@ namespace PERQemu.Processor
         [Debuggable("r", "Last ALU result")]
         public int R
         {
-            get { return _alu.R.Value; }
+            get { return _alu.OldR.Value; }
+        }
+
+        /// <summary>
+        /// The ALU's last computed flags.
+        /// </summary>
+        [Debuggable("flags", "Last ALU flags")]
+        public string Flags
+        {
+            get { return _alu.OldFlags.ToString(); }
         }
 
         /// <summary>
@@ -461,6 +481,15 @@ namespace PERQemu.Processor
         public int MQ
         {
             get { return _mq; }
+        }
+
+        /// <summary>
+        /// Return the current output of the shifter.
+        /// </summary>
+        [Debuggable("shift", "Most recent shifter result")]
+        public ushort Shift
+        {
+            get { return _shifter.ShifterOutput; }
         }
 
         /// <summary>
@@ -531,7 +560,7 @@ namespace PERQemu.Processor
                     amux = _opFile[BPC];
                     _incrementBPC = true;           // Increment BPC at start of next cycle
 
-                    Log.Debug(Category.OpFile, "NextOp read from BPC[{0:x1}]={1:x2}", BPC, amux);
+                    Log.Detail(Category.OpFile, "NextOp read from BPC[{0:x1}]={1:x2}", BPC, amux);
                     break;
 
                 case AField.IOD:
@@ -591,10 +620,12 @@ namespace PERQemu.Processor
             if (uOp.B == 0)
             {
                 bmux = _xy.ReadRegister(uOp.Y);
+                _upper = bmux;          // Save all 20 (or 24) bits
             }
             else
             {
                 bmux = uOp.BMuxInput;
+                _upper = 0;             // Hardware clears upper bits!
             }
 
             return bmux;
@@ -716,7 +747,7 @@ namespace PERQemu.Processor
                             {
                                 // This often appears during boot/testing and is harmless in that
                                 // case; turn off these alerts in Release builds to reduce noise
-                                Log.Debug(Category.OpFile, "LoadOp called in wrong cycle");
+                                Log.Debug(Category.OpFile, "LoadOp called in wrong cycle! T{0}", _memory.TState);
                             }
 #endif
 
@@ -921,6 +952,30 @@ namespace PERQemu.Processor
                     }
                     else if (uOp.SF <= 15)
                     {
+#if DEBUG
+                        // Count total ops
+                        _memStats[0, uOp.SF - 8]++;
+
+                        if ((uOp.MemoryRequest == MemoryCycle.Fetch4 ||
+                             uOp.MemoryRequest == MemoryCycle.Fetch4R ||
+                             uOp.MemoryRequest == MemoryCycle.Store4 ||
+                             uOp.MemoryRequest == MemoryCycle.Store4R) &&
+                            (_alu.R.Value & 0x3) != 0)
+                        {
+                            _memStats[1, uOp.SF - 8]++;
+                            Log.Debug(Category.Memory, "MISALIGNED {0} addr=0x{1:x6}, PC={2:x4}",
+                                                 uOp.MemoryRequest, _alu.R.Value, _usequencer.PC);
+                        }
+
+                        if ((uOp.MemoryRequest == MemoryCycle.Fetch2 ||
+                             uOp.MemoryRequest == MemoryCycle.Store2) &&
+                            (_alu.R.Value & 0x1) != 0)
+                        {
+                            _memStats[1, uOp.SF - 8]++;
+                            Log.Debug(Category.Memory, "MISALIGNED {0} addr=0x{1:x6}, PC={2:x4}",
+                                                 uOp.MemoryRequest, _alu.R.Value, _usequencer.PC);
+                        }
+#endif
                         // Common to all CPUs: SF 8..15 are the memory ops
                         _memory.RequestMemoryCycle(_alu.R.Value, uOp.MemoryRequest);
                     }
@@ -1030,6 +1085,21 @@ namespace PERQemu.Processor
             _usequencer.DumpContents();
         }
 
+#if DEBUG
+        public void ShowMemStats()
+        {
+            string fmt = "  {0,-8}  {1,-8}  {2,-8}";
+
+            Console.WriteLine("Memory operation stats:");
+            Console.WriteLine(fmt, "Type", "Total", "Misaligned");
+
+            for (var t = MemoryCycle.Fetch4R; t <= MemoryCycle.Store; t++)
+            {
+                Console.WriteLine(fmt, t, _memStats[0, (int)t - 8], _memStats[1, (int)t - 8]);
+            }
+        }
+#endif
+
         #endregion
 
 
@@ -1086,10 +1156,15 @@ namespace PERQemu.Processor
 
         // Copy of Bmux bits in microstate register
         // for mysterious, if not nefarious purposes
-        int _lastBmux;
+        int _upper;
 
         // Trace/debugging support
         ushort _lastPC;
         ushort _lastOpcode;
+
+#if DEBUG
+        // Gather stats on misaligned memory addresses
+        int[,] _memStats;
+#endif
     }
 }
