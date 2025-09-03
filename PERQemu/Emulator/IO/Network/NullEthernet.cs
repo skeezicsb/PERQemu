@@ -459,7 +459,7 @@ namespace PERQemu.IO.Network
             var delay = (ulong)((_bitCount + 32) * .1 + 9.6) * Conversion.UsecToNsec;
             _response = _system.Scheduler.Schedule(delay, TransmitComplete);
 
-            Log.Info(Category.Ethernet, "Transmitting {0} byte packet ({1} bits), callback in {2}usec",
+            Log.Info(Category.Ethernet, "Transmitted {0} bytes ({1} bits), callback in {2}usec",
                                          _bitCount / 8, (short)_bitCount, delay / 1000);
         }
 
@@ -580,6 +580,9 @@ namespace PERQemu.IO.Network
             _status &= ~(Status.CarrierSense);
             _status |= Status.Complete;
 
+            // Set the bit counter to zero to indicate success
+            _bitCount = 0;
+
             FinishCommand();
         }
 
@@ -593,7 +596,6 @@ namespace PERQemu.IO.Network
 
             FinishCommand();
         }
-
 
         #endregion Callbacks
 

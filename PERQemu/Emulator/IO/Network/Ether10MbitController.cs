@@ -148,8 +148,6 @@ namespace PERQemu.IO.Network
                 return;
             }
 
-            ushort data;
-
             // Update our state and status flag
             _state = State.Receiving;
             _status |= (Status.CarrierSense | Status.PacketInProgress);
@@ -158,10 +156,12 @@ namespace PERQemu.IO.Network
             var header = _system.IOB.DMARegisters.GetHeaderAddress(_dmaRx);
             var buffer = _system.IOB.DMARegisters.GetDataAddress(_dmaRx);
 
+            ushort data;
+
             // Adjust our size in case the frame contains the FCS bytes
             var size = _nic.FrameIncludesFCS ? packet.Length - 4 : packet.Length;
 
-            Log.Info(Category.Ethernet, "Receiving {0} bytes to header @ 0x{1:x6}, data @ 0x{2:x6} [{3}]",
+            Log.Info(Category.Ethernet, "Copying {0} bytes to header @ 0x{1:x6}, data @ 0x{2:x6} [{3}]",
                                          size, header, buffer,
                                          System.Threading.Thread.CurrentThread.ManagedThreadId);
             Log.Info(Category.Ethernet, "Receive bit count initial = {0:x} ({1})",
@@ -216,28 +216,33 @@ namespace PERQemu.IO.Network
                 // this case, SharpPcap/host adapter adds it on our behalf)
                 byte[] packet = new byte[(_bitCount / 8)];
 
-                int addr;
+                // Get the addresses from the DMAC for the transmit channel
+                var header = _system.IOB.DMARegisters.GetHeaderAddress(_dmaTx) + 1;
+                var buffer = _system.IOB.DMARegisters.GetDataAddress(_dmaTx);
                 ushort data;
+
+                Log.Info(Category.Ethernet, "Copying {0} bytes from header @ 0x{1:x6}, data @ 0x{2:x6} [{3}]",
+                                             packet.Length, header, buffer,
+                                             System.Threading.Thread.CurrentThread.ManagedThreadId);
+                Log.Info(Category.Ethernet, "Transmit bit count initial = {0:x} ({1})",
+                                            _bitCount, (short)_bitCount);
 
                 // DMA the header buffer from the PERQ's memory.  The hardware
                 // always transfers two quads for the header, but skips over the
                 // first (unused) word.
-                addr = _system.IOB.DMARegisters.GetHeaderAddress(_dmaTx) + 1;
-
                 for (var i = 0; i < 12; i += 2)
                 {
-                    data = _system.Memory.FetchWord(addr++);
+                    data = _system.Memory.FetchWord(header++);
                     packet[i] = (byte)data;
                     packet[i + 1] = (byte)(data >> 8);
                 }
 
                 // Do the header's Length/Type field (swapped!)
-                data = _system.Memory.FetchWord(addr);
+                data = _system.Memory.FetchWord(header);
                 packet[12] = (byte)(data >> 8);
                 packet[13] = (byte)data;
 
                 // Now copy the packet's payload from the buffer address
-                addr = _system.IOB.DMARegisters.GetDataAddress(_dmaTx);
 
                 // NB: we always use the packet length, and disregard whether the
                 // buffer is properly quad-word aligned!  This may in fact lead
@@ -247,7 +252,7 @@ namespace PERQemu.IO.Network
                 // to the PERQ's Ethernet programming model.  La la la la la :-)
                 for (var i = 14; i < packet.Length; i += 2)
                 {
-                    data = _system.Memory.FetchWord(addr++);
+                    data = _system.Memory.FetchWord(buffer++);
                     packet[i] = (byte)data;
                     if (i + 1 < packet.Length) packet[i + 1] = (byte)(data >> 8);
                 }
@@ -256,9 +261,6 @@ namespace PERQemu.IO.Network
                 // since there's nothing we could get back from Pcap that would
                 // be meaningful to the microcode anyway :-(
                 _nic.SendPacket(packet);
-
-                // Set the bit counter to zero to indicate success
-                _bitCount = 0;
             }
 
             // Let the base method complete and log the transmission
