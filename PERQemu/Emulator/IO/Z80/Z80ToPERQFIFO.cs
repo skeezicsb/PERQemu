@@ -106,7 +106,7 @@ namespace PERQemu.IO.Z80
                 if (_fifo.Count > 0)
                 {
                     value = _fifo.Dequeue();
-                    Log.Detail(Category.FIFO, "PERQ read byte 0x{0:x2} from FIFO ({1} bytes left)", value, _fifo.Count);
+                    Log.Detail(Category.FIFO, "PERQ read byte 0x{0:x2} ({1} bytes left)", value, _fifo.Count);
                     _z80IntRaised = true;
                 }
                 else
@@ -170,7 +170,7 @@ namespace PERQemu.IO.Z80
                     // more study.
                     _z80IntRaised = _outputReady;
 
-                    Log.Debug(Category.FIFO, "Z80 read FIFO status 0x{0:x}", result);
+                    Log.Debug(Category.FIFO, "Z80 read status 0x{0:x}", result);
                     return result;
                 }
             }
@@ -207,7 +207,7 @@ namespace PERQemu.IO.Z80
                     if (_fifo.Count < 16)
                     {
                         _fifo.Enqueue(value);
-                        Log.Detail(Category.FIFO, "Z80 wrote byte 0x{0:x2} to FIFO ({1} bytes)", value, _fifo.Count);
+                        Log.Detail(Category.FIFO, "Z80 wrote byte 0x{0:x2} ({1} bytes)", value, _fifo.Count);
                     }
                     else
                     {

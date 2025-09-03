@@ -5,13 +5,25 @@ Summary of changes on the development branch since the v0.6.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+September, 2025:
+
+    1. Debugging.  Refactoring the Ether10MbitController because it was getting
+    unwieldy.  Now 50% more wieldy.  Bumped version to v0.7.9 and push for some
+    platform testing.  PNX 5 is still intransigent.
+
+
 August, 2025:
 
-    2. Small victory: FLEX now runs, thanks to an RTC clock fix. Doh. Making
-    it think it's still 1985 does the trick.  New settings/configurator commands
-    to save an RTC offset so the virtual machine can innocently party like it's
-    still 1989.  PERQ-2 VT100-style keyboard mappings need fixin'.  Updates to
-    the UserGuide for recent changes.  Push for testing prior to v0.7.8 release.
+    3. Pushed v0.7.8 to main for pre-release.  Dug into the PDMA/FIFO stuff yet
+    again for PNX but it's failing before any of that.  Has to be a memory state
+    machine issue (they abuse the living hell out of the overlapped fetch/store
+    rules) but still haven't nailed it down.
+
+    2. Small victory: FLEX now runs, thanks to an RTC clock fix.  New settings/
+    configurator commands to save an RTC offset so the virtual machine can party
+    like it's still 1989.  PERQ-2 VT100-style keyboard mappings need fixin'.
+    Updates to the UserGuide for recent changes.  Push for testing prior to 
+    v0.7.8 pre-release.
 
     1. Video updates.  Memory state updates.  Fixing "bugs" that improve the
     accuracy and completeness of the emulator without actually affecting the
@@ -262,4 +274,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Fri Aug  8 06:23:01 PDT 2025
+Last update: skeezics    Tue Sep  2 22:54:19 PDT 2025

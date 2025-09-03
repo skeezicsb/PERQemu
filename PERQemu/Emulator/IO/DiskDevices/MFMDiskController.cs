@@ -709,7 +709,7 @@ namespace PERQemu.IO.DiskDevices
             Fault = 0x020,          // Fault line from DIB (active low)
             OnCyl = 0x040,          // Seek Complete from DIB (active low)
             Ready = 0x080,          // Ready line from DIB (active low)
-            Index = 0x100           // Toggles on each revolution? Not the pulse?
+            Index = 0x100           // Toggles once each revolution
         }
 
         // MFM sector timing based on 5Mbit/sec typical transfer rate for 528-byte
@@ -952,8 +952,8 @@ namespace PERQemu.IO.DiskDevices
             public void IndexPulse(ulong last)
             {
                 _latchedIndex = !_latchedIndex;
-                Log.Detail(Category.HardDisk, "EIO latched Index pulse {0} last {1}ns",
-                                              _latchedIndex, last);
+                Log.Verbose(Category.HardDisk, "EIO latched Index pulse {0} last {1}ns",
+                                               _latchedIndex, last);
             }
 
             /// <summary>
@@ -1071,8 +1071,8 @@ namespace PERQemu.IO.DiskDevices
                 _cylinder = SelectedDrive?.CurCylinder ?? 0;
 
                 _status.UnitReady = SelectedDrive?.Ready ?? false;
-                _status.DriveFault = SelectedDrive?.Fault ?? true;
-                _status.Index = SelectedDrive != null ? _latchedIndex : false;
+                _status.DriveFault = SelectedDrive?.Fault ?? false;
+                _status.Index = SelectedDrive != null && _latchedIndex;
 
                 _status.OnCylinder = _status.UnitReady && (_seekState == SeekState.Idle);
                 _status.Track0 = (_cylinder == 0);

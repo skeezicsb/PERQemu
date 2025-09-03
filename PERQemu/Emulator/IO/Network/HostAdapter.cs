@@ -511,7 +511,7 @@ namespace PERQemu.IO.Network
                 if (_pending.IsEmpty)
                 {
                     _pktsRecvd++;
-                    _controller.DoReceive(raw.Bytes);
+                    _controller.Receive(raw.Bytes);
                     return;
                 }
 
@@ -522,7 +522,7 @@ namespace PERQemu.IO.Network
                 if (_pending.TryDequeue(out raw))
                 {
                     _pktsRecvd++;
-                    _controller.DoReceive(raw.Bytes);
+                    _controller.Receive(raw.Bytes);
                     return;
                 }
 
@@ -565,7 +565,7 @@ namespace PERQemu.IO.Network
                 }
 
                 _pktsRecvd++;
-                _controller.DoReceive(packet.Bytes);
+                _controller.Receive(packet.Bytes);
             }
         }
 

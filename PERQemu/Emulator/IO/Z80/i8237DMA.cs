@@ -392,20 +392,20 @@ namespace PERQemu.IO.Z80
                         Log.Warn(Category.Z80DMA, "Channel {0} Request write ignored (not in Block mode)", chan);
                         break;
                     }
-                    _channels[chan].Requested = (value & 0x04) > 0;
+                    _channels[chan].Requested = (value & 0x04) != 0;
                     Log.Debug(Category.Z80DMA, "Channel {0} Requested is {1}", chan, _channels[chan].Requested);
                     break;
 
                 case 0x2:   // Write single mask bit
-                    _channels[chan].Masked = (value & 0x04) > 0;
+                    _channels[chan].Masked = (value & 0x04) != 0;
                     Log.Debug(Category.Z80DMA, "Channel {0} Masked is {1}", chan, _channels[chan].Masked);
                     break;
 
                 case 0x3:   // Write mode register
-                    _channels[chan].Transfer = (TransferMode)((value & 0x0c) >> 2);
+                    _channels[chan].Transfer = (TransferMode)((value >> 2) & 0x03);
                     _channels[chan].AutoInit = ((value & 0x10) != 0);
                     _channels[chan].AddrDecrement = ((value & 0x20) != 0);
-                    _channels[chan].Mode = (ChannelMode)((value & 0xc0) >> 6);
+                    _channels[chan].Mode = (ChannelMode)((value >> 6) & 0x3);
                     Log.Debug(Category.Z80DMA, "Write 0x{0:x2} to channel {1} mode reg", value, chan);
                     break;
 
@@ -417,11 +417,18 @@ namespace PERQemu.IO.Z80
                     Reset();
                     break;
 
+                case 0x6:   // Clear all mask bits
+                    _channels[0].Masked = false;
+                    _channels[1].Masked = false;
+                    _channels[2].Masked = false;
+                    _channels[3].Masked = false;                    
+                    break;
+
                 case 0x7:   // Write all mask bits
-                    _channels[0].Masked = (value & 0x01) > 0;
-                    _channels[1].Masked = (value & 0x02) > 0;
-                    _channels[2].Masked = (value & 0x04) > 0;
-                    _channels[3].Masked = (value & 0x08) > 0;
+                    _channels[0].Masked = (value & 0x01) != 0;
+                    _channels[1].Masked = (value & 0x02) != 0;
+                    _channels[2].Masked = (value & 0x04) != 0;
+                    _channels[3].Masked = (value & 0x08) != 0;
                     break;
 
                 default:

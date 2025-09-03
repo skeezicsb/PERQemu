@@ -300,7 +300,7 @@ New in v0.7.8:
 
 NOTE: PNX 1 only supports 1MB of memory and will crash if configured with more.
 PNX 2, PNX 3, POS, MPOS and Accent have no trouble with a full megaword (2MB)
-of memory.
+of memory.  So far only Accent S6 has been tested with 4MB (PERQ-2/T4).
 
 Accent mouse tracking takes a little getting used to since it runs in relative
 mode.  To simulate mouse "swipes" you have to use the Alt key (Option key on
@@ -324,7 +324,8 @@ The following hardware has been implemented in the emulator:
 
   Memory/VideoController:
     - Now can be configured at runtime, up to 8MB in the 24-bit models;
-    - Only tested for operation with the 20-bit processors (max 2MB / 1MW).
+    - Verified for operation with the 20-bit processors (max 2MB / 1MW) and the
+      24-bit CPU (max 4MB / 2MW).
 
   Hard disk:
     - The original PERQ-1 14" Shugart SA4000-series drives and controllers are
@@ -404,7 +405,7 @@ The following hardware has been implemented in the emulator:
   Canon:
     - Laser printer interface can now be enabled as an OIO option for all valid
       PERQ chassis/IO Board combinations.  It provides high quality output in
-      PNG or TIFF format at 240- or 300-dpi.
+      PNG or TIFF format at 240 or 300 dpi.
 
 
 There is a ton of additional detail about the internals of PERQemu itself in
@@ -529,10 +530,9 @@ v0.9 - TBD
   - See if CIO Micropolis has any real software support?
   - Multibus and SMD disks?
 
-v0.7.8 - Experiments branch
+v0.7.8 - Main branch (v0.8 pre-release)
   - 24-bit CPU with 4MB memory fixes (now boots Accent; more testing to do)
-  - Update for FLEX custom floppy format, Z80 DMA and RTC changes to allow it
-    to run
+  - Added FLEX custom floppy format, Z80 DMA and RTC changes
   - Changes to the DDS since FLEX drives it at several MHz and that's silly
   - New import/export commands for exchanging PERQemu 5.25" disk images with
     the Gesswein MFM emulator (emulated disks <-> real PERQ!)
@@ -689,7 +689,8 @@ v0.1 - First public release
 
 Update history:
 
-8/8/2025 - skeezicsb - v0.7.8 (experiments)
+9/2/2025 - skeezicsb - v0.7.9 (experiments)
+8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)

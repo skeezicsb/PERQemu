@@ -72,8 +72,9 @@ namespace PERQemu.IO.Z80
 
         // For debugging mostly
         public Oki5832RTC RTC => _rtc;
+#if DEBUG
         public int[] CPI => _buckets;
-
+#endif
 
         /// <summary>
         /// Initializes the EIO devices and attaches them to the bus.
@@ -289,11 +290,13 @@ namespace PERQemu.IO.Z80
             // Clock the EIO DMA
             ticks += _dmac.Clock();
 
+#if DEBUG
             // Debug - histogram of average # cycles per call
             if (ticks >= _buckets.Length)
                 _buckets[_buckets.Length - 1]++;
             else
                 _buckets[ticks]++;
+#endif
 
             // Run the scheduler
             _scheduler.Clock(ticks);
@@ -312,19 +315,22 @@ namespace PERQemu.IO.Z80
         /// </summary>
         public override void WriteStatus(int status)
         {
-            //
+            bool runState = _running;
+
             // Check the Reset bit first
-            //
-            if (_running && ((status & 0x04) == 0))
+            if ((status & 0x04) == 0 && runState)
             {
                 Log.Debug(Category.Z80, "Shut down by write to Status register");
                 _running = false;
-                _system.MachineStateChange(WhatChanged.Z80RunState, _running);
             }
-            else if (!_running && ((status & 0x04) != 0))
+            else if ((status & 0x04) != 0 && !runState)
             {
                 Log.Debug(Category.Z80, "Started by write to Status register");
                 Reset(true);
+            }
+
+            if (runState != _running)
+            {
                 _system.MachineStateChange(WhatChanged.Z80RunState, _running);
             }
 
@@ -338,8 +344,7 @@ namespace PERQemu.IO.Z80
             _perqToZ80Fifo.InterruptEnabled = ((status & 0x02) != 0);
             _z80ToPerqFifo.InterruptEnabled = ((status & 0x01) != 0);
 
-            // debug
-            Log.Debug(Category.FIFO, "PERQ wrote FIFO interrupt enables 0x{0:x4}", status);
+            Log.Debug(Category.FIFO, "PERQ wrote interrupt enables 0x{0:x4}", status);
         }
 
         /// <summary>
@@ -353,7 +358,7 @@ namespace PERQemu.IO.Z80
             int status = (_z80ToPerqFifo.IsReady ? 0x8000 : 0);     // Bit 15: read ready
             status |= (_perqToZ80Fifo.IsReady ? 0x0080 : 0);        // Bit 7: write ready
 
-            Log.Debug(Category.FIFO, "PERQ read FIFO status 0x{0:x4}", status);
+            Log.Debug(Category.FIFO, "PERQ read status 0x{0:x4}", status);
             return status;
         }
 
@@ -423,8 +428,10 @@ namespace PERQemu.IO.Z80
         PERQToZ80FIFO _perqToZ80Fifo;
         Z80ToPERQFIFO _z80ToPerqFifo;
 
+#if DEBUG
         // Debugging the DMAC/Z80 "slowness" that trips up FLEX
         int[] _buckets = new int[32];
+#endif
     }
 }
 

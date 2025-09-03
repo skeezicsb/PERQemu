@@ -420,14 +420,14 @@ namespace PERQemu.Memory
 
                 case VideoState.EndOfBand:
 
-                    // Trigger an interrupt if the line counter is set and has reached 0
+                    // Trigger an interrupt if enabled and not already raised
                     if (InterruptEnabled && !_lineCountOverflow)
                     {
                         Log.Debug(Category.Display, "Line counter overflow @ scanline {0}", _scanLine);
                         _system.CPU.RaiseInterrupt(InterruptSource.LineCounter);
                     }
 
-                    // Set our flag; this will be reset when _lineCounterInit is reloaded
+                    // Flag will be reset when _lineCounterInit is reloaded
                     _lineCountOverflow = true;
 
                     // Check the StartOver bit: at the end of the second vertical
@@ -493,16 +493,14 @@ namespace PERQemu.Memory
             // Now overlay the cursor bytes if enabled
             if (CursorEnabled)
             {
-                // Calc the starting address of this line of cursor data
-                int cursorAddress = (_cursorAddress >> 2) + _cursorY++;
+                // Calc the starting address of this line of cursor data,
+                // fetch the quad and break it into 8 bytes for easy mixin'
+                GetCursorQuad((_cursorAddress >> 2) + _cursorY);
+                _cursorY++;
 
-                // Fetch the quad and break it into 8 bytes for easy mixin'!
-                GetCursorQuad(cursorAddress);
-
-                int cursorStartByte = _cursorX;
                 int cursByte = 0;
 
-                for (int dispByte = cursorStartByte; dispByte < cursorStartByte + 8; dispByte++)
+                for (int dispByte = _cursorX; dispByte < _cursorX + 8; dispByte++)
                 {
                     // Could be much cleverer about this and shorten the loop
                     // if the cursor is off the edge; for now, just clip to range

@@ -284,9 +284,9 @@ namespace PERQemu.UI
 #if DEBUG
             if (enabled != _enabled)
             {
-                Status();
-                Console.Write("Screen is now {0}, ", enabled ? "ON" : "OFF");
-                Console.WriteLine("DDS @ {0} (clocks {1})", PERQemu.Sys.CPU.DDS, PERQemu.Sys.CPU.Clocks);
+                Console.WriteLine("Screen is now {0}, DDS @ {1} (clocks {2})",
+                                  enabled ? "ON" : "OFF",
+                                  PERQemu.Sys.CPU.DDS, PERQemu.Sys.CPU.Clocks);
             }
 #endif
             _enabled = enabled;
