@@ -114,7 +114,7 @@ namespace PERQemu.Processor
             // Breakpoint set at this address?
             if (_system.Debugger.WatchedMicroaddress.IsWatched(_usequencer.PC))
             {
-                _break = _system.Debugger.WatchedMicroaddress.BreakpointReached(_usequencer.PC);
+                _break |= _system.Debugger.WatchedMicroaddress.BreakpointReached(_usequencer.PC);
             }
 #endif
 
@@ -251,7 +251,7 @@ namespace PERQemu.Processor
             if ((uOp.A == AField.NextOp || uOp.JMP == JumpOperation.NextInstReviveVictim) &&
                 _system.Debugger.WatchedOpCodes.IsWatched(_lastOpcode))
             {
-                _break = _system.Debugger.WatchedOpCodes.BreakpointReached(_lastOpcode);
+                _break |= _system.Debugger.WatchedOpCodes.BreakpointReached(_lastOpcode);
             }
 #endif
             return _break;
@@ -409,8 +409,8 @@ namespace PERQemu.Processor
             if (_interrupt.Raise(i) == 0)
             {
                 // Cut down on the spewage for debugging
-                if (i != InterruptSource.LineCounter)
-                    Log.Debug(Category.Interrupt, "{0} raised, active now {1}", i, _interrupt.Flag);
+                Log.Write(i == InterruptSource.LineCounter ? Severity.Detail : Severity.Debug,
+                          Category.Interrupt, "{0} raised, active now {1}", i, _interrupt.Flag);
 
                 // Check for, fire if breakpoint set
                 if (_system.Debugger.WatchedInterrupts.IsWatched((int)i))
@@ -432,14 +432,14 @@ namespace PERQemu.Processor
             // Log it if it wasn't already clear
             if (_interrupt.Clear(i) != 0)
             {
-                // Cut down on the spewage for debugging
-                if (i != InterruptSource.LineCounter)
-                    Log.Debug(Category.Interrupt, "{0} cleared, active now {1}", i, _interrupt.Flag);
+                // Cut down on the spewage for debugging               
+                Log.Write(i == InterruptSource.LineCounter ? Severity.Detail : Severity.Debug,
+                          Category.Interrupt, "{0} cleared, active now {1}", i, _interrupt.Flag);
 
                 // Check for, fire if breakpoint set
                 if (_system.Debugger.WatchedInterrupts.IsWatched((int)i))
                 {
-                    _break = _system.Debugger.WatchedInterrupts.BreakpointReached((int)i, false);
+                    _break |= _system.Debugger.WatchedInterrupts.BreakpointReached((int)i, false);
                 }
             }
 #else
@@ -555,8 +555,7 @@ namespace PERQemu.Processor
                         }
                     }
 
-                    // Note: There are two subtle hazards here, but this is how the
-                    // hardware does it.
+                    // Note: There are two subtle hazards here, but this is how the hardware does it
                     amux = _opFile[BPC];
                     _incrementBPC = true;           // Increment BPC at start of next cycle
 
@@ -573,18 +572,18 @@ namespace PERQemu.Processor
                     // Watched address?
                     if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MADR))
                     {
-                        _break = _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MADR, amux);
+                        _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MADR, amux);
                     }
 #endif
                     break;
 
                 case AField.MDX:
-                    amux = (_memory.MDI & (CPUBoard.CPUBits == 24 ? 0x00ff : 0x000f)) << 16;
+                    amux = (_memory.MDI << 16) & CPUBoard.CPUMask;
 #if DEBUG
                     // Watched address?
                     if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MADR))
                     {
-                        _break = _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MADR, amux);
+                        _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MADR, amux);
                     }
 #endif
                     break;
@@ -747,7 +746,8 @@ namespace PERQemu.Processor
                             {
                                 // This often appears during boot/testing and is harmless in that
                                 // case; turn off these alerts in Release builds to reduce noise
-                                Log.Debug(Category.OpFile, "LoadOp called in wrong cycle! T{0}", _memory.TState);
+                                Log.Debug(Category.OpFile, "LoadOp called in wrong cycle! T{0} @ PC {1:x}",
+                                          _memory.TState, _system.CPU.PC);
                             }
 #endif
 
@@ -783,7 +783,7 @@ namespace PERQemu.Processor
                                 // Check for breakpoint on this port
                                 if (_system.Debugger.WatchedIOPorts.IsWatched(uOp.IOPort))
                                 {
-                                    _break = _system.Debugger.WatchedIOPorts.BreakpointReached(uOp.IOPort);
+                                    _break |= _system.Debugger.WatchedIOPorts.BreakpointReached(uOp.IOPort);
                                 }
 #endif
                                 // Input if the msb of Z is unset, Output otherwise
@@ -1148,6 +1148,7 @@ namespace PERQemu.Processor
         //
         // Housekeeping
         //
+
         ulong _clocks;
         bool _break;
 

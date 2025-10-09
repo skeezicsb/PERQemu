@@ -44,10 +44,10 @@ namespace PERQemu.Processor
                 BuildShifterTable();
             }
 
-            public ushort ShifterOutput
-            {
-                get { return _output; }
-            }
+            /// <summary>
+            /// Gets the 16 bit result of the last shift operation.
+            /// </summary>
+            public ushort ShifterOutput => _output;
 
             /// <summary>
             /// Set up the shifter according to the PERQ's encoding rules
@@ -77,7 +77,6 @@ namespace PERQemu.Processor
             /// <summary>
             /// Applies shifter logic to the given input word.
             /// </summary>
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Shift(int input)
             {
                 Shift(input, input);
@@ -87,7 +86,7 @@ namespace PERQemu.Processor
             /// Performs left and right shifts (low word only) or combines the two
             /// (high + low) to do rotates or field operations.  The ability to
             /// specify two separate input words is used by RasterOp's "half word
-            /// pipeline."
+            /// pipeline."  These are logical operations only (no sign extension).
             /// </summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Shift(int low, int high)
@@ -104,23 +103,23 @@ namespace PERQemu.Processor
                         break;
 
                     case ShifterCommand.RightShift:
-                        _output = (ushort)((low & 0x0ffff) >> _params.ShiftAmount);    // logical, not arithmetic
+                        _output = (ushort)((low >> _params.ShiftAmount) & 0x0ffff);
 
                         Log.Debug(Category.Shifter, "Right shift by {0}: in={1:x4} out={2:x4}",
                                   _params.ShiftAmount, low, _output);
                         break;
 
                     case ShifterCommand.Rotate:
-                        d = (uint)(((high & 0xffff) << 16) | (low & 0xffff));   // 32 bits
-                        _output = (ushort)(0xffff & (d >> _params.ShiftAmount));
+                        d = (uint)((high << 16) | (low & 0xffff));
+                        _output = (ushort)((d >> _params.ShiftAmount) & 0xffff);
 
                         Log.Debug(Category.Shifter, "Rotate by {0}: in={1:x4}{2:x4} out={3:x4}",
                                   _params.ShiftAmount, high, low, _output);
                         break;
 
                     case ShifterCommand.Field:
-                        d = (uint)(((high & 0xffff) << 16) | (low & 0xffff));   // 32 bits
-                        _output = (ushort)(((d >> _params.ShiftAmount)) & _params.ShiftMask);
+                        d = (uint)((high << 16) | (low & 0xffff));
+                        _output = (ushort)((d >> _params.ShiftAmount) & _params.ShiftMask);
 
                         Log.Debug(Category.Shifter, "Field mask {0} rotated by {1} out={2:x4}",
                                   _params.ShiftMask, _params.ShiftAmount, _output);
@@ -151,15 +150,14 @@ namespace PERQemu.Processor
                         _shifterTable[i].Command = ShifterCommand.RightShift;
                         _shifterTable[i].ShiftAmount = high;
                     }
-                    else if (
-                        (low == 0xd || low == 0xe) &&
-                        (high >= 0x8 && high <= 0xf))
+                    else if ((low == 0xd || low == 0xe) && (high >= 0x8 && high <= 0xf))
                     {
                         _shifterTable[i].Command = ShifterCommand.Rotate;
                         _shifterTable[i].ShiftAmount = (high & 0x7) | (low == 0xd ? 0x0 : 0x8);
                     }
                     else
                     {
+                        // Extract and right justify an arbitrary bitfield
                         _shifterTable[i].Command = ShifterCommand.Field;
                         _shifterTable[i].ShiftAmount = high;
                         _shifterTable[i].ShiftMask = (0x1ffff >> (0x10 - low));
@@ -174,7 +172,7 @@ namespace PERQemu.Processor
                 public int ShiftMask;
             }
 
-            private ushort _output;
+            ushort _output;
             ShifterTableEntry _params;
             static ShifterTableEntry[] _shifterTable;
         }

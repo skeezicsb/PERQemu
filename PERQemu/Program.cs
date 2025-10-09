@@ -156,6 +156,8 @@ namespace PERQemu
             Console.WriteLine($"[Host is configured for {Environment.ProcessorCount} processor(s)]");
             Console.WriteLine($"[Console buffer is {Console.BufferWidth}x{Console.BufferHeight}]");
             Console.WriteLine($"[Console window is {Console.WindowWidth}x{Console.WindowHeight}]");
+            Console.WriteLine(_gui.GetSDLVersion(true));
+            Console.WriteLine(_gui.GetSDLVersion(false));
 #endif
 #if TRACING_ENABLED
             Console.WriteLine("[Tracing is available]");

@@ -380,6 +380,35 @@ namespace PERQemu.UI
             }
         }
 
+        public string GetSDLVersion(bool build)
+        {
+            string vers;
+
+            try
+            {
+                if (build)
+                {
+                    SDL.SDL_VERSION(out _sdlVers);
+                    vers = $"[Compiled with SDL {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}, ";
+                    SDL_image.SDL_IMAGE_VERSION(out _sdlVers);
+                    vers += $" SDL_image {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}]";
+                }
+                else
+                {
+                    SDL.SDL_GetVersion(out _sdlVers);
+                    vers = $"[Linked with SDL {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}, ";
+                    _sdlVers = SDL_image.IMG_LinkedVersion();
+                    vers += $" SDL_image {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}]";
+                }
+            }
+            catch
+            {
+                vers = "** Failed to obtain SDL version string!  Are the libraries installed?";
+            }
+
+            return vers;
+        }
+
 
         int _timerHandle;
         bool _sdlRunning;
@@ -390,6 +419,8 @@ namespace PERQemu.UI
         IntPtr _displayWindow;
         IntPtr _defaultCursor;
         IntPtr _crossHairs;
+
+        SDL.SDL_version _sdlVers;
 
         Dictionary<SDL.SDL_EventType, SDLMessageHandlerDelegate> _uiEventDispatch;
     }

@@ -711,6 +711,11 @@ namespace PERQemu.IO.Network
             StartFlag = 0x200
         }
 
+        /// <summary>
+        /// Network status register bits.  Only the low byte is returned on status
+        /// reads, but for reference we also name the extra bits as the microcode
+        /// or state machine uses them and I don't want to keep looking them up. :)
+        /// </summary>
         [Flags]
         protected enum Status
         {
@@ -729,6 +734,7 @@ namespace PERQemu.IO.Network
             SendError = 0x4000,     // bits in a similar fashion
             CmdInProgress = 0x8000
         }
+
 
         protected State _state;
         protected Control _control;

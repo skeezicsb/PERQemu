@@ -347,10 +347,11 @@ The following hardware has been implemented in the emulator:
 
   Displays:
     - The standard 768 x 1024 portrait display is available for all models;
-    - The 1280 x 1024 landscape display is supported and tested with POS G.7
-      and Accent S6!  Although PERQ-1 landscape configurations were very rare,
-      the emulator runs 'em just fine!  Became standard equipment on most
-      PERQ-2 models.
+    - The 1280 x 1024 landscape display is supported and tested with all
+      PERQ-2 configurations.  POS G and several versions of Accent, PNX and
+      FLEX support the landscape monitor;
+    - Although PERQ-1 landscape configurations were very rare, the emulator
+      runs 'em just fine!  Consult the UserGuide for more.
 
   Z80 I/O Processor:
     - Simulation replaced by a real Z80 emulator running actual PERQ ROM code;
@@ -419,6 +420,8 @@ Docs/ directory for way, way more information than you need.  Way more.
 - Ethernet.  In development! [See above]
 
 - Option boards:  3Mbit Ethernet.  On the list.
+
+- Z80 disassembly/source debugging when running from RAM (PERQ-2/EIO).
  
 - PERQLink.  Unimplemented other than a stub that tells the microcode that
   there's nothing connected to it.
@@ -530,7 +533,7 @@ v0.9 - TBD
   - See if CIO Micropolis has any real software support?
   - Multibus and SMD disks?
 
-v0.7.8 - Main branch (v0.8 pre-release)
+v0.7.8 - Main branch (v0.8.x pre-release)
   - 24-bit CPU with 4MB memory fixes (now boots Accent; more testing to do)
   - Added FLEX custom floppy format, Z80 DMA and RTC changes
   - Changes to the DDS since FLEX drives it at several MHz and that's silly
@@ -689,7 +692,7 @@ v0.1 - First public release
 
 Update history:
 
-9/2/2025 - skeezicsb - v0.7.9 (experiments)
+10/9/2025 - skeezicsb - v0.8.0 (experiments)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)

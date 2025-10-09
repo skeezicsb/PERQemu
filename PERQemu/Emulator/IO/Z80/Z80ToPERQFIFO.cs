@@ -47,13 +47,17 @@ namespace PERQemu.IO.Z80
 
         public void Reset()
         {
-            // Clear the queue
-            _fifo.Clear();
+            // Dismiss the Z80 interrupt
+            _z80IntRaised = false;
             _outputReady = false;
 
-            // Dismiss the interrupts
-            InterruptEnabled = false;
-            _z80IntRaised = false;
+            // Clear the queue
+            lock (_lock) { _fifo.Clear(); }
+
+            // Reassert if appropriate; the "soft" reset is called on the CPU's
+            // thread only when the Z80 is paused, so this shouldn't glitch the
+            // interrupt line given the order of assertions in the CSR handling
+            InterruptEnabled = _interruptEnabled;
 
             Log.Debug(Category.FIFO, "{0} reset", Name);
         }

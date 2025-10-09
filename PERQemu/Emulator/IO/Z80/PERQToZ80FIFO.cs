@@ -47,12 +47,16 @@ namespace PERQemu.IO.Z80
 
         public void Reset()
         {
-            // Clear the decks
-            _fifo.Clear();
-
-            // Reset interrupts too
-            InterruptEnabled = false;
+            // Clear the Z80 interrupt
             _z80IntRaised = false;
+
+            // Lock and flush the FIFO
+            lock (_lock) { _fifo.Clear(); }
+
+            // Reassert the interrupt to the last saved state.  NB: there is
+            // still a subtle race condition here, but it seems most OSes don't
+            // use this interrupt once the boot ROMs are switched off anyway
+            InterruptEnabled = _interruptEnabled;
 
             Log.Debug(Category.FIFO, "{0} reset", Name);
         }
@@ -79,7 +83,7 @@ namespace PERQemu.IO.Z80
             {
                 _interruptEnabled = value;
 
-                // Disabling dismisses the interrupt regardless of FIFO state?
+                // Disabling dismisses the interrupt regardless of FIFO state
                 if (!_interruptEnabled && _perqIntRaised)
                 {
                     _system.CPU.ClearInterrupt(InterruptSource.Z80DataIn);
@@ -175,14 +179,14 @@ namespace PERQemu.IO.Z80
         {
             // Should never get called, this FIFO is read-only from the Z80 side.
             // If it does, we should yell about it.
-            throw new NotImplementedException("Z80 write to read-only FIFO");
+            throw new InvalidOperationException("Z80 write to read-only FIFO");
         }
 
 
         // Debugging
         public void DumpFifo()
         {
-            Console.WriteLine($"PERQ->Z80 FIFO: IRQ enabled={_interruptEnabled}");
+            Console.WriteLine($"PERQ->Z80 FIFO: IRQ enabled={_interruptEnabled} Ready={IsReady}");
 
             Console.Write("PERQ->Z80 FIFO: ");
 

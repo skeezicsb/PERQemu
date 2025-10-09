@@ -5,7 +5,31 @@ Summary of changes on the development branch since the v0.6.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+October, 2025:
+
+    1. If PERQemu detects that you are attempting to run PNX 5, it will delete
+    itself from your hard drive and report you to the FBI.  PNX 5 is a fake OS,
+    a hoax, it doesn't exist, we have always been at war with Eastasia.
+
+    The patches/mods here roll up some of the latest attempts to address the
+    numerous bugs and outright bizarre behavior exhibited by the PNX 5 kernel.
+    Despite improving the near-cycle-accurate behavior of the emulator by making
+    it more faithful to the hardware, PNX 5 remains stubbornly, stupidly broken.
+    Without source code or a shred of documentation, further effort is pointless
+    so I'm setting it aside for now.
+
+    Pushing an interim update to clear the decks and shifting focus to pressing
+    UI matters (screen size and keyboard mapping).  Bump to v0.8.0.
+
+
 September, 2025:
+
+    2. More Ethernet testing and tuning; POS TestEther, FTP, Accent services
+    are working with better reliability.  That is to say, as well as can be
+    expected given how fragile and bare bones a lot of that original software
+    is, but it's exciting to see Accent living up to its billing as a network
+    OS and distributed computing environment.  Many ideas cooking for how to
+    help manage/integrate VMs with any existing host network infrastructure.
 
     1. Debugging.  Refactoring the Ether10MbitController because it was getting
     unwieldy.  Now 50% more wieldy.  Bumped version to v0.7.9 and push for some
