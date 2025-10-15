@@ -157,9 +157,9 @@ namespace PERQemu.IO.Network
                 // Broadcast our request
                 var packet = new EthernetPacket(_adapter.MacAddress,
                                                 Broadcast,
-                                                EthernetPacketType.ReverseArp);
+                                                EthernetType.ReverseArp);
                 // Well hello there!
-                var greeting = new ARPPacket(ARPOperation.RequestReverse,
+                var greeting = new ArpPacket(ArpOperation.RequestReverse,
                                              _controller.MACAddress,
                                              System.Net.IPAddress.None,
                                              _adapter.MacAddress,
@@ -186,16 +186,16 @@ namespace PERQemu.IO.Network
         /// comes online it quickly gathers up data for the others without doing
         /// periodic broadcasts.  This is all kinda cheesy. :-)
         /// </summary>
-        void SendReply(ARPPacket greeting)
+        void SendReply(ArpPacket greeting)
         {
             try
             {
                 // Return to sender
                 var packet = new EthernetPacket(_adapter.MacAddress,
                                                 greeting.SenderHardwareAddress,
-                                                EthernetPacketType.ReverseArp);
+                                                EthernetType.ReverseArp);
                 // Send back our data
-                var salutation = new ARPPacket(ARPOperation.ReplyReverse,
+                var salutation = new ArpPacket(ArpOperation.ReplyReverse,
                                               _controller.MACAddress,
                                                System.Net.IPAddress.None,
                                               _adapter.MacAddress,
@@ -230,25 +230,25 @@ namespace PERQemu.IO.Network
                 }
 
                 Log.Info(Category.NetAdapter, "Sending from {0} to {1} (type 0x{2:x})",
-                          packet.SourceHwAddress, packet.DestinationHwAddress, packet.Type);
+                          packet.SourceHardwareAddress, packet.DestinationHardwareAddress, packet.Type);
                 Log.Info(Category.NetAdapter, "SIZES: packet {0}, header {1}, payload {2}",
-                          packet.Bytes.Length, packet.Header.Length, packet.PayloadData?.Length);
+                          packet.TotalPacketLength, packet.HeaderData.Length, packet.PayloadData?.Length);
 
                 // Always remap our source address to the host adapter
-                packet.SourceHwAddress = _adapter.MacAddress;
+                packet.SourceHardwareAddress = _adapter.MacAddress;
 
                 // Are we (potentially) sending to another PERQ?
-                if (IsPerqPrefix(packet.DestinationHwAddress) || packet.DestinationHwAddress.Equals(Broadcast))
+                if (IsPerqPrefix(packet.DestinationHardwareAddress) || packet.DestinationHardwareAddress.Equals(Broadcast))
                 {
-                    if (!packet.DestinationHwAddress.Equals(Broadcast))
+                    if (!packet.DestinationHardwareAddress.Equals(Broadcast))
                     {
                         // Look up the PERQ's host address
-                        var map = _nat.LookupPerq(packet.DestinationHwAddress);
+                        var map = _nat.LookupPerq(packet.DestinationHardwareAddress);
 
                         if (map != null)
                         {
                             // Translate it too
-                            packet.DestinationHwAddress = map.Host;
+                            packet.DestinationHardwareAddress = map.Host;
 
                             // Basic stats
                             map.Sent++;
@@ -257,7 +257,7 @@ namespace PERQemu.IO.Network
                         }
                         else
                         {
-                            Log.Warn(Category.Network, "Destination Perq {0} is unknown to me...", packet.DestinationHwAddress);
+                            Log.Warn(Category.Network, "Destination Perq {0} is unknown to me...", packet.DestinationHardwareAddress);
                             // Should do an actual RARP here...?
                         }
                     }
@@ -268,13 +268,13 @@ namespace PERQemu.IO.Network
                     if ((ushort)packet.Type != perqType)
                     {
                         Log.Info(Category.Network, "EtherType mapped from 0x{0:x4} to 0x{1:x4}", (ushort)packet.Type, perqType);
-                        packet.Type = (EthernetPacketType)perqType;
+                        packet.Type = (EthernetType)perqType;
                     }
                 }
 
 #if DEBUG
                 // Now generate the checksum for the packet (for debugging)
-                var crc = Crc32.Compute(packet.Bytes, 0, packet.Bytes.Length);
+                var crc = Crc32.Compute(packet.Bytes, 0, packet.TotalPacketLength);
                 Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
 
                 // In verbose mode print the (modified) packet
@@ -326,31 +326,31 @@ namespace PERQemu.IO.Network
 
                 // The PERQ interface can't "see" its own transmissions, but
                 // apparently SharpPcap does; silently drop 'em here
-                if (raw.SourceHwAddress.Equals(_adapter.MacAddress)) return;
+                if (raw.SourceHardwareAddress.Equals(_adapter.MacAddress)) return;
 
                 // Stuff we just drop because it's completely irrelevant to the
                 // old PERQ and is just pure noise:  IPv6 and spanning tree
                 // multicasts every 2 seconds... there's MUCH more we could add
                 // but it might be simpler to just set a filter for what we can
                 // safely accept?
-                if (raw.Type == EthernetPacketType.IpV6) return;
+                if (raw.Type == EthernetType.IPv6) return;
                 if ((ushort)raw.Type == 0x0026) return;
 
                 Log.Info(Category.NetAdapter, "Received from {0} to {1} (type 0x{2:x}) [{3}]",
-                          raw.SourceHwAddress, raw.DestinationHwAddress, raw.Type,
+                          raw.SourceHardwareAddress, raw.DestinationHardwareAddress, raw.Type,
                           Thread.CurrentThread.ManagedThreadId);
                 Log.Info(Category.NetAdapter, "SIZES: packet {0}, header {1}, payload {2}",
-                          raw.Bytes.Length, raw.Header.Length, raw.PayloadData?.Length);
+                          raw.TotalPacketLength, raw.HeaderData.Length, raw.PayloadData?.Length);
 
                 // See if the frame includes the FCS bytes or not -- apparently
                 // SOME Ethernet controllers include them while others don't!
                 if (!_probed)
                 {
                     // Compute checksum based on the received length
-                    var crc = Crc32.Compute(raw.Bytes, 0, raw.Bytes.Length);
+                    var crc = Crc32.Compute(raw.Bytes, 0, raw.TotalPacketLength);
                     Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
 
-                    var len = raw.Bytes.Length - 4;
+                    var len = raw.TotalPacketLength - 4;
                     var check = ((raw.Bytes[len] << 24) |
                                  (raw.Bytes[len + 1] << 16) |
                                  (raw.Bytes[len + 2] << 8) |
@@ -360,7 +360,7 @@ namespace PERQemu.IO.Network
                     // Lop off the last four bytes and recompute
                     if (check != crc)
                     {
-                        crc = Crc32.Compute(raw.Bytes, 0, raw.Bytes.Length - 4);
+                        crc = Crc32.Compute(raw.Bytes, 0, raw.TotalPacketLength - 4);
                         Log.Info(Category.NetAdapter, "Re-computed CRC is {0:x8}", crc);
 
                         // NOW if they match we can be certain the FCS is present
@@ -373,24 +373,24 @@ namespace PERQemu.IO.Network
 #if DEBUG
                 else
                 {
-                    var crc = Crc32.Compute(raw.Bytes, 0, _hasFCS ? raw.Bytes.Length - 4 : raw.Bytes.Length);
+                    var crc = Crc32.Compute(raw.Bytes, 0, _hasFCS ? raw.TotalPacketLength - 4 : raw.TotalPacketLength);
                     Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
                 }
 #endif
 
                 // If this is addressed to us specifically, NAT it!
-                if (raw.DestinationHwAddress.Equals(_adapter.MacAddress))
+                if (raw.DestinationHardwareAddress.Equals(_adapter.MacAddress))
                 {
-                    raw.DestinationHwAddress = _controller.MACAddress;
+                    raw.DestinationHardwareAddress = _controller.MACAddress;
                 }
 
                 // Is it from a PERQ that we've seen before?
-                var src = _nat.LookupHost(raw.SourceHwAddress);
+                var src = _nat.LookupHost(raw.SourceHardwareAddress);
 
                 if (src != null)
                 {
                     // Yes!  Translate the source address too
-                    raw.SourceHwAddress = src.Perq;
+                    raw.SourceHardwareAddress = src.Perq;
 
                     // Update the stats to show they're still active
                     src.LastReceived = DateTime.Now;
@@ -400,7 +400,7 @@ namespace PERQemu.IO.Network
                 }
 
                 // If source is a PERQ, see if the Type/Length field needs remappin'
-                if (IsPerqPrefix(raw.SourceHwAddress) || raw.DestinationHwAddress.Equals(Broadcast))
+                if (IsPerqPrefix(raw.SourceHardwareAddress) || raw.DestinationHardwareAddress.Equals(Broadcast))
                 {
                     // Translate the EtherType/Length field if necessary
                     var perqType = PortMap((ushort)raw.Type);
@@ -408,7 +408,7 @@ namespace PERQemu.IO.Network
                     if ((ushort)raw.Type != perqType)
                     {
                         Log.Info(Category.NetAdapter, "EtherType mapped from 0x{0:x4} to 0x{1:x4}", (ushort)raw.Type, perqType);
-                        raw.Type = (EthernetPacketType)perqType;
+                        raw.Type = (EthernetType)perqType;
                     }
                 }
             }
@@ -428,11 +428,11 @@ namespace PERQemu.IO.Network
             // almost certainly be PERQemu (or maybe QEMU :-) emulated hosts
             // broadcasting a greeting
             //
-            ARPPacket rarp;
+            ArpPacket rarp;
 
             try
             {
-                rarp = (ARPPacket)raw.Extract(typeof(ARPPacket));
+                rarp = raw.Extract<ArpPacket>();
 
                 if (rarp != null)
                 {
@@ -452,7 +452,7 @@ namespace PERQemu.IO.Network
                             seen = new NATEntry(rarp.SenderHardwareAddress, rarp.TargetHardwareAddress);
                             _nat.Add(seen);
 
-                            if (rarp.Operation == ARPOperation.RequestReverse)
+                            if (rarp.Operation == ArpOperation.RequestReverse)
                             {
                                 // Since this is the first time we've heard from this
                                 // host, send a RARP reply, since it's unlikely anyone
@@ -468,8 +468,8 @@ namespace PERQemu.IO.Network
                         }
                     }
 
-                    if (rarp.Operation == ARPOperation.RequestReverse ||
-                        rarp.Operation == ARPOperation.ReplyReverse)
+                    if (rarp.Operation == ArpOperation.RequestReverse ||
+                        rarp.Operation == ArpOperation.ReplyReverse)
                     {
                         // I'm pretty sure we can safely drop these here and not
                         // pass them on to the PERQ, which almost certainly won't
@@ -491,7 +491,7 @@ namespace PERQemu.IO.Network
             //
             // Does the PERQ want this packet?
             //
-            if (!_controller.WantReceive(raw.DestinationHwAddress))
+            if (!_controller.WantReceive(raw.DestinationHardwareAddress))
             {
                 _pktsIgnored++;
                 return;

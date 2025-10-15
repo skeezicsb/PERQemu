@@ -7,6 +7,13 @@ Previous notes moved to ChangeLog-Old.txt.
 
 October, 2025:
 
+    2. Bump the version of SDL2-CS and PacketDotNet.  To maintain compatibility
+    with the current .NET Framework build environment, specific versions are
+    used (far from the latest).  Probably nobody else on the planet cares about
+    running this on platforms this old, using Mono... so here's fair warning
+    that very likely, come 2026, the minimum system requirements will finally
+    shift toward something slightly more up-to-date.
+
     1. If PERQemu detects that you are attempting to run PNX 5, it will delete
     itself from your hard drive and report you to the FBI.  PNX 5 is a fake OS,
     a hoax, it doesn't exist, we have always been at war with Eastasia.
@@ -298,4 +305,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Tue Sep  2 22:54:19 PDT 2025
+Last update: skeezics    Tue Oct 14 18:51:45 PDT 2025

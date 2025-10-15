@@ -397,7 +397,7 @@ namespace PERQemu.UI
                 {
                     SDL.SDL_GetVersion(out _sdlVers);
                     vers = $"[Linked with SDL {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}, ";
-                    _sdlVers = SDL_image.IMG_LinkedVersion();
+                    _sdlVers = SDL_image.IMG_Linked_Version();
                     vers += $" SDL_image {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}]";
                 }
             }
