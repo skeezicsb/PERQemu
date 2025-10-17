@@ -21,7 +21,6 @@ using System;
 using System.Net.NetworkInformation;
 
 using PERQemu.Config;
-using PERQemu.Processor;
 
 namespace PERQemu.IO.Network
 {
@@ -161,10 +160,10 @@ namespace PERQemu.IO.Network
             // Adjust our size in case the frame contains the FCS bytes
             var size = _nic.FrameIncludesFCS ? packet.Length - 4 : packet.Length;
 
-            Log.Info(Category.Ethernet, "Copying {0} bytes to header @ 0x{1:x6}, data @ 0x{2:x6} [{3}]",
+            Log.Debug(Category.Ethernet, "Copying {0} bytes to header @ 0x{1:x6}, data @ 0x{2:x6} [{3}]",
                                          size, header, buffer,
                                          System.Threading.Thread.CurrentThread.ManagedThreadId);
-            Log.Info(Category.Ethernet, "Receive bit count initial = {0:x} ({1})",
+            Log.Detail(Category.Ethernet, "Receive bit count initial = {0:x} ({1})",
                                         _bitCount, (short)_bitCount);
 
             // Write the frame's header to PERQ memory.  The header is 14 bytes
@@ -200,7 +199,7 @@ namespace PERQemu.IO.Network
             var delay = (ulong)(((size + 4) * 8 * .1) + 9.6) * Conversion.UsecToNsec;
             _response = _system.Scheduler.Schedule(delay, ReceiveComplete);
 
-            Log.Info(Category.Ethernet, "Received {0} bytes ({1} bits), callback in {2}usec",
+            Log.Debug(Category.Ethernet, "Received {0} bytes ({1} bits), callback in {2}usec",
                                          size, (short)_bitCount, delay / 1000);
         }
 
@@ -221,10 +220,10 @@ namespace PERQemu.IO.Network
                 var buffer = _system.IOB.DMARegisters.GetDataAddress(_dmaTx);
                 ushort data;
 
-                Log.Info(Category.Ethernet, "Copying {0} bytes from header @ 0x{1:x6}, data @ 0x{2:x6} [{3}]",
+                Log.Debug(Category.Ethernet, "Copying {0} bytes from header @ 0x{1:x6}, data @ 0x{2:x6} [{3}]",
                                              packet.Length, header, buffer,
                                              System.Threading.Thread.CurrentThread.ManagedThreadId);
-                Log.Info(Category.Ethernet, "Transmit bit count initial = {0:x} ({1})",
+                Log.Detail(Category.Ethernet, "Transmit bit count initial = {0:x} ({1})",
                                             _bitCount, (short)_bitCount);
 
                 // DMA the header buffer from the PERQ's memory.  The hardware

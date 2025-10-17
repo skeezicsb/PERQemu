@@ -711,8 +711,11 @@ namespace PERQemu.Processor
                                 //
                                 if (_rasterOp.MulDivInst == MulDivCommand.Off)
                                 {
-                                    if (_mqEnabled) Log.Debug(Category.MulDiv, "Unit disabled\n");  // DEBUG
-                                    _mqEnabled = false;
+                                    if (_mqEnabled)
+                                    {
+                                        Log.Debug(Category.MulDiv, "Unit disabled\n");  // DEBUG
+                                        _mqEnabled = false;
+                                    }
                                 }
                                 else
                                 {
@@ -731,10 +734,12 @@ namespace PERQemu.Processor
                             break;
 
                         case 0xa:   // LoadOp
+                            //
                             // LoadOp triggers a hardware assisted refill of the Op file by copying
                             // the four words following a Fetch4 request into the 8x8 RAM.  Here we
                             // ask the memory controller if we're in the right cycle; this should
                             // always return true, since otherwise the microcode is buggy!
+                            //
                             _refillOp = _memory.LoadOpFile();
 
                             if (_refillOp)
@@ -850,13 +855,14 @@ namespace PERQemu.Processor
                                     break;
 
                                 case 0x1:   // Multiply / DivideStep
-                                    Log.Detail(Category.MulDiv, "Step: MQ in ={0} R={1} R<15>={2}",
-                                                               _mq, _alu.R.Lo, ((_alu.R.Lo >> 15) & 0x1));
                                     //
                                     // For the hardware assisted Multiply/Divide steps, we've already done
                                     // the ALU op on the high word of the product or quotient during the ALU
                                     // execution above; here we take care of the low word in the MQ register.
                                     //
+                                    Log.Detail(Category.MulDiv, "Step: MQ in ={0} R={1} R<15>={2}",
+                                                               _mq, _alu.R.Lo, ((_alu.R.Lo >> 15) & 0x1));
+
                                     switch (_rasterOp.MulDivInst)
                                     {
                                         case MulDivCommand.Off:

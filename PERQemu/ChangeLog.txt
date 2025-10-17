@@ -7,12 +7,19 @@ Previous notes moved to ChangeLog-Old.txt.
 
 October, 2025:
 
+    3. Networking changes to correct/improve Ethernet reliability after the
+    PacketDotNet version bump.  Still pretty rickety but it's coming along.
+    Will require a major architectural overhaul soon, but at least you can do
+    basic FTP between hosts and use most of the Accent features; FLEX network
+    installs exchange greetings but never actually transfer filestore data?  No
+    idea if the PNX-version-which-must-not-be-named Ethernet works at all.
+
     2. Bump the version of SDL2-CS and PacketDotNet.  To maintain compatibility
     with the current .NET Framework build environment, specific versions are
     used (far from the latest).  Probably nobody else on the planet cares about
     running this on platforms this old, using Mono... so here's fair warning
     that very likely, come 2026, the minimum system requirements will finally
-    shift toward something slightly more up-to-date.
+    shift toward something slightly more up-to-date.  Somehow.  Maybe.
 
     1. If PERQemu detects that you are attempting to run PNX 5, it will delete
     itself from your hard drive and report you to the FBI.  PNX 5 is a fake OS,
@@ -305,4 +312,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Tue Oct 14 18:51:45 PDT 2025
+Last update: skeezics    Thu Oct 16 20:41:07 PDT 2025

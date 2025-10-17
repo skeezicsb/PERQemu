@@ -260,7 +260,7 @@ namespace PERQemu.IO.Network
                 //
                 case 0xc3:      // EIO only
                     _netIntEnable = (value & 0x1) != 0;
-                    Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
+                    Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to net interrupt enable reg", value);
                     SetInterrupt();
                     break;
 
@@ -277,7 +277,7 @@ namespace PERQemu.IO.Network
         public void LoadCommand(int value)
         {
             _control = (Control)value;
-            Log.Info(Category.Ethernet, "Wrote 0x{0:x2} to control register ({1})", value, _control);
+            Log.Debug(Category.Ethernet, "Wrote 0x{0:x2} to control register ({1})", value, _control);
 
             // If the NotReset signal is not asserted, then we reset :-)
             if (!_control.HasFlag(Control.NotReset))
@@ -459,7 +459,7 @@ namespace PERQemu.IO.Network
             var delay = (ulong)((_bitCount + 32) * .1 + 9.6) * Conversion.UsecToNsec;
             _response = _system.Scheduler.Schedule(delay, TransmitComplete);
 
-            Log.Info(Category.Ethernet, "Transmitted {0} bytes ({1} bits), callback in {2}usec",
+            Log.Debug(Category.Ethernet, "Transmitted {0} bytes ({1} bits), callback in {2}usec",
                                          _bitCount / 8, (short)_bitCount, delay / 1000);
         }
 
@@ -479,7 +479,7 @@ namespace PERQemu.IO.Network
 
             if (MCB == 0xfe)
             {
-                Log.Info(Category.Ethernet, "Special receive to fetch address!");
+                Log.Debug(Category.Ethernet, "Special receive to fetch address!");
                 _state = State.Receiving;
 
                 // The minimum delay is as long as it takes to DMA one
@@ -643,7 +643,7 @@ namespace PERQemu.IO.Network
             var header = _system.IOB.DMARegisters.GetHeaderAddress(_dmaRx);
             var buffer = _system.IOB.DMARegisters.GetDataAddress(_dmaRx);
 
-            Console.WriteLine("Null Ethernet status:");
+            Console.WriteLine($"Ethernet status:");
             Console.WriteLine($"  My MAC address:    {_physAddr} ({_physAddr.High},{_physAddr.Mid},{_physAddr.Low})");
             Console.WriteLine($"  Receive address:   {_recvAddr} ({_recvAddr.High},{_recvAddr.Mid},{_recvAddr.Low})");
             Console.WriteLine($"  DMA addresses:     Header: 0x{header:x6}  Buffer: 0x{buffer:x6} ({_dmaRx})");

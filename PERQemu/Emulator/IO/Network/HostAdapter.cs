@@ -148,7 +148,7 @@ namespace PERQemu.IO.Network
         {
             // Don't spam the network with broadcasts!
             TimeSpan ts = DateTime.Now - _lastGreeting;
-            if (ts.Seconds < GreetingInterval) return;
+            if (ts.TotalSeconds < GreetingInterval) return;
 
             // Todo: would be nice to be able to flag our first greeting in case
             // our address changed so others know to invalidate their old mapping
@@ -232,13 +232,14 @@ namespace PERQemu.IO.Network
                 Log.Info(Category.NetAdapter, "Sending from {0} to {1} (type 0x{2:x})",
                           packet.SourceHardwareAddress, packet.DestinationHardwareAddress, packet.Type);
                 Log.Info(Category.NetAdapter, "SIZES: packet {0}, header {1}, payload {2}",
-                          packet.TotalPacketLength, packet.HeaderData.Length, packet.PayloadData?.Length);
+                          packet.Bytes.Length, packet.HeaderData.Length, packet.PayloadData?.Length);
 
                 // Always remap our source address to the host adapter
                 packet.SourceHardwareAddress = _adapter.MacAddress;
 
                 // Are we (potentially) sending to another PERQ?
-                if (IsPerqPrefix(packet.DestinationHardwareAddress) || packet.DestinationHardwareAddress.Equals(Broadcast))
+                if (IsPerqPrefix(packet.DestinationHardwareAddress) ||
+                    packet.DestinationHardwareAddress.Equals(Broadcast))
                 {
                     if (!packet.DestinationHardwareAddress.Equals(Broadcast))
                     {
@@ -273,9 +274,9 @@ namespace PERQemu.IO.Network
                 }
 
 #if DEBUG
-                // Now generate the checksum for the packet (for debugging)
-                var crc = Crc32.Compute(packet.Bytes, 0, packet.TotalPacketLength);
-                Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
+                // Debugging: generate the checksum for the packet, post-rewrites
+                var crc = Crc32.Compute(packet.Bytes, 0, packet.Bytes.Length);
+                Log.Debug(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
 
                 // In verbose mode print the (modified) packet
                 if (Log.Level < Severity.Detail) Console.WriteLine(packet.PrintHex());
@@ -336,46 +337,19 @@ namespace PERQemu.IO.Network
                 if (raw.Type == EthernetType.IPv6) return;
                 if ((ushort)raw.Type == 0x0026) return;
 
-                Log.Info(Category.NetAdapter, "Received from {0} to {1} (type 0x{2:x}) [{3}]",
+                // Log it
+                Log.Debug(Category.NetAdapter, "Received from {0} to {1} (type 0x{2:x}) [{3}]",
                           raw.SourceHardwareAddress, raw.DestinationHardwareAddress, raw.Type,
                           Thread.CurrentThread.ManagedThreadId);
-                Log.Info(Category.NetAdapter, "SIZES: packet {0}, header {1}, payload {2}",
-                          raw.TotalPacketLength, raw.HeaderData.Length, raw.PayloadData?.Length);
+                Log.Detail(Category.NetAdapter, "SIZES: packet {0}, header {1}, payload {2}",
+                          raw.Bytes.Length, raw.HeaderData.Length, raw.PayloadData?.Length);
 
-                // See if the frame includes the FCS bytes or not -- apparently
-                // SOME Ethernet controllers include them while others don't!
-                if (!_probed)
-                {
-                    // Compute checksum based on the received length
-                    var crc = Crc32.Compute(raw.Bytes, 0, raw.TotalPacketLength);
-                    Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
+                // Check if this interface needs some special CRC handling
+                ProbeFCS(raw);
 
-                    var len = raw.TotalPacketLength - 4;
-                    var check = ((raw.Bytes[len] << 24) |
-                                 (raw.Bytes[len + 1] << 16) |
-                                 (raw.Bytes[len + 2] << 8) |
-                                  raw.Bytes[len + 3]);
-                    Log.Info(Category.NetAdapter, "Received CRC is {0:x8}", check);
-
-                    // Lop off the last four bytes and recompute
-                    if (check != crc)
-                    {
-                        crc = Crc32.Compute(raw.Bytes, 0, raw.TotalPacketLength - 4);
-                        Log.Info(Category.NetAdapter, "Re-computed CRC is {0:x8}", crc);
-
-                        // NOW if they match we can be certain the FCS is present
-                        // (if they don't... uh... then we have bigger problems)
-                        _hasFCS = (check == crc);
-                    }
-
-                    _probed = true;
-                }
 #if DEBUG
-                else
-                {
-                    var crc = Crc32.Compute(raw.Bytes, 0, _hasFCS ? raw.TotalPacketLength - 4 : raw.TotalPacketLength);
-                    Log.Info(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
-                }
+                // Debugging: Print the packet pre-rewrites (extremely verbose)
+                if (Log.Level < Severity.Detail) Console.WriteLine(raw.PrintHex());
 #endif
 
                 // If this is addressed to us specifically, NAT it!
@@ -392,11 +366,10 @@ namespace PERQemu.IO.Network
                     // Yes!  Translate the source address too
                     raw.SourceHardwareAddress = src.Perq;
 
-                    // Update the stats to show they're still active
-                    src.LastReceived = DateTime.Now;
-                    src.Received++;
+                    // Update the entry to show they're still active
+                    src.UpdateReceived();
 
-                    Log.Info(Category.Network, "NAT receive from Perq {0} via Host {1}", src.Perq, src.Host);
+                    Log.Debug(Category.Network, "NAT receive from Perq {0} via Host {1}", src.Perq, src.Host);
                 }
 
                 // If source is a PERQ, see if the Type/Length field needs remappin'
@@ -407,7 +380,7 @@ namespace PERQemu.IO.Network
 
                     if ((ushort)raw.Type != perqType)
                     {
-                        Log.Info(Category.NetAdapter, "EtherType mapped from 0x{0:x4} to 0x{1:x4}", (ushort)raw.Type, perqType);
+                        Log.Debug(Category.NetAdapter, "EtherType mapped from 0x{0:x4} to 0x{1:x4}", (ushort)raw.Type, perqType);
                         raw.Type = (EthernetType)perqType;
                     }
                 }
@@ -436,47 +409,46 @@ namespace PERQemu.IO.Network
 
                 if (rarp != null)
                 {
-                    Log.Info(Category.Network, "RARP {0} received from {1}",
-                                               rarp.Operation, rarp.TargetHardwareAddress);
+                    Log.Debug(Category.Network, "RARP {0} received from {1}",
+                              rarp.Operation, rarp.TargetHardwareAddress);
 
-                    // The Op can be a Request (new host coming online) or a
-                    // Reply (from others responding after our Request sent);
-                    // In either case the payload contains a host+Perq pair
-                    // that we should add or update in our table!
-                    if (IsPerqPrefix(rarp.TargetHardwareAddress))
+                    // If the Op is a RequestReverse (new host coming online) or a
+                    // ReplyReverse (from others responding after our Request sent)
+                    // the payload contains a host+Perq pair that we should add or
+                    // update in our table!
+                    if (rarp.Operation == ArpOperation.RequestReverse ||
+                        rarp.Operation == ArpOperation.ReplyReverse)
                     {
-                        var seen = _nat.LookupPerq(rarp.TargetHardwareAddress);
-                        if (seen == null)
+                        // Trust, but verify:
+                        if (IsPerqPrefix(rarp.TargetHardwareAddress))
                         {
-                            // Woo!  Another Perqy came out to play!
-                            seen = new NATEntry(rarp.SenderHardwareAddress, rarp.TargetHardwareAddress);
-                            _nat.Add(seen);
-
-                            if (rarp.Operation == ArpOperation.RequestReverse)
+                            var seen = _nat.LookupPerq(rarp.TargetHardwareAddress);
+                            if (seen == null)
                             {
-                                // Since this is the first time we've heard from this
-                                // host, send a RARP reply, since it's unlikely anyone
-                                // still has an in.rarpd running these days? :-)
-                                SendReply(rarp);
+                                // Woo!  Another Perqy came out to play!
+                                seen = new NATEntry(rarp.SenderHardwareAddress, rarp.TargetHardwareAddress);
+                                _nat.Add(seen);
+
+                                if (rarp.Operation == ArpOperation.RequestReverse)
+                                {
+                                    // Since this is the first time we've heard from this
+                                    // host, send a RARP reply, since it's unlikely anyone
+                                    // still has an in.rarpd running these days? :-)
+                                    SendReply(rarp);
+                                }
                             }
                         }
                         else
                         {
-                            // Nice to see you again!
-                            seen.LastReceived = DateTime.Now;
-                            seen.Received++;
+                            Log.Warn(Category.Network, "RARP target isn't a PERQ?");
                         }
-                    }
 
-                    if (rarp.Operation == ArpOperation.RequestReverse ||
-                        rarp.Operation == ArpOperation.ReplyReverse)
-                    {
                         // I'm pretty sure we can safely drop these here and not
                         // pass them on to the PERQ, which almost certainly won't
                         // do RARP (even under Accent).  HOWEVER, Accent's "new"
                         // message server (in S6+) will do actual IP ARPs, so we
                         // don't want to get in the way of those.
-                        Log.Info(Category.Network, "Local RARP handling complete");
+                        Log.Debug(Category.Network, "Local RARP handling complete");
                         return;
                     }
                 }
@@ -484,8 +456,8 @@ namespace PERQemu.IO.Network
             }
             catch (PcapException ex)
             {
-                Log.Info(Category.Network, "Failed to parse RARP packet: {0}", ex.Message);
-                // No biggie, just continue
+                Log.Debug(Category.Network, "Failed to parse RARP packet: {0}", ex.Message);
+                // No biggie, just continue?
             }
 
             //
@@ -501,9 +473,6 @@ namespace PERQemu.IO.Network
             // We've run the gauntlet and received the packet; if we can handle it
             // right away, pass it on through, otherwise deal with the pending queue
             //
-
-            // DEBUGGING: Print the packet post-rewrites (extremely verbose)
-            if (Log.Level < Severity.Debug) Console.WriteLine(raw.PrintHex());
 
             // Shortcut: is the receiver active and ready?
             if (_controller.CanReceive)
@@ -526,7 +495,7 @@ namespace PERQemu.IO.Network
                     return;
                 }
 
-                Log.Info(Category.NetAdapter, "Tried to dequeue but couldn't?  Count is {0}", _pending.Count);
+                Log.Warn(Category.NetAdapter, "Failed to dequeue at CanReceive!  Count={0}", _pending.Count);
                 return;
             }
 
@@ -536,7 +505,7 @@ namespace PERQemu.IO.Network
                 _pending.Enqueue(raw);
                 _pktsQueued++;
 
-                Log.Info(Category.NetAdapter, "Queued for later, count now {0}", _pending.Count);
+                Log.Debug(Category.NetAdapter, "Queued for later, count now {0}", _pending.Count);
                 return;
             }
 
@@ -560,13 +529,67 @@ namespace PERQemu.IO.Network
 
                 if (!_pending.TryDequeue(out packet))
                 {
-                    Log.Warn(Category.NetAdapter, "Failure on TryDequeue!? Count is {0}", _pending.Count);
+                    Log.Warn(Category.NetAdapter, "Failed to dequeue at CheckReceive! Count={0}", _pending.Count);
                     return;
                 }
 
                 _pktsRecvd++;
                 _controller.Receive(packet.Bytes);
             }
+        }
+
+        /// <summary>
+        /// Determine if a received frame includes the FCS bytes or not, since
+        /// we have to have an accurate byte count for the PERQ DMA.
+        /// </summary>
+        /// <remarks>
+        /// I have three test Macs all running High Sierra with differnet NICs:
+        /// a Broadcom, an Intel and an NVidia.  PacketDotNet/SharpPcap doesn't
+        /// consistently include or strip the FCS bytes, so we do a simple check
+        /// here and cache the result.  The PERQ network stack will often blow
+        /// chunks if you overrun the DMA buffer due to an incorrect byte count!
+        /// </remarks>
+        void ProbeFCS(EthernetPacket packet)
+        {
+            if (!_probed)
+            {
+                // Another oddity: if the Payload is null, don't use this packet
+                // and wait for a valid one.  More empirical weirdness with Pcap?
+                // We should not be seeing 42 byte (VLAN tagged) payloads on the
+                // initial RARP requests?  :-/
+                if (!packet.HasPayloadData) return;
+
+                // Assume the FCS is present and assemble the CRC
+                var len = packet.Bytes.Length - 4;
+                var check = ((packet.Bytes[len + 0] << 24) |
+                             (packet.Bytes[len + 1] << 16) |
+                             (packet.Bytes[len + 2] << 8) |
+                              packet.Bytes[len + 3]);
+                Log.Debug(Category.NetAdapter, "Received CRC is {0:x8}", check);
+
+                // Compute checksum assuming the FCS is present
+                var crc = Crc32.Compute(packet.Bytes, 0, packet.Bytes.Length - 4);
+                Log.Debug(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
+
+                // Do they match?
+                _hasFCS = (check == crc);
+
+                // Recompute, to verify against what the sender logged (uh, manually)
+                if (check != crc)
+                {
+                    crc = Crc32.Compute(packet.Bytes, 0, packet.Bytes.Length);
+                    Log.Debug(Category.NetAdapter, "Re-computed CRC is {0:x8}", crc);
+                }
+
+                _probed = true;
+            }
+#if DEBUG
+            else
+            {
+                var crc = Crc32.Compute(packet.Bytes, 0, _hasFCS ? packet.Bytes.Length - 4 : packet.Bytes.Length);
+                Log.Debug(Category.NetAdapter, "Computed CRC is {0:x8}", crc);
+            }
+#endif
         }
 
         /// <summary>
@@ -604,7 +627,12 @@ namespace PERQemu.IO.Network
         /// </summary>
         void DoNATRefresh(HRTimerElapsedEventArgs args)
         {
+            // Update current status
             _nat.Refresh();
+
+            // Periodically send our announcements, too (which might trigger
+            // responses that update the state we just set :-)
+            SendGreeting();
         }
 
         /// <summary>
@@ -614,12 +642,9 @@ namespace PERQemu.IO.Network
         /// </summary>
         ushort PortMap(ushort etherType)
         {
-            foreach (var pt in PerqEtherTypes)
+            if (etherType < 1536 || (etherType >= EtherTypeMask && etherType < EtherTypeMask + 1536))
             {
-                if (etherType == pt)
-                {
-                    return (ushort)(etherType ^ EtherTypeMask);
-                }
+                return (ushort)(etherType ^ EtherTypeMask);
             }
 
             return etherType;
@@ -678,7 +703,12 @@ namespace PERQemu.IO.Network
             return null;
         }
 
-        // Debugging
+        /// <summary>
+        /// Display the available host interfaces.  The SharpPcap view differs
+        /// from the MS/Mono runtime system's list, which is damned annoying,
+        /// but it's what we have to use to correctly bind the interface at
+        /// startup.
+        /// </summary>
         public static void ShowInterfaceSummary()
         {
             // Show the C# runtime's view
@@ -708,7 +738,7 @@ namespace PERQemu.IO.Network
             // If no devices were found print an error
             if (devices.Count < 1)
             {
-                Console.WriteLine("No Ethernet adapters were found on this machine (or no privileges)");
+                Console.WriteLine("No host Ethernet adapters were found (or no privileges)");
                 return;
             }
 
@@ -722,12 +752,18 @@ namespace PERQemu.IO.Network
             }
         }
 
+        // Debugging
         public void DumpStatus()
         {
             Console.WriteLine("\nHost adapter status:");
             Console.WriteLine($"  NIC: {Name} - {Description}");
-            Console.WriteLine("  [This NIC {0} include FCS bytes in the payload]",
-                             (_probed && FrameIncludesFCS) ? "DOES" : "does NOT");
+
+            if (_probed)
+                Console.WriteLine("  [This NIC {0} include FCS bytes in the payload]",
+                                  _hasFCS ? "DOES" : "does NOT");
+            else
+                Console.WriteLine("  [FCS payload check not yet performed]");
+
             Console.WriteLine($"  Address: {Address}\tRunning: {Running}\tPending: {_pending.Count}");
 
             Console.WriteLine("\nInterface statistics:");
@@ -737,35 +773,13 @@ namespace PERQemu.IO.Network
             _nat.DumpTable();
         }
 
-        // Mask for mapping PERQ EtherType codes that fall within the IEEE 802.3
-        // length range (0..1535) to an unused range and back again.  (The range
-        // is chosen from unassigned space that IANA hasn't officially allocated)
+
+        // Mask for mapping PERQ EtherType codes that fall within the Ethernet II
+        // Length range (0..1535) to an unused range and back again.  (The offset
+        // is chosen from unassigned space that IANA hasn't officially allocated.)
         const ushort EtherTypeMask = 0xb000;
 
-        // Ethernet Type codes defined in E10Types.Pas (plus mapped equivalents)
-        public static ushort[] PerqEtherTypes =
-        {
-            0x0000, EtherTypeMask,              // FTPByteStreamType
-            0x0001, EtherTypeMask + 1,          // FTPEtherType
-            0x0006, EtherTypeMask + 6,          // EchoServerType
-            0x0007, EtherTypeMask + 7,          // TimeServerType
-            0x0008, EtherTypeMask + 8,          // ServerRequest
-            0x0090, EtherTypeMask + 144,        // Accent ConfigTest
-            0x00db, EtherTypeMask + 219,        // Accent Time/repeater discovery?
-            0x013b, EtherTypeMask + 315,        // CSDXServerType
-            0x01c0, EtherTypeMask + 448,        // Accent EchoMe
-            0x01c1, EtherTypeMask + 449         // Accent IAmAnEcho
-        };
-        //
-        // PUP and the PUP "Addr Tran" (not explicitly noted in Accent?) are
-        // problematic; they should be reassigned to their relocated assigned
-        // numbers 0x0a00 and 0x0a01, but check with ContrAlto to see what if
-        // any remapping goes on there?  May need special handling here.
-        //  0x0200, EtherTypeMask + 512,        // PUP
-        //  0x0201, EtherTypeMask + 513         // PUP Addr Trans
-        //
-
-        // All 1's layer 2 broadcast
+        // All ones layer 2 broadcast
         public static PhysicalAddress Broadcast = new PhysicalAddress(new byte[] { 255, 255, 255, 255, 255, 255 });
 
         ICaptureDevice _adapter;
@@ -774,17 +788,60 @@ namespace PERQemu.IO.Network
         NATTable _nat;
         int _natRefreshTimer;
 
-        DateTime _lastGreeting = DateTime.Today;
         public const int GreetingInterval = 15;     // Minimum, in seconds
+        DateTime _lastGreeting = DateTime.Today;
 
-        ConcurrentQueue<EthernetPacket> _pending;
         const int MaxBacklog = 15;                  // Don't queue without bound
+        ConcurrentQueue<EthernetPacket> _pending;
 
+        bool _hasFCS;                               // FCS bytes in received packets?
         bool _probed;
-        bool _hasFCS;
 
         ulong _pktsRecvd, _pktsSent;                // Some basic statistics,
         ulong _pktsQueued, _pktsDropped;            // for debugging/curiosity
         ulong _pktsIgnored;
     }
 }
+
+/*
+    Notes:
+
+    Old PERQ network software used EtherType codes in the 0..1535 range, which
+    collide with the Length field in Ethernet II/IEEE 802.3 framing.  We map
+    these so that virtual PERQs talking to each other see the EtherType values
+    they expect, but the packets aren't misinterpreted on modern networks (they
+    just appear as unknown/unassigned types in tcpdumps).
+    
+    Ethernet Type codes defined in E10Types.Pas (plus mapped equivalents):
+
+    public static ushort[] PerqEtherTypes =
+    {
+		0x0000, EtherTypeMask,              // FTPByteStreamType
+        0x0001, EtherTypeMask + 1,          // FTPEtherType
+        0x0006, EtherTypeMask + 6,          // EchoServerType
+        0x0007, EtherTypeMask + 7,          // TimeServerType
+        0x0008, EtherTypeMask + 8,          // ServerRequest
+        0x0090, EtherTypeMask + 144,        // Accent ConfigTest
+        0x00db, EtherTypeMask + 219,        // Accent Time/repeater discovery?
+        0x013b, EtherTypeMask + 315,        // CSDXServerType
+        0x01c0, EtherTypeMask + 448,        // Accent EchoMe
+        0x01c1, EtherTypeMask + 449         // Accent IAmAnEcho
+    };
+
+    PUP and the PUP "Addr Tran" (not explicitly noted in Accent?) are
+    problematic; they should be reassigned to their relocated assigned
+    numbers 0x0a00 and 0x0a01, but check with ContrAlto to see what if
+    any remapping goes on there?  May need special handling here.
+        0x0200, EtherTypeMask + 512,        // PUP
+        0x0201, EtherTypeMask + 513         // PUP Addr Trans
+
+    But doesn't 0x200 collide with Echo?  And what about 0x60 (Loop)?
+
+    This is still based on the host-in-promiscuous-mode "raw" packet mode of the
+    first implementation.  To add encapsulation options (wrapping PERQ traffic
+    in UDP datagrams to avoid running PERQemu as root, for example) will require
+    a different approach.  Plus, I want to move as much packet processing out of
+    the receive event handler as possible to reduce possible concurrency issues,
+    add new control/debug/visibility functions, etc.
+    
+*/

@@ -63,6 +63,13 @@ namespace PERQemu.IO.Network
             return $"[Host: {Host}  Perq: {Perq}  State: {State}]";
         }
 
+        public void UpdateReceived()
+        {
+            LastReceived = DateTime.Now;
+            State = Status.Active;
+            Received++;
+        }
+
         public PhysicalAddress Host;        // Host MAC
         public PhysicalAddress Perq;        // PERQ's MAC
         public DateTime FirstSeen;          // Date/time mapping established
@@ -115,20 +122,29 @@ namespace PERQemu.IO.Network
             // Make sure it isn't already there...
             if (_entries.ContainsKey(ent.Host))
             {
-                Log.Warn(Category.Network, "Can't add duplicate NAT entry, ignored {0}", ent);
-                return false;
-            }
-            _entries.Add(ent.Host, ent);
+                // ...but only gripe if it's active :-)
+                if (_entries[ent.Host].State == Status.Active)
+                {
+                    Log.Warn(Category.Network, "Duplicate NAT entry for active host, ignored {0}", ent);
+                    return false;
+                }
 
-            // Do the inverse index too
+                // Clobber it and fall thru!
+                Drop(ent);
+            }
+
+            // Check the inverse index too
             if (_perqToHost.ContainsKey(ent.Perq))
             {
                 Log.Warn(Category.Network, "PERQ {0} already in index at different host?", ent.Perq);
                 return false;
             }
+
+            // Map it!
+            _entries.Add(ent.Host, ent);
             _perqToHost.Add(ent.Perq, ent.Host);
 
-            Log.Info(Category.Network, "NAT entry added {0}", ent);
+            Log.Debug(Category.Network, "NAT entry added {0}", ent);
             return true;
         }
 
@@ -153,14 +169,21 @@ namespace PERQemu.IO.Network
         /// <summary>
         /// Drop a mapping from the tables.
         /// </summary>
-        public void Drop()
+        public void Drop(NATEntry mapping)
         {
-            // Todo: write me :-)
+            if (_entries.ContainsKey(mapping.Host) && _perqToHost.ContainsKey(mapping.Perq))
+            {
+                if (!_perqToHost.Remove(mapping.Perq)) throw new InvalidOperationException($"Drop failed: Perq {mapping}");
+                if (!_entries.Remove(mapping.Host)) throw new InvalidOperationException($"Drop failed: Host {mapping}");
+
+                Log.Debug(Category.Network, "Dropped mapping {0}", mapping);
+            }
         }
 
         /// <summary>
         /// Refresh the status of each peer entry based on elapsed time
-        /// since any observed network activity from them.
+        /// since any observed network activity from them.  There are plenty
+        /// of obvious issues here (like, pausing emulation) but it's a start.
         /// </summary>
         public void Refresh()
         {
@@ -172,7 +195,7 @@ namespace PERQemu.IO.Network
                 if (ent.Flags.HasFlag(Flags.Me)) continue;
 
                 TimeSpan ts = DateTime.Now - ent.LastReceived;
-                var last = ts.Seconds;
+                var last = ts.TotalSeconds;
 
                 if (last <= IdleTime)
                     ent.State = Status.Active;
@@ -180,6 +203,8 @@ namespace PERQemu.IO.Network
                     ent.State = Status.Idle;
                 else
                     ent.State = Status.Stale;
+
+                Log.Debug(Category.Network, "Refresh: {0}", ent);
             }
         }
 

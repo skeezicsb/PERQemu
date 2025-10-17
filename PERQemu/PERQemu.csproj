@@ -43,7 +43,7 @@
     <DefineConstants>TRACE;DEBUG;TRACING_ENABLED</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
-    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSet></CodeAnalysisRuleSet>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <UseVSHostingProcess>true</UseVSHostingProcess>
     <DocumentationFile>
@@ -60,7 +60,7 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <CodeAnalysisRuleSet>AllRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSet></CodeAnalysisRuleSet>
     <RunCodeAnalysis>false</RunCodeAnalysis>
     <CodeAnalysisIgnoreGeneratedCode>true</CodeAnalysisIgnoreGeneratedCode>
     <UseVSHostingProcess>false</UseVSHostingProcess>
@@ -94,21 +94,37 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Debugger\Z80Debugger.cs" />
+    <Compile Include="Configurator\ConfigCommands.cs" />
+    <Compile Include="Configurator\ConfigTypes.cs" />
+    <Compile Include="Configurator\Configuration.cs" />
+    <Compile Include="Configurator\Configurator.cs" />
+    <Compile Include="Configurator\Settings.cs" />
+    <Compile Include="Configurator\SettingsCommands.cs" />
+    <Compile Include="Configurator\StorageCommands.cs" />
+    <Compile Include="Controller\Conversion.cs" />
+    <Compile Include="Controller\Events.cs" />
+    <Compile Include="Controller\ExecCommands.cs" />
+    <Compile Include="Controller\ExecutionController.cs" />
+    <Compile Include="Controller\HighResolutionTimer.cs" />
+    <Compile Include="Controller\Log.cs" />
+    <Compile Include="Controller\Paths.cs" />
+    <Compile Include="Debugger\Breakpoint.cs" />
+    <Compile Include="Debugger\DebugAttribute.cs" />
+    <Compile Include="Debugger\DebugCommands.cs" />
+    <Compile Include="Debugger\Debugger.cs" />
     <Compile Include="Debugger\Disassembler.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="UI\CLI\CommandAttribute.cs" />
-    <Compile Include="UI\CLI\CommandExecutor.cs" />
-    <Compile Include="UI\CLI\CommandNode.cs" />
-    <Compile Include="UI\CLI\CommandProcessor.cs" />
-    <Compile Include="UI\CLI\CommandPrompt.cs" />
+    <Compile Include="Debugger\QCode.cs" />
+    <Compile Include="Debugger\Z80DebugCommands.cs" />
+    <Compile Include="Debugger\Z80Debugger.cs" />
     <Compile Include="Emulator\CPU\ALU.cs" />
+    <Compile Include="Emulator\CPU\CPU.cs" />
+    <Compile Include="Emulator\CPU\CPUBoard.cs" />
     <Compile Include="Emulator\CPU\CallStack.cs" />
     <Compile Include="Emulator\CPU\ControlStore.cs" />
-    <Compile Include="Emulator\CPU\CPU.cs" />
     <Compile Include="Emulator\CPU\ExpressionStack.cs" />
     <Compile Include="Emulator\CPU\ExtendedRegister.cs" />
     <Compile Include="Emulator\CPU\Instruction.cs" />
+    <Compile Include="Emulator\CPU\InterruptEncoder.cs" />
     <Compile Include="Emulator\CPU\PERQ1.cs" />
     <Compile Include="Emulator\CPU\PERQ1A.cs" />
     <Compile Include="Emulator\CPU\PERQ24.cs" />
@@ -116,119 +132,301 @@
     <Compile Include="Emulator\CPU\RegisterFile.cs" />
     <Compile Include="Emulator\CPU\Sequencer.cs" />
     <Compile Include="Emulator\CPU\Shifter.cs" />
+    <Compile Include="Emulator\IO\CIO.cs" />
+    <Compile Include="Emulator\IO\DMARegisters.cs" />
+    <Compile Include="Emulator\IO\DiskDevices\CIOMicropolisDiskController.cs" />
+    <Compile Include="Emulator\IO\DiskDevices\FloppyDisk.cs" />
+    <Compile Include="Emulator\IO\DiskDevices\HardDisk.cs" />
+    <Compile Include="Emulator\IO\DiskDevices\MFMDiskController.cs" />
+    <Compile Include="Emulator\IO\DiskDevices\MicropolisDiskController.cs" />
+    <Compile Include="Emulator\IO\DiskDevices\ShugartDiskController.cs" />
+    <Compile Include="Emulator\IO\EIO.cs" />
     <Compile Include="Emulator\IO\GPIB\BitPadOne.cs" />
     <Compile Include="Emulator\IO\GPIB\GPIBBus.cs" />
     <Compile Include="Emulator\IO\GPIB\IGPIBDevice.cs" />
     <Compile Include="Emulator\IO\IIODevice.cs" />
+    <Compile Include="Emulator\IO\INetworkController.cs" />
     <Compile Include="Emulator\IO\IOB.cs" />
-    <Compile Include="Emulator\IO\IOBus.cs" />
-    <Compile Include="Emulator\IO\OIO.cs" />
-    <Compile Include="Emulator\IO\PERQLink.cs" />
-    <Compile Include="Emulator\IO\SerialDevices\RealPort.cs" />
-    <Compile Include="Emulator\IO\SerialDevices\RSXFilePort.cs" />
-    <Compile Include="Emulator\Memory\MemoryBoard.cs" />
-    <Compile Include="Emulator\Memory\MemoryController.cs" />
-    <Compile Include="Emulator\PERQSystem.cs" />
-    <Compile Include="Emulator\Scheduler.cs" />
-    <Compile Include="Emulator\Memory\VideoController.cs" />
-    <Compile Include="UI\SDL\Display.cs" />
-    <Compile Include="Controller\Conversion.cs" />
-    <Compile Include="Controller\Paths.cs" />
-    <Compile Include="Program.cs" />
-    <Compile Include="Configurator\Configurator.cs" />
-    <Compile Include="Controller\ExecutionController.cs" />
-    <Compile Include="Configurator\Configuration.cs" />
-    <Compile Include="Configurator\ConfigTypes.cs" />
-    <Compile Include="Configurator\ConfigCommands.cs" />
-    <Compile Include="Controller\ExecCommands.cs" />
-    <Compile Include="Debugger\DebugCommands.cs" />
-    <Compile Include="Debugger\Z80DebugCommands.cs" />
-    <Compile Include="Debugger\QCode.cs" />
     <Compile Include="Emulator\IO\IOBoard.cs" />
-    <Compile Include="Emulator\IO\EIO.cs" />
+    <Compile Include="Emulator\IO\IOBus.cs" />
+    <Compile Include="Emulator\IO\IStorageController.cs" />
+    <Compile Include="Emulator\IO\Network\Ether10MbitController.cs" />
+    <Compile Include="Emulator\IO\Network\Ether3MbitController.cs" />
+    <Compile Include="Emulator\IO\Network\HostAdapter.cs" />
+    <Compile Include="Emulator\IO\Network\MachineAddress.cs" />
+    <Compile Include="Emulator\IO\Network\NullEthernet.cs" />
+    <Compile Include="Emulator\IO\Network\Translation.cs" />
+    <Compile Include="Emulator\IO\OIO.cs" />
+    <Compile Include="Emulator\IO\OptionBoard.cs" />
+    <Compile Include="Emulator\IO\PERQLink.cs" />
+    <Compile Include="Emulator\IO\Printers\CanonController.cs" />
+    <Compile Include="Emulator\IO\Printers\CanonFormatter.cs" />
+    <Compile Include="Emulator\IO\Printers\CanonPrinter.cs" />
+    <Compile Include="Emulator\IO\SerialDevices\KrizTablet.cs" />
+    <Compile Include="Emulator\IO\SerialDevices\NullPort.cs" />
+    <Compile Include="Emulator\IO\SerialDevices\RSXFilePort.cs" />
+    <Compile Include="Emulator\IO\SerialDevices\RealPort.cs" />
+    <Compile Include="Emulator\IO\SerialDevices\SerialDevice.cs" />
+    <Compile Include="Emulator\IO\SerialDevices\SerialKeyboard.cs" />
+    <Compile Include="Emulator\IO\SerialDevices\Speech.cs" />
+    <Compile Include="Emulator\IO\TapeDevices\BlockBuffer.cs" />
+    <Compile Include="Emulator\IO\TapeDevices\CartridgeTape.cs" />
+    <Compile Include="Emulator\IO\TapeDevices\QICTapeController.cs" />
+    <Compile Include="Emulator\IO\TapeDevices\Sidewinder.cs" />
+    <Compile Include="Emulator\IO\Z80\Am9519.cs" />
+    <Compile Include="Emulator\IO\Z80\CIOZ80.cs" />
     <Compile Include="Emulator\IO\Z80\DMARouter.cs" />
+    <Compile Include="Emulator\IO\Z80\EIOZ80.cs" />
     <Compile Include="Emulator\IO\Z80\HardDiskSeekControl.cs" />
+    <Compile Include="Emulator\IO\Z80\ICTCDevice.cs" />
     <Compile Include="Emulator\IO\Z80\IDMADevice.cs" />
-    <Compile Include="Emulator\IO\Z80\Z80IOBus.cs" />
     <Compile Include="Emulator\IO\Z80\IOReg3.cs" />
     <Compile Include="Emulator\IO\Z80\ISIODevice.cs" />
     <Compile Include="Emulator\IO\Z80\IZ80Device.cs" />
     <Compile Include="Emulator\IO\Z80\Keyboard.cs" />
     <Compile Include="Emulator\IO\Z80\NECuPD765A.cs" />
-    <Compile Include="Emulator\IO\Z80\Z80ToPERQLatch.cs" />
+    <Compile Include="Emulator\IO\Z80\Oki5832RTC.cs" />
+    <Compile Include="Emulator\IO\Z80\PERQDMA.cs" />
+    <Compile Include="Emulator\IO\Z80\PERQToZ80FIFO.cs" />
+    <Compile Include="Emulator\IO\Z80\PERQToZ80Latch.cs" />
     <Compile Include="Emulator\IO\Z80\TMS9914A.cs" />
     <Compile Include="Emulator\IO\Z80\Z80CTC.cs" />
     <Compile Include="Emulator\IO\Z80\Z80DMA.cs" />
-    <Compile Include="Emulator\IO\Z80\Z80SIO.cs" />
-    <Compile Include="Emulator\IO\Z80\Z80System.cs" />
-    <Compile Include="UI\SDL\KeyboardMap.cs" />
-    <Compile Include="Configurator\StorageCommands.cs" />
-    <Compile Include="Emulator\IO\CIO.cs" />
+    <Compile Include="Emulator\IO\Z80\Z80IOBus.cs" />
     <Compile Include="Emulator\IO\Z80\Z80MemoryBus.cs" />
-    <Compile Include="Emulator\IO\OptionBoard.cs" />
-    <Compile Include="Controller\Events.cs" />
-    <Compile Include="Controller\HighResolutionTimer.cs" />
-    <Compile Include="Emulator\SystemTimer.cs" />
-    <Compile Include="Emulator\CPU\CPUBoard.cs" />
-    <Compile Include="Emulator\CPU\InterruptEncoder.cs" />
-    <Compile Include="Configurator\Settings.cs" />
-    <Compile Include="Configurator\SettingsCommands.cs" />
-    <Compile Include="Controller\Log.cs" />
-    <Compile Include="Emulator\IO\DiskDevices\HardDisk.cs" />
-    <Compile Include="Emulator\IO\DiskDevices\FloppyDisk.cs" />
-    <Compile Include="Emulator\IO\DiskDevices\ShugartDiskController.cs" />
-    <Compile Include="Debugger\DebugAttribute.cs" />
-    <Compile Include="Debugger\Debugger.cs" />
-    <Compile Include="UI\SDL\EventLoop.cs" />
-    <Compile Include="UI\SDL\InputDevices.cs" />
-    <Compile Include="Emulator\IO\Z80\PERQToZ80Latch.cs" />
-    <Compile Include="Emulator\IO\SerialDevices\KrizTablet.cs" />
-    <Compile Include="Emulator\IO\SerialDevices\SerialKeyboard.cs" />
-    <Compile Include="Emulator\IO\SerialDevices\Speech.cs" />
-    <Compile Include="Emulator\IO\IStorageController.cs" />
-    <Compile Include="Emulator\IO\DiskDevices\MicropolisDiskController.cs" />
-    <Compile Include="PROM\Unscrambler.cs" />
-    <Compile Include="Debugger\Breakpoint.cs" />
+    <Compile Include="Emulator\IO\Z80\Z80SIO.cs" />
     <Compile Include="Emulator\IO\Z80\Z80SIOChannel.cs" />
-    <Compile Include="Emulator\IO\SerialDevices\SerialDevice.cs" />
-    <Compile Include="Emulator\IO\Z80\ICTCDevice.cs" />
-    <Compile Include="Emulator\IO\SerialDevices\NullPort.cs" />
-    <Compile Include="Emulator\IO\TapeDevices\QICTapeController.cs" />
-    <Compile Include="Emulator\IO\TapeDevices\Sidewinder.cs" />
-    <Compile Include="Emulator\IO\TapeDevices\BlockBuffer.cs" />
-    <Compile Include="Emulator\IO\TapeDevices\CartridgeTape.cs" />
-    <Compile Include="Emulator\IO\Network\NullEthernet.cs" />
-    <Compile Include="Emulator\IO\Network\HostAdapter.cs" />
-    <Compile Include="Emulator\IO\Network\Ether10MbitController.cs" />
-    <Compile Include="Emulator\IO\Network\Ether3MbitController.cs" />
-    <Compile Include="Emulator\IO\Network\MachineAddress.cs" />
-    <Compile Include="Emulator\IO\INetworkController.cs" />
-    <Compile Include="Emulator\IO\Network\Translation.cs" />
-    <Compile Include="Emulator\IO\Z80\Am9519.cs" />
+    <Compile Include="Emulator\IO\Z80\Z80System.cs" />
+    <Compile Include="Emulator\IO\Z80\Z80ToPERQFIFO.cs" />
+    <Compile Include="Emulator\IO\Z80\Z80ToPERQLatch.cs" />
     <Compile Include="Emulator\IO\Z80\i8237DMA.cs" />
     <Compile Include="Emulator\IO\Z80\i8254PIT.cs" />
-    <Compile Include="Emulator\IO\Z80\Oki5832RTC.cs" />
-    <Compile Include="Emulator\IO\Z80\CIOZ80.cs" />
-    <Compile Include="Emulator\IO\Z80\EIOZ80.cs" />
-    <Compile Include="Emulator\IO\Z80\PERQToZ80FIFO.cs" />
-    <Compile Include="Emulator\IO\Z80\Z80ToPERQFIFO.cs" />
-    <Compile Include="Emulator\IO\DiskDevices\CIOMicropolisDiskController.cs" />
-    <Compile Include="Emulator\IO\Printers\CanonController.cs" />
-    <Compile Include="Emulator\IO\Printers\CanonPrinter.cs" />
-    <Compile Include="Emulator\IO\Printers\CanonFormatter.cs" />
-    <Compile Include="UI\Output\Page.cs" />
+    <Compile Include="Emulator\Memory\MemoryBoard.cs" />
+    <Compile Include="Emulator\Memory\MemoryController.cs" />
+    <Compile Include="Emulator\Memory\VideoController.cs" />
+    <Compile Include="Emulator\PERQSystem.cs" />
+    <Compile Include="Emulator\Scheduler.cs" />
+    <Compile Include="Emulator\SystemTimer.cs" />
+    <Compile Include="PROM\Unscrambler.cs" />
+    <Compile Include="Program.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="UI\CLI\CommandAttribute.cs" />
+    <Compile Include="UI\CLI\CommandExecutor.cs" />
+    <Compile Include="UI\CLI\CommandNode.cs" />
+    <Compile Include="UI\CLI\CommandProcessor.cs" />
+    <Compile Include="UI\CLI\CommandPrompt.cs" />
     <Compile Include="UI\Output\PNGFormatter.cs" />
+    <Compile Include="UI\Output\Page.cs" />
     <Compile Include="UI\Output\TIFFFormatter.cs" />
-    <Compile Include="Emulator\IO\DiskDevices\MFMDiskController.cs" />
-    <Compile Include="Emulator\IO\Z80\PERQDMA.cs" />
-    <Compile Include="Emulator\IO\DMARegisters.cs" />
+    <Compile Include="UI\SDL\Display.cs" />
+    <Compile Include="UI\SDL\EventLoop.cs" />
+    <Compile Include="UI\SDL\InputDevices.cs" />
+    <Compile Include="UI\SDL\KeyboardMap.cs" />
   </ItemGroup>
+  <!-- Content items included in build output -->
   <ItemGroup>
-    <Content Include="COPYING.txt" />
-    <Content Include="SDL2.dll">
+    <None Include="COPYING.txt" />
+    <None Include="SDL2.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    </None>
+    <None Include="SDL2_image.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\packages\SDL2-CS.dll.2.0.0.0\lib\net48\SDL2-CS.dll.config">
+      <Link>SDL2-CS.dll.config</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\packages\SharpPcap.4.4.0\lib\SharpPcap.dll">
+      <Link>SharpPcap.dll.config</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Readme.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="packages.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="ChangeLog.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="UserGuide.pdf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Pre-made configuration files -->
+    <None Include="Conf\StorageDevices.db">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Conf\perq1.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Conf\perq1a.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Conf\perq2-t1.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Conf\perq2-t2.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Conf\perq2-t4.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Conf\perq2.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Conf\s6lisp.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Bundled disk images -->
+    <None Include="Disks\d6.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\f0.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\f1.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\f15.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\f15dev.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\s6lisp.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\pnx1.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\pnx2.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\pnx2mic.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\g6mfm.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\g6mic.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Disks\g7.prqm">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Runtime ROM images -->
+    <None Include="PROM\bkm16emu.rom">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="PROM\boot.rom">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="PROM\oioz80.bin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="PROM\oioz80.lst">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="PROM\cioboot.rom">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="PROM\cioz80.bin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="PROM\cioz80.lst">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="PROM\eio5boot.rom">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="PROM\eioboot.rom">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="PROM\eioz80.bin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="PROM\eioz80.lst">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- Runtime bitmaps (used by SDL, not embedded in a .resx) -->
+    <None Include="Resources\icon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Resources\floppy.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Resources\print-ready.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Resources\print-alert.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Resources\printing-1.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Resources\printing-2.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Resources\printing-3.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Resources\qictape.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <!-- Content items not included in build output -->
+  <ItemGroup>
     <None Include="app.config" />
+    <None Include="Readme-source.txt" />
+    <None Include="ChangeLog-Old.txt" />
+    <None Include="ChangeLog-Older.txt" />
+    <!-- Reference ROM images -->
+    <None Include="PROM\rds00.rom" />
+    <None Include="PROM\rsc03.rom" />
+    <None Include="PROM\rsh00.rom" />
+    <None Include="PROM\rti02.rom" />
+    <None Include="PROM\makebkm.pl" />
+    <None Include="PROM\memstate_table.txt" />
+    <!-- Bitmaps/others not yet used or needed at runtime -->
+    <None Include="Resources\PERQemu.ico" />
+    <None Include="Resources\aboutbox1.png" />
+    <None Include="Resources\aboutbox2.png" />
+    <None Include="Resources\PERQemu.icns" />
+    <!-- Other -->
+    <None Include="Scripts\debug.scr" />
+    <None Include="Emulator\CPU\PERQ24A.cs" />
+  </ItemGroup>
+  <!-- Documentation -->
+  <ItemGroup>
+    <None Include="Docs\Configuration.txt" />
+    <None Include="Docs\Configurator.png" />
+    <None Include="Docs\Controller.txt" />
+    <None Include="Docs\HardDisks.txt" />
+    <None Include="Docs\IOBoards.txt" />
+    <None Include="Docs\LaserCanon.txt" />
+    <None Include="Docs\Magic.txt" />
+    <None Include="Docs\Network.txt" />
+    <None Include="Docs\NewIOPorts.txt" />
+    <None Include="Docs\PERQ_Chart.png" />
+    <None Include="Docs\Streamer.txt" />
+    <None Include="Docs\Video.txt" />
+    <None Include="Docs\Hardware References\Am9517A.pdf" />
+    <None Include="Docs\Hardware References\Archive_Sidewinder_TheoryOpn.pdf" />
+    <None Include="Docs\Hardware References\Bit_Pad_One_Users_Manual_Aug81.pdf" />
+    <None Include="Docs\Hardware References\EIO.doc" />
+    <None Include="Docs\Hardware References\EIO_Disk_Quick_Feb83.txt" />
+    <None Include="Docs\Hardware References\EIO_Disk_Quick_Oct82.txt" />
+    <None Include="Docs\Hardware References\Ethernet_Guide_Sep81.txt" />
+    <None Include="Docs\Hardware References\LBP-CX_Series_Video_Interface_Service_Manual.pdf" />
+    <None Include="Docs\Hardware References\Micropolis_1220_Series_Oct79.pdf" />
+    <None Include="Docs\Hardware References\NEC_uPD765.pdf" />
+    <None Include="Docs\Hardware References\Shugart_SA4000_OEM_Apr79.pdf" />
+    <None Include="Docs\Hardware References\Shugart_SA850_OEM_Feb79.pdf" />
+    <None Include="Docs\Hardware References\TMS9914A_GPIB_Jun89.pdf" />
+    <None Include="Docs\Hardware References\Zilog_Z80_SIO_TechManual.pdf" />
+    <None Include="Docs\Hardware References\Zilog_Z8410_DMA.pdf" />
+    <None Include="Docs\Hardware References\Zilog_Z8430_CTC.pdf" />
+    <None Include="Docs\Hardware References\serial.memo" />
     <None Include="Docs\Misc Microcode\block.mic" />
     <None Include="Docs\Misc Microcode\bock.mic" />
     <None Include="Docs\Misc Microcode\boot.mic" />
@@ -315,8 +513,8 @@
     <None Include="Docs\Misc Microcode\pbt.mic" />
     <None Include="Docs\Misc Microcode\pdm.mic" />
     <None Include="Docs\Misc Microcode\pdmvfy.mic" />
-    <None Include="Docs\Misc Microcode\rat2.mic" />
     <None Include="Docs\Misc Microcode\rat.mic" />
+    <None Include="Docs\Misc Microcode\rat2.mic" />
     <None Include="Docs\Misc Microcode\regt.mic" />
     <None Include="Docs\Misc Microcode\relie.mic" />
     <None Include="Docs\Misc Microcode\relite.mic" />
@@ -339,6 +537,11 @@
     <None Include="Docs\Misc Microcode\wrloop.mic" />
     <None Include="Docs\Misc Microcode\wrone.mic" />
     <None Include="Docs\Misc Microcode\z80res.mic" />
+    <None Include="Docs\Old\Changes.txt" />
+    <None Include="Docs\Old\IOPorts.txt" />
+    <None Include="Docs\Old\KeyboardHandler.cs.Mac" />
+    <None Include="Docs\Old\PNX-SysB.txt" />
+    <None Include="Docs\Old\RasterOpMicrocode.txt" />
     <None Include="Docs\POS Microcode\ACB.DFS" />
     <None Include="Docs\POS Microcode\BOOT.MICRO" />
     <None Include="Docs\POS Microcode\EEB.DFS" />
@@ -539,200 +742,10 @@
     <None Include="Docs\Z80 Docs\z80des.prose" />
     <None Include="Docs\Z80 Docs\z80iof.pas" />
     <None Include="Docs\Z80 Docs\z80link.pas" />
-    <None Include="Docs\Z80 Docs\z80script.pas" />
-    <None Include="Docs\Z80 Docs\z80talker.pas" />
-    <None Include="packages.config">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="PROM\rds00.rom" />
-    <None Include="PROM\rsc03.rom">
-    </None>
-    <None Include="PROM\rsh00.rom">
-    </None>
-    <None Include="PROM\rti02.rom" />
-    <None Include="Scripts\debug.scr" />
-    <None Include="PROM\bkm16emu.rom">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="PROM\makebkm.pl" />
-    <None Include="PROM\memstate_table.txt" />
-    <None Include="Docs\NewIOPorts.txt" />
-    <None Include="Readme-source.txt" />
-    <Content Include="Readme.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <None Include="Docs\Video.txt" />
-    <None Include="Emulator\CPU\PERQ24A.cs" />
-    <None Include="Docs\Configurator.png" />
-    <Content Include="Docs\Old\Changes.txt" />
-    <Content Include="Docs\Old\IOPorts.txt" />
-    <None Include="Docs\Old\KeyboardHandler.cs.Mac" />
-    <Content Include="Docs\Old\RasterOpMicrocode.txt" />
-    <Content Include="Docs\Old\PNX-SysB.txt" />
-    <None Include="Docs\IOBoards.txt" />
-    <None Include="Docs\Configuration.txt" />
-    <None Include="Docs\Controller.txt" />
-    <None Include="Conf\StorageDevices.db">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Docs\Hardware References\Am9517A.pdf" />
-    <None Include="Docs\Hardware References\Archive_Sidewinder_TheoryOpn.pdf" />
-    <None Include="Docs\Hardware References\Bit_Pad_One_Users_Manual_Aug81.pdf" />
-    <None Include="Docs\Hardware References\EIO_Disk_Quick_Oct82.txt" />
-    <None Include="Docs\Hardware References\LBP-CX_Series_Video_Interface_Service_Manual.pdf" />
-    <None Include="Docs\Hardware References\Micropolis_1220_Series_Oct79.pdf" />
-    <None Include="Docs\Hardware References\NEC_uPD765.pdf" />
-    <None Include="Docs\Hardware References\Shugart_SA850_OEM_Feb79.pdf" />
-    <None Include="Docs\Hardware References\Shugart_SA4000_OEM_Apr79.pdf" />
-    <None Include="Docs\Hardware References\TMS9914A_GPIB_Jun89.pdf" />
-    <None Include="Docs\Hardware References\Zilog_Z80_SIO_TechManual.pdf" />
-    <None Include="Docs\Hardware References\Zilog_Z8410_DMA.pdf" />
-    <None Include="Docs\Hardware References\Zilog_Z8430_CTC.pdf" />
     <None Include="Docs\Z80 Docs\z80ram_addr.txt" />
     <None Include="Docs\Z80 Docs\z80rom_addr.txt" />
-    <None Include="Conf\perq1.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Conf\perq1a.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Conf\perq2-t1.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Conf\perq2-t2.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Conf\perq2-t4.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Conf\perq2.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="PROM\boot.rom">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="PROM\oioz80.bin">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="PROM\oioz80.lst">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="ChangeLog-Older.txt" />
-    <None Include="PROM\cioboot.rom">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="PROM\cioz80.bin">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="PROM\cioz80.lst">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Docs\Hardware References\Ethernet_Guide_Sep81.txt" />
-    <None Include="PROM\eio5boot.rom">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="PROM\eioboot.rom">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="..\packages\SDL2-CS.dll.2.0.0.0\lib\net48\SDL2-CS.dll.config">
-      <Link>SDL2-CS.dll.config</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Disks\g7.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Docs\PERQ_Chart.png" />
-    <Content Include="UserGuide.pdf">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <None Include="Docs\Magic.txt" />
-    <None Include="Resources\floppy.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Resources\icon.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Resources\aboutbox1.png" />
-    <None Include="Resources\aboutbox2.png" />
-    <None Include="Resources\PERQemu.icns" />
-    <Content Include="Resources\PERQemu.ico" />
-    <Content Include="SDL2_image.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <None Include="Disks\f0.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Disks\pnx1.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Disks\d6.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Disks\f1.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Disks\f15dev.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Resources\qictape.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Docs\Streamer.txt" />
-    <None Include="Disks\s6lisp.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Conf\s6lisp.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="ChangeLog-Old.txt" />
-    <None Include="SharpPcap.dll.config">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Disks\f15.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Docs\Network.txt" />
-    <None Include="Docs\Hardware References\EIO.doc" />
-    <None Include="PROM\eioz80.bin">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="PROM\eioz80.lst">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Docs\LaserCanon.txt" />
-    <None Include="Resources\print-ready.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Resources\print-alert.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Resources\printing-1.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Resources\printing-2.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Resources\printing-3.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Docs\Hardware References\EIO_Disk_Quick_Feb83.txt" />
-    <None Include="Docs\HardDisks.txt" />
-    <None Include="Docs\Hardware References\serial.memo" />
-    <None Include="ChangeLog.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Disks\pnx2.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Disks\pnx2mic.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Disks\g6mfm.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="Disks\g6mic.prqm">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <None Include="Docs\Z80 Docs\z80script.pas" />
+    <None Include="Docs\Z80 Docs\z80talker.pas" />
   </ItemGroup>
   <ItemGroup>
     <BootstrapperPackage Include="Microsoft.Net.Client.3.5">
@@ -751,24 +764,23 @@
       <Install>true</Install>
     </BootstrapperPackage>
   </ItemGroup>
-  <ItemGroup />
   <ItemGroup>
-    <Folder Include="UI\" />
+    <Folder Include="Conf\" />
+    <Folder Include="Configurator\" />
+    <Folder Include="Controller\" />
+    <Folder Include="Docs\Old\" />
+    <Folder Include="Docs\Hardware References\" />
     <Folder Include="Emulator\" />
     <Folder Include="Emulator\CPU\" />
     <Folder Include="Emulator\IO\" />
     <Folder Include="Emulator\Memory\" />
-    <Folder Include="Configurator\" />
-    <Folder Include="UI\SDL\" />
-    <Folder Include="Controller\" />
-    <Folder Include="Docs\Old\" />
-    <Folder Include="Conf\" />
     <Folder Include="Emulator\IO\DiskDevices\" />
-    <Folder Include="Docs\Hardware References\" />
-    <Folder Include="Resources\" />
     <Folder Include="Emulator\IO\TapeDevices\" />
     <Folder Include="Emulator\IO\Network\" />
     <Folder Include="Emulator\IO\Printers\" />
+    <Folder Include="Resources\" />
+    <Folder Include="UI\" />
+    <Folder Include="UI\SDL\" />
     <Folder Include="UI\Output\" />
   </ItemGroup>
   <Import Project="..\PERQmedia\PERQmedia.projitems" Label="Shared" Condition="Exists('..\PERQmedia\PERQmedia.projitems')" />
