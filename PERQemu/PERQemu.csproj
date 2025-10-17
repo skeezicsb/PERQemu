@@ -236,8 +236,7 @@
       <Link>SDL2-CS.dll.config</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\packages\SharpPcap.4.4.0\lib\SharpPcap.dll">
-      <Link>SharpPcap.dll.config</Link>
+    <None Include="SharpPcap.dll.config">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="Readme.txt">
