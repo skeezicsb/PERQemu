@@ -127,6 +127,8 @@ namespace PERQemu
                 Console.WriteLine("The system could not be initialized:");
                 Console.WriteLine(e.Message);
                 Console.WriteLine("Please check the configuration and try again.");
+
+                // No worky Perqy
                 _system = null;
                 return false;
             }
@@ -151,8 +153,6 @@ namespace PERQemu
             if (!Initialize(PERQemu.Config.Current))
             {
                 Console.WriteLine("System initialization failed.");
-                // No worky Perqy
-                _system = null;
                 return;
             }
 
@@ -160,8 +160,9 @@ namespace PERQemu
             if (!_system.LoadAllMedia())
             {
                 Console.WriteLine("Storage initialization failed.");
-                // Give an opportunity to try again
-                //SetState(RunState.Halted);
+
+                // Fixme: revisit the startup/media load fail scenario
+                _system.Shutdown();
                 _system = null;
                 return;
             }

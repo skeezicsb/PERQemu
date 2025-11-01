@@ -494,7 +494,7 @@ session, and will not stop at 255 when PNX has completed booting.
 
 Solution:  A patch to detect and fix this automatically was included in PERQemu
 v0.5.8 through v0.6.5; the CPU was modified to correct the issue and the patch
-removed in v0.6.6 (experiments branch).  Suggest upgrade to v0.7.5.
+removed in v0.6.6 (experiments branch).  Suggest upgrade to v0.7.5 or later.
 
 
 5. PNX video glitches.
@@ -502,7 +502,7 @@ removed in v0.6.6 (experiments branch).  Suggest upgrade to v0.7.5.
 Symptom: The PNX 2 window manager sometimes randomly paints its background 
 pattern with strange stripes or other visual anomalies.
 
-Solution:  Corrected in PERQemu v0.6.9.  Suggest upgrade to v0.7.5.
+Solution:  Corrected in PERQemu v0.6.9.  Suggest upgrade to v0.7.5 or later.
 
 
 6. PNX 5 kernel panic after boot.
@@ -533,9 +533,11 @@ v0.9 - TBD
   - See if CIO Micropolis has any real software support?
   - Multibus and SMD disks?
 
-v0.8.0 - Experiments branch
+v0.8.1 - Experiments branch
   - Minor updates to Nuget package dependencies (now tested/verified against
     SDL 2.32.4, SDL_image 2.8.8, PacketDotNet 0.30.3)
+  - Shrinks the display window to accommodate small screens; automatically
+    resizes when moved between screens on hosts with multiple monitors.
 
 v0.7.8 - Main branch (v0.8.x pre-release)
   - 24-bit CPU with 4MB memory fixes (now boots Accent; more testing to do)
@@ -696,7 +698,7 @@ v0.1 - First public release
 
 Update history:
 
-10/17/2025 - skeezicsb - v0.8.0 (experiments)
+11/1/2025 - skeezicsb - v0.8.1 (experiments)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)

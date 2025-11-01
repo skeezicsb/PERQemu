@@ -5,7 +5,30 @@ Summary of changes on the development branch since the v0.6.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+November, 2025:
+
+    2. Began plumbing to make the keyboard reconfigurable.  Bump to 0.8.1 for
+    platform testing.
+
+    1. For laptops or other small screens that can't handle the PERQ's 1024-
+    line display plus all the host OS/window manager ornamentation, PERQemu will
+    now shrink the window to fit and allow the scroll wheel (or HOME/END keys)
+    to pan up and down (like the old WinForms PERQemu did it).  If you have
+    multiple screens and drag the display window between them, it will enlarge
+    to full size or shrink to fit accordingly.  [Experimental; tested on MacOSX
+    with multiple machines, only lightly on Windows/Linux so far.]
+
+
 October, 2025:
+
+    4. Was LoadOp ever intended to work with Fetch4R?  ICL thought so, since
+    they wrote a test for it in the SYSB microcode shipped with PNX 5.  So now
+    the emulator reloads the op file, in the order the hardware does it, when a
+    Fetch4R is issued before a LoadOp.  The test microcode still sails right
+    through and there's no change in behavior -- because upon closer inspection
+    it seems the half-assed test never actually checks the op bytes after the
+    reversed reload, AND it seems that the kernel doesn't rely on the "feature"
+    that extra test didn't really test anyway.  <poke_fork_in_eye>repeatedly</>
 
     3. Networking changes to correct/improve Ethernet reliability after the
     PacketDotNet version bump.  Still pretty rickety but it's coming along.
@@ -312,4 +335,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Thu Oct 16 20:41:07 PDT 2025
+Last update: skeezics    Sat Nov  1 15:52:17 PDT 2025

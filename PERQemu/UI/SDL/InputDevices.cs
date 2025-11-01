@@ -74,22 +74,7 @@ namespace PERQemu.UI
 
         void OnMouseWheel(SDL.SDL_Event e)
         {
-            
-            if (e.wheel.y > 0)
-            {
-                /*
-                    TODO/FIXME  have to test on a display that's too short
-                    and figure out how to scroll the SDL display (scaling the
-                    1bpp screen is way too ugly on a non-high dpi screen)
-                */
-                //Console.WriteLine("scroll up!");
-                // _dispBox.Top = _display.ClientRectangle.Height - VideoController.PERQ_DISPLAYHEIGHT;
-            }
-            else if (e.wheel.y < 0)
-            {
-                //Console.WriteLine("scroll down!");
-                // _dispBox.Top = 0;
-            }
+            _system.Display.Scroll(e.wheel.y);
         }
 
         void OnMouseMove(SDL.SDL_Event e)
@@ -97,7 +82,6 @@ namespace PERQemu.UI
             _mouseX = e.motion.x;
             _mouseY = e.motion.y;
         }
-
 
         /// <summary>
         /// Map the host mouse buttons to the Kriz tablet (passed straight through).
@@ -115,7 +99,7 @@ namespace PERQemu.UI
         /// </summary>
         void OnMouseDown(SDL.SDL_Event e)
         {
-            // todo: if the perq tracks individual button states, we should too?
+            // Todo: if the Perq tracks individual button states, we should too?
             switch (e.button.button)
             {
                 case 4:
@@ -138,7 +122,7 @@ namespace PERQemu.UI
 
         void OnMouseUp(SDL.SDL_Event e)
         {
-            _mouseButton = 0x0;     // todo: see above
+            _mouseButton = 0x0;     // Todo: see above
         }
 
         /// <summary>
@@ -168,14 +152,14 @@ namespace PERQemu.UI
             {
                 // Allow Home/PageUp and End/PageDown keys to scroll the display.
                 // Useful on laptop touchpads which don't simulate (or mice that
-                // don't have) scroll wheels.  TODO: do SDL equivalent
+                // don't have) scroll wheels.
                 case SDL.SDL_Keycode.SDLK_HOME:
-                    //_dispBox.Top = 0;                    
+                    _system.Display.Scroll(0);                    
                     handled = true;
                     break;
 
                 case SDL.SDL_Keycode.SDLK_END:
-                    //_dispBox.Top = _display.ClientRectangle.Height - VideoController.PERQ_DISPLAYHEIGHT;                    
+                    _system.Display.Scroll(_system.VideoController.DisplayHeight);
                     handled = true;
                     break;
 
@@ -189,7 +173,7 @@ namespace PERQemu.UI
                 // Quirks: On Windows, the Control, Shift and Alt keys repeat when
                 // held down even briefly.  The PERQ never needs to receive a plain
                 // modifier key event like that, so skip the mapping step and quietly
-                // handle them here.  TODO: WinForms did this; does SDL as well?
+                // handle them here.
                 case SDL.SDL_Keycode.SDLK_LSHIFT:
                 case SDL.SDL_Keycode.SDLK_RSHIFT:
                     _shift = true;
@@ -222,7 +206,7 @@ namespace PERQemu.UI
             // If the key wasn't handled above, see if there's an ASCII equivalent
             if (!handled)
             {
-                perqCode = _keymap.GetKeyMapping(keycode, _shift, _ctrl);
+                perqCode = _keymap.GetKeyValue(keycode, _shift, _ctrl);
 
                 if (perqCode != 0)
                 {
@@ -262,9 +246,15 @@ namespace PERQemu.UI
         // debugging
         public void Status()
         {
-            Console.WriteLine("mouseX,Y={0},{1} alt={2}, caps={3}",
+            Console.WriteLine("Mouse X,Y={0},{1} alt={2}, caps={3}",
                               _mouseX, _mouseY, _alt, _keymap.CapsLock);
         }
+
+        public void DumpKeys()
+        {
+            _keymap.PrintMap();
+        }
+
 
         // Mouse
         int _mouseX;

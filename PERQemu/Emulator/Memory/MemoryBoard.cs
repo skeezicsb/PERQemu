@@ -192,8 +192,8 @@ namespace PERQemu.Memory
             // If currently executing a Fetch4/4R, start the refill on the next
             // T2 state (i.e., next cycle).  Note: I've never seen any production
             // ucode that uses a LoadOp with Fetch4R, but OF COURSE PNX 5 does it
-            return ((_mdiQueue.Cycle == MemoryCycle.Fetch4 ||
-                     _mdiQueue.Cycle == MemoryCycle.Fetch4R) && _Tstate == 1);
+            return (_Tstate == 1 && (_mdiQueue.Cycle == MemoryCycle.Fetch4 ||
+                                     _mdiQueue.Cycle == MemoryCycle.Fetch4R));
         }
 
         /// <summary>

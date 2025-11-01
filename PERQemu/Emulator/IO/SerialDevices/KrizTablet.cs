@@ -91,7 +91,9 @@ namespace PERQemu.IO.SerialDevices
             // to adjust for display width.  Apply the X/Y "kluge" values based
             // on the POS tablet driver's expectations (see below)
             int tabX = _system.Mouse.MouseX + 64;
-            int tabY = _system.VideoController.DisplayHeight - _system.Mouse.MouseY + 64;
+            int tabY = _system.VideoController.DisplayHeight -
+                       _system.Display.TopY -
+                       _system.Mouse.MouseY + 64;
 
             // Format 'em
             var tab1 = (byte)(((tabX >> 8) & 0x0f) |

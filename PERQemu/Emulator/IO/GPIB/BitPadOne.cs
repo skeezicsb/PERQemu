@@ -108,15 +108,13 @@ namespace PERQemu.IO.GPIB
         {
             // Please see the Notes below for tablet data format details!
 
-            int x = 0;
-            int y = 0;
-            byte button = 0;
-
             // Calculate X and Y positions based on the "fudge factors" below:
-            x = (_system.Mouse.MouseX + 38) * 2;
-            y = (_system.VideoController.DisplayHeight - _system.Mouse.MouseY + 39) * 2;
+            int x = (_system.Mouse.MouseX + 38) * 2;
+            int y = (_system.VideoController.DisplayHeight -
+                     _system.Display.TopY -
+                     _system.Mouse.MouseY + 39) * 2;
 
-            button = (byte)_system.Mouse.MouseButton;
+            int button = (byte)_system.Mouse.MouseButton;
 
             if (_talking && !_system.Mouse.MouseOffTablet)
             {
@@ -164,7 +162,8 @@ namespace PERQemu.IO.GPIB
         BusWriteDelegate _txDelegate;
 
         readonly byte[] _buttonMapping = { 0x30, 0x32, 0x31, 0x33, 0x38, 0x35, 0x36, 0x37,
-                                                   0x34, 0x39, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46 };
+                                           0x34, 0x39, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46 };
+        
         const byte _delimiter1 = 0x2c;      // ,
         const byte _delimiter2 = 0x0a;      // LF
 

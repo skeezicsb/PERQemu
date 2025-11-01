@@ -32,7 +32,6 @@ namespace PERQemu.UI
     /// </summary>
     public class SettingsCommands
     {
-
         [Command("settings", "Enter the settings subsystem", Prefix = true)]
         public void SetSettingsPrefix()
         {
@@ -494,6 +493,13 @@ namespace PERQemu.UI
             }
         }
 
+        [Command("settings show key mapping", "Display current host->PERQ keyboard map")]
+        void ShowKeyMap()
+        {
+            // Todo: power on check, or make the keymaps static :-/
+            PERQemu.Sys.Mouse.DumpKeys();
+        }
+
         // Pure cheese.  Don't spew messages when reading on startup.
         void QuietWrite(string s)
         {
@@ -503,7 +509,7 @@ namespace PERQemu.UI
 }
 
 /*
-	TODO:
+	Todo:
 	settings::screenshot format [jpg, png, tiff, ?]
 	settings::screenshot template [str] -- really?  cmon...
 	settings::canon template [str]      -- same 
@@ -511,8 +517,9 @@ namespace PERQemu.UI
 	settings::logging template [str]    -- hmm.
 	settings::logging keep [n]          -- how many files
 	settings::logging filesize [n]      -- in mb?  kb?
-	-- oh hey, i know, let's use log4j instead of rolling our own... :-P
 
+    Custom key mappings: define, save, and load
+    
 	Host interface to the network, serial and audio output devices
 	is globally set for all virtual machines:
 

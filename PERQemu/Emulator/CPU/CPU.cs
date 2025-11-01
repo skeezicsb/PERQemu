@@ -746,7 +746,6 @@ namespace PERQemu.Processor
                             {
                                 Log.Debug(Category.OpFile, "Load init");
                             }
-#if DEBUG
                             else
                             {
                                 // This often appears during boot/testing and is harmless in that
@@ -754,7 +753,6 @@ namespace PERQemu.Processor
                                 Log.Debug(Category.OpFile, "LoadOp called in wrong cycle! T{0} @ PC {1:x}",
                                           _memory.TState, _system.CPU.PC);
                             }
-#endif
 
                             if (_ustore.ROMEnabled)
                             {
@@ -1008,7 +1006,8 @@ namespace PERQemu.Processor
         /// </summary>
         public void LoadOpWord()
         {
-            int opAddr = _memory.MIndex * 2;
+            // Use Tstate, not word Index, so that LoadOp works with Fetch4 and 4R
+            int opAddr = ((_memory.TState + 2) & 0x3) << 1;
 
             _opFile[opAddr] = (byte)(_memory.MDI & 0xff);
             _opFile[opAddr + 1] = (byte)((_memory.MDI & 0xff00) >> 8);
@@ -1016,7 +1015,7 @@ namespace PERQemu.Processor
             Log.Debug(Category.OpFile, "Loaded {0:x2} into Op[{1:x}] from {2:x6}", _opFile[opAddr], opAddr, _memory.MADR);
             Log.Debug(Category.OpFile, "Loaded {0:x2} into Op[{1:x}] from {2:x6}", _opFile[opAddr + 1], opAddr + 1, _memory.MADR);
 
-            _refillOp = (_memory.MIndex != 3);
+            _refillOp = (_memory.TState != 1);
         }
 
         /// <summary>
