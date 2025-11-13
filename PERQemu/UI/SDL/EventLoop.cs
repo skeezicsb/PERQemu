@@ -230,6 +230,7 @@ namespace PERQemu.UI
                         return;
 
                     case SDL.SDL_WindowEventID.SDL_WINDOWEVENT_MOVED:
+                    case SDL.SDL_WindowEventID.SDL_WINDOWEVENT_DISPLAY_CHANGED:
                         MoveOrResize();
                         return;
 

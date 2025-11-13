@@ -34,6 +34,7 @@ namespace PERQemu.UI
             _system = sys;
 
             _keymap = new KeyboardMap(_system.Config.Chassis);
+            _showKeys = false;
 
             _mouseOffTablet = false;
             _mouseButton = 0x0;
@@ -45,6 +46,12 @@ namespace PERQemu.UI
         public int MouseY => _mouseY;
         public int MouseButton => _mouseButton;
         public bool MouseOffTablet => _mouseOffTablet;
+
+        public bool ShowKeycodes
+        {
+            get { return _showKeys; }
+            set { _showKeys = value; }
+        }
 
         public void Initialize()
         {
@@ -142,19 +149,18 @@ namespace PERQemu.UI
         {
             var keycode = e.key.keysym.sym;
             byte perqCode = 0;
+            bool handled = false;
 
             //
-            // Handle any keys that may affect the Window itself, and are not passed
-            // to the PERQ.
+            // Handle any keys that may affect the Window itself, and are
+            // not passed to the PERQ.
             //
-            bool handled = false;
             switch (keycode)
             {
-                // Allow Home/PageUp and End/PageDown keys to scroll the display.
-                // Useful on laptop touchpads which don't simulate (or mice that
-                // don't have) scroll wheels.
+                // Home and End keys to scroll the display (alternative to
+                // a mouse scroll wheel or touchpad input)
                 case SDL.SDL_Keycode.SDLK_HOME:
-                    _system.Display.Scroll(0);                    
+                    _system.Display.Scroll(0);
                     handled = true;
                     break;
 
@@ -163,7 +169,7 @@ namespace PERQemu.UI
                     handled = true;
                     break;
 
-                // Toggle the "lock" keys... this needs work.
+                // Toggle the "lock" keys
                 case SDL.SDL_Keycode.SDLK_CAPSLOCK:
                 case SDL.SDL_Keycode.SDLK_NUMLOCKCLEAR:
                     _keymap.SetLockKeyState(keycode);
@@ -195,7 +201,8 @@ namespace PERQemu.UI
                     break;
 
                 // Provide a key to jump into the debugger when focus is on the PERQ,
-                // rather than having to select the console window to hit ^C.
+                // rather than having to select the console window to hit ^C
+                // Fixme: this should be configurable!
                 case SDL.SDL_Keycode.SDLK_PAUSE:            // Windows keyboards
                 case SDL.SDL_Keycode.SDLK_F8:               // Mac equivalent...
                     PERQemu.Controller.Break();
@@ -203,16 +210,34 @@ namespace PERQemu.UI
                     break;
             }
 
-            // If the key wasn't handled above, see if there's an ASCII equivalent
-            if (!handled)
+            // If the key is reserved, log it and bail
+            if (handled)
             {
-                perqCode = _keymap.GetKeyValue(keycode, _shift, _ctrl);
-
-                if (perqCode != 0)
+                if (_showKeys)
                 {
-                    _system.IOB.Z80System.QueueKeyboardInput(perqCode);   // Ship it!
-                    handled = true;
+                    Console.WriteLine($"Key {keycode.ToString()} is reserved by PERQemu");
                 }
+                return;
+            }
+
+            // See if it's mapped to a PERQ key
+            perqCode = _keymap.GetKeyValue(keycode, _shift, _ctrl);
+
+            if (perqCode != 0)
+            {
+                _system.IOB.Z80System.QueueKeyboardInput(perqCode);   // Ship it!
+                handled = true;
+            }
+
+            // Show the result, if any, to aid in customizing key mappings
+            if (_showKeys)
+            {
+                Console.Write($"Key {keycode.ToString()} is ");
+
+                if (handled)
+                    Console.WriteLine($"mapped to {_keymap.GetKeyMapping(keycode).ToString()}");
+                else
+                    Console.WriteLine("not mapped");
             }
         }
 
@@ -255,7 +280,6 @@ namespace PERQemu.UI
             _keymap.PrintMap();
         }
 
-
         // Mouse
         int _mouseX;
         int _mouseY;
@@ -266,6 +290,9 @@ namespace PERQemu.UI
         bool _shift;
         bool _ctrl;
         bool _alt;
+
+        // To assist in remapping
+        bool _showKeys;
 
         KeyboardMap _keymap;
 

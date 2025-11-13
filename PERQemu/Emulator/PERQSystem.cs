@@ -194,7 +194,7 @@ namespace PERQemu
         public MemoryBoard Memory => _mem;
         public VideoController VideoController => _mem.Video;
         public Display Display => _display;
-        public InputDevices Mouse => _inputs;
+        public InputDevices HID => _inputs;
 
         public IOBus IOBus => _ioBus;
         public IOBoard IOB => _iob;

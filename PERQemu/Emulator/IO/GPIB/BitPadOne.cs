@@ -109,14 +109,14 @@ namespace PERQemu.IO.GPIB
             // Please see the Notes below for tablet data format details!
 
             // Calculate X and Y positions based on the "fudge factors" below:
-            int x = (_system.Mouse.MouseX + 38) * 2;
+            int x = (_system.HID.MouseX + 38) * 2;
             int y = (_system.VideoController.DisplayHeight -
                      _system.Display.TopY -
-                     _system.Mouse.MouseY + 39) * 2;
+                     _system.HID.MouseY + 39) * 2;
 
-            int button = (byte)_system.Mouse.MouseButton;
+            int button = (byte)_system.HID.MouseButton;
 
-            if (_talking && !_system.Mouse.MouseOffTablet)
+            if (_talking && !_system.HID.MouseOffTablet)
             {
                 // Send it!
                 WriteIntAsStringToQueue(x);

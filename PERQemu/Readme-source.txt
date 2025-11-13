@@ -46,6 +46,11 @@ runs the POS "burn in" code (i.e. the SIGGRAPH demos) it's good to go!
 1.2  Version History
 --------------------
 
+PERQemu v0.8.x introduces some UI improvements, and new features to support the
+FLEX operating system, PERQ-2/T4 (24-bit) configurations, and the import/export
+of PERQ 5.25" hard disk images.  Ethernet operation is more reliable, and other
+bug fixes improve emulation accuracy and software compatibility.
+
 PERQemu v0.7.5 is a milestone release that accumulates all of the changes since
 v0.5.0, adding PERQ-2 configurations along with an expanded library of pre-built
 bundled hard disk images.
@@ -135,8 +140,7 @@ excellent emulation projects, Contralto and Darkstar.
         different media may be loaded and the virtual machine reinstantiated.
 
     UI
-        The reorganized user interface is broken down into three folders (of
-        which only two are currently integrated into the scheme):
+        The user interface is broken down into three folders:
 
         SDL
             The Display is a self-contained, minimal window that uses SDL-CS
@@ -570,16 +574,15 @@ Keyboard and mouse input from the host are now handled by the "InputDevices"
 class (UI/SDL/InputDevices.cs).  Input events are filtered and funneled to the
 appropriate emulated I/O device.
 
-Mappings from SDL2 to either the PERQ-1 or PERQ-2 keyboard codes are provided
-by the KeyboardMap class, in UI/SDL/KeyboardMap.cs.  There are several fixed
-mappings for some special PERQ-specific keys that must be made configurable
-somehow, or a graphical keyboard provided so that a variety of host keyboards
-can be better accommodated -- including mappings for non-US/English locales.
-
-Caps-lock, num-lock and scroll-lock tracking hasn't been tested under SDL2;
-the use of the Alt key (Option on Mac) to simulate the "mouse off tablet"
-condition (for relative-mode mouse tracking) has been restored but has not
-been exhaustively tested [but seems to work just fine].
+The "raw" byte encodings of the PERQ-1 and PERQ-2 keyboards are now statically
+allocated in UI/SDL/KeyboardCodes.cs.  Mappings from the host (SDL2 keycodes)
+to the appropriate PERQ keyboard (for the loaded configuration) are provided
+by the KeyboardMap class, in UI/SDL/KeyboardMap.cs.  SDL2 seems to think every
+keyboard is a PC-101 type layout, so the default mapping in PERQemu is based on
+this assumption.  (It's possible that SDL3 might offer more flexibility?)  The
+mapping can now be made configurable on the fly, so that special PERQ keys can
+be assigned according to user preference -- but the details of how a custom key
+mapping will be defined, saved, and loaded have yet to be finalized.
 
 
 2.3.7  Scheduler
@@ -777,6 +780,7 @@ PERQ info and lore.  More to come!
 
 Update history:
 
+v2.7 - 11/13/2025 - skeezics
 v2.6 - 4/22/2025 - skeezics - v0.7.5 release
 v2.5 - 3/28/2025 - skeezics
 v2.4 - 12/8/2024 - skeezics - updated for the v0.6.5 interim release

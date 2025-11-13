@@ -493,13 +493,6 @@ namespace PERQemu.UI
             }
         }
 
-        [Command("settings show key mapping", "Display current host->PERQ keyboard map")]
-        void ShowKeyMap()
-        {
-            // Todo: power on check, or make the keymaps static :-/
-            PERQemu.Sys.Mouse.DumpKeys();
-        }
-
         // Pure cheese.  Don't spew messages when reading on startup.
         void QuietWrite(string s)
         {

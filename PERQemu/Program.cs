@@ -153,7 +153,7 @@ namespace PERQemu
             Console.WriteLine();
             Console.WriteLine("[DEBUG version]");
             Console.WriteLine($"[Working directory is {Environment.CurrentDirectory}]");
-            Console.WriteLine($"[Host is configured for {Environment.ProcessorCount} processor(s)]");
+            Console.WriteLine($"[Host {Environment.MachineName} is configured for {Environment.ProcessorCount} processor(s)]");
             Console.WriteLine($"[Console buffer is {Console.BufferWidth}x{Console.BufferHeight}]");
             Console.WriteLine($"[Console window is {Console.WindowWidth}x{Console.WindowHeight}]");
             Console.WriteLine(_gui.GetSDLVersion(true));

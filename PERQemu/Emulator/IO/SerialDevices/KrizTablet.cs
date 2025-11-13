@@ -90,17 +90,17 @@ namespace PERQemu.IO.SerialDevices
             // clipped to the PERQ screen dimensions for us, so there's no need
             // to adjust for display width.  Apply the X/Y "kluge" values based
             // on the POS tablet driver's expectations (see below)
-            int tabX = _system.Mouse.MouseX + 64;
+            int tabX = _system.HID.MouseX + 64;
             int tabY = _system.VideoController.DisplayHeight -
                        _system.Display.TopY -
-                       _system.Mouse.MouseY + 64;
+                       _system.HID.MouseY + 64;
 
             // Format 'em
             var tab1 = (byte)(((tabX >> 8) & 0x0f) |
-                               (_system.Mouse.MouseOffTablet ? 0x40 : 0) |
+                               (_system.HID.MouseOffTablet ? 0x40 : 0) |
                                (_system.Config.Display == Config.DisplayType.Landscape ? 0x20 : 0));
             var tab2 = (byte)(tabX & 0xff);
-            var tab3 = (byte)(((tabY >> 8) & 0x0f) | (_system.Mouse.MouseButton << 5));
+            var tab3 = (byte)(((tabY >> 8) & 0x0f) | (_system.HID.MouseButton << 5));
             var tab4 = (byte)(tabY & 0xff);
 
             // Send the data to the SIO - invert (active low data) if NOT EIO

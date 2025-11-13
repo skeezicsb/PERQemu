@@ -7,6 +7,13 @@ Previous notes moved to ChangeLog-Old.txt.
 
 November, 2025:
 
+    3. Refactored the SDL keyboard handling.  For consistency between layouts,
+    the PERQ-1 HELP, OOPS and LF keys (F1..F3) are now remapped to F5..F7 by
+    default, and are now the same on the PERQ-2 "VT-100" layout.  The PERQ-2
+    function keys PF1..PF4 are mapped to F1..F4 on the host.  F8 remains the
+    "pause" key to stop execution without switching back to the console first.
+    Updated the UserGuide to explain this and how to set up custom mappings.
+
     2. Began plumbing to make the keyboard reconfigurable.  Bump to 0.8.1 for
     platform testing.
 
@@ -335,4 +342,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Sat Nov  1 15:52:17 PDT 2025
+Last update: skeezics    Thu Nov 13 12:52:58 PST 2025

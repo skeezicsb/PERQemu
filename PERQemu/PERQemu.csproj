@@ -222,6 +222,7 @@
     <Compile Include="UI\SDL\EventLoop.cs" />
     <Compile Include="UI\SDL\InputDevices.cs" />
     <Compile Include="UI\SDL\KeyboardMap.cs" />
+    <Compile Include="UI\SDL\KeyboardCodes.cs" />
   </ItemGroup>
   <!-- Content items included in build output -->
   <ItemGroup>
