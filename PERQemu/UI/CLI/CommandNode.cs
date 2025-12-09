@@ -33,10 +33,10 @@ namespace PERQemu.UI
         {
             if (method == null)
                 throw new ArgumentNullException(nameof(method), "Command method must be non-null");
-            
+
             if (instance == null)
                 throw new ArgumentNullException(nameof(instance), "Command instance must be non-null");
-            
+
             Method = method;
             Instance = instance;
         }
@@ -172,7 +172,7 @@ namespace PERQemu.UI
             }
         }
 
-        private void SetHelperStrings()
+        void SetHelperStrings()
         {
             if (Param.ParameterType.IsEnum)
             {
@@ -223,7 +223,6 @@ namespace PERQemu.UI
             }
         }
 
-
         /// <summary>
         /// For parameters with the [KeywordMatch] attribute, provide a hook to
         /// set/update the strings used in matching/completion.
@@ -232,8 +231,7 @@ namespace PERQemu.UI
         {
             Helpers.Clear();
 
-            foreach (var w in words)
-                Helpers.Add(w);
+            foreach (var w in words) Helpers.Add(w);
         }
     }
 

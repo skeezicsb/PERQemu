@@ -23,6 +23,7 @@ using System;
 using System.Collections.Generic;
 
 using PERQemu.Config;
+using PERQemu.IO;
 
 namespace PERQemu.UI
 {
@@ -32,7 +33,7 @@ namespace PERQemu.UI
     public enum KeyCap
     {
         // Key not present
-        None,
+        None = 0,
 
         // Alphanumerics
         A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
@@ -46,7 +47,7 @@ namespace PERQemu.UI
         Help, Oops, LineFeed,
 
         // Special keys exclusive to the PERQ-2
-        AccEsc, RejDel, Setup, Break, NoScroll, PF1, PF2, PF3, PF4, Left, Right, Up, Down,
+        Setup, Break, NoScroll, PF1, PF2, PF3, PF4, Left, Right, Up, Down,
 
         // PERQ-2 keypad
         Pad0, Pad1, Pad2, Pad3, Pad4, Pad5, Pad6, Pad7, Pad8, Pad9,
@@ -54,27 +55,32 @@ namespace PERQemu.UI
 
         // Some pseudo keys for convenience (modern keypads generally include these)
         PadPlus, PadMultiply, PadDivide, PadEquals
+
+        // Pseudo keys for commands that control the emulator/debugger?
+        // EmuBreak, EmuScreenshot, EmuEjectFloppy, EmuMuteAudio...  :-)
     }
 
     /// <summary>
-    /// Maps the SDL keyboard codes to the PERQ ASCII representation.
+    /// Maps SDL keyboard codes to a PERQ key cap.
     /// </summary>
     public sealed class KeyboardMap
     {
-        public KeyboardMap(ChassisType machine)
+        public KeyboardMap(KeyboardType kbdType)
         {
             _map = new Dictionary<SDL.SDL_Keycode, KeyCap>();
+            SetupDefaultMap();
 
-            if (machine == ChassisType.PERQ1)
+            if (kbdType == KeyboardType.PERQ)
             {
                 _keyCodes = KeyboardCodes.PERQ1Codes;
-                SetupPERQ1Map();
             }
             else
             {
+                SetupExtendedMap();
                 _keyCodes = KeyboardCodes.PERQ2Codes;
-                SetupPERQ2Map();
             }
+
+            Log.Debug(Category.Keyboard, "{0} map initialized", kbdType);
 
             // Set the initial state of the CAPS LOCK and NUM LOCK keys,
             // based on the Console's setting?
@@ -82,10 +88,15 @@ namespace PERQemu.UI
             _lockNums = Console.NumberLock;
         }
 
+        public Dictionary<SDL.SDL_Keycode, KeyCap>.KeyCollection Keys => _map.Keys;
+
         public bool CapsLock => _lockCaps;
         public bool NumLock => _lockNums;
 
-        // Toggle the state of a given "lock" key
+
+        /// <summary>
+        /// Toggle the state of a given "lock" key.
+        /// </summary>
         public void SetLockKeyState(SDL.SDL_Keycode keycode)
         {
             switch (keycode)
@@ -108,6 +119,7 @@ namespace PERQemu.UI
         public void SetKeyMapping(SDL.SDL_Keycode hostKey, KeyCap perqKey)
         {
             _map[hostKey] = perqKey;
+            Log.Detail(Category.Keyboard, "Mapped {0} to {1}", hostKey.ToString(), perqKey);
         }
 
         /// <summary>
@@ -131,9 +143,6 @@ namespace PERQemu.UI
             var mappedKey = _map[hostKey];
             var perqKey = _keyCodes[(int)mappedKey];
 
-            Log.Info(Category.Keyboard, "Mapped {0} --> {1} [{2}]",
-                                        hostKey.ToString(), mappedKey, perqKey.Name);
-
             // Account for the state of CAPS LOCK.  On a real PERQ 1, CAPS LOCK is
             // _really_ a SHIFT LOCK -- applies to every key, not just letters!  On
             // the PERQ 2, and here, we'll do the more expected CAPS LOCK behavior
@@ -145,9 +154,25 @@ namespace PERQemu.UI
         }
 
         /// <summary>
-        /// Set up default map for the original PERQ-1 keyboard.
+        /// Gets the mappings for a specific PERQ key.  Slow and expensive, but
+        /// it's only used when saving an edited keymap and I don't care to build
+        /// and maintain a permuted index for every map.
         /// </summary>
-        void SetupPERQ1Map()
+        public List<SDL.SDL_Keycode> GetMappingsFor(KeyCap perqKey)
+        {
+            var matches = new List<SDL.SDL_Keycode>();
+
+            foreach (var kvp in _map)
+                if (kvp.Value == perqKey)
+                    matches.Add(kvp.Key);
+
+            return matches;
+        }
+
+        /// <summary>
+        /// Set up default map for keys common to both keyboards.
+        /// </summary>
+        void SetupDefaultMap()
         {
             // Alphabetic
             SetKeyMapping(SDL.SDL_Keycode.SDLK_a, KeyCap.A);
@@ -206,94 +231,36 @@ namespace PERQemu.UI
             SetKeyMapping(SDL.SDL_Keycode.SDLK_SPACE, KeyCap.Space);
             SetKeyMapping(SDL.SDL_Keycode.SDLK_BACKSPACE, KeyCap.BackSpace);
             SetKeyMapping(SDL.SDL_Keycode.SDLK_TAB, KeyCap.Tab);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_ESCAPE, KeyCap.Ins);     // Labeled INS on PERQ-1
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_INSERT, KeyCap.Ins);     // Same as ESC on PERQ-1
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_DELETE, KeyCap.Del);
             SetKeyMapping(SDL.SDL_Keycode.SDLK_RETURN, KeyCap.Return);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_DOWN, KeyCap.LineFeed);
+
+            // Labeled INS on PERQ-1, AccEsc on PERQ-2
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_ESCAPE, KeyCap.Ins);
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_INSERT, KeyCap.Ins);
+
+            // Labeled DEL on PERQ-1, RejDel on PERQ-2
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_DELETE, KeyCap.Del);
 
             // Function keys
-
             // Note: some of these assignments are ineffective, as most standard
             // USB PC-101 keyboards don't have HELP or CLEAR; even on extended
             // Apple keyboards that do, SDL seems to ignore them?  Hmmm.
 
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_F5, KeyCap.Help);        // HELP -- was F1
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_HELP, KeyCap.Help);      // HELP
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_F6, KeyCap.Oops);        // OOPS -- was F2
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_CLEAR, KeyCap.Oops);     // OOPS
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_F7, KeyCap.LineFeed);    // LF   -- was F3
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_F5, KeyCap.Help);        // HELP
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_HELP, KeyCap.Help);
 
-            Log.Debug(Category.Keyboard, "PERQ-1 map initialized");
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_F6, KeyCap.Oops);        // OOPS
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_CLEAR, KeyCap.Oops);
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_CLEAR, KeyCap.Oops);
+
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_F7, KeyCap.LineFeed);    // LF
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_PAGEDOWN, KeyCap.LineFeed);
         }
 
         /// <summary>
-        /// Map the PERQ 2 "VT100-style" keyboard.
+        /// Map the keys unique to the PERQ 2 "VT100-style" keyboard.
         /// </summary>
-        void SetupPERQ2Map()
+        void SetupExtendedMap()
         {
-            // Alphabetic
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_a, KeyCap.A);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_b, KeyCap.B);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_c, KeyCap.C);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_d, KeyCap.D);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_e, KeyCap.E);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_f, KeyCap.F);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_g, KeyCap.G);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_h, KeyCap.H);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_i, KeyCap.I);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_j, KeyCap.J);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_k, KeyCap.K);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_l, KeyCap.L);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_m, KeyCap.M);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_n, KeyCap.N);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_o, KeyCap.O);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_p, KeyCap.P);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_q, KeyCap.Q);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_r, KeyCap.R);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_s, KeyCap.S);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_t, KeyCap.T);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_u, KeyCap.U);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_v, KeyCap.V);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_w, KeyCap.W);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_x, KeyCap.X);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_y, KeyCap.Y);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_z, KeyCap.Z);
-
-            // Numeric
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_1, KeyCap.Num1);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_2, KeyCap.Num2);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_3, KeyCap.Num3);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_4, KeyCap.Num4);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_5, KeyCap.Num5);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_6, KeyCap.Num6);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_7, KeyCap.Num7);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_8, KeyCap.Num8);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_9, KeyCap.Num9);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_0, KeyCap.Num0);
-
-            // Punctuation
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_MINUS, KeyCap.Minus);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_EQUALS, KeyCap.Equals);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_BACKQUOTE, KeyCap.BackQuote);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_LEFTBRACKET, KeyCap.LeftBracket);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_RIGHTBRACKET, KeyCap.RightBracket);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_BACKSLASH, KeyCap.BackSlash);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_SEMICOLON, KeyCap.SemiColon);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_QUOTE, KeyCap.Quote);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_COMMA, KeyCap.Comma);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_PERIOD, KeyCap.Period);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_SLASH, KeyCap.Slash);
-
-            // Editing keys
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_SPACE, KeyCap.Space);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_BACKSPACE, KeyCap.BackSpace);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_TAB, KeyCap.Tab);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_ESCAPE, KeyCap.AccEsc);      // Same as INS on
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_INSERT, KeyCap.AccEsc);      // PERQ-1 (sends ESC)
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_DELETE, KeyCap.RejDel);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_RETURN, KeyCap.Return);
-
             // Arrows
             SetKeyMapping(SDL.SDL_Keycode.SDLK_UP, KeyCap.Up);
             SetKeyMapping(SDL.SDL_Keycode.SDLK_DOWN, KeyCap.Down);
@@ -301,16 +268,9 @@ namespace PERQemu.UI
             SetKeyMapping(SDL.SDL_Keycode.SDLK_RIGHT, KeyCap.Right);
 
             // PERQ/VT100 keys (see note above)
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_F5, KeyCap.Help);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_HELP, KeyCap.Help);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_F6, KeyCap.Oops);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_CLEAR, KeyCap.Oops);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_CLEAR, KeyCap.Oops);
+            SetKeyMapping(SDL.SDL_Keycode.SDLK_PAGEUP, KeyCap.Setup);
             SetKeyMapping(SDL.SDL_Keycode.SDLK_SYSREQ, KeyCap.Break);
             SetKeyMapping(SDL.SDL_Keycode.SDLK_SCROLLLOCK, KeyCap.NoScroll);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_F7, KeyCap.LineFeed);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_PAGEDOWN, KeyCap.LineFeed);
-            SetKeyMapping(SDL.SDL_Keycode.SDLK_PAGEUP, KeyCap.Setup);
 
             // Keypad
             SetKeyMapping(SDL.SDL_Keycode.SDLK_F1, KeyCap.PF1);
@@ -339,35 +299,8 @@ namespace PERQemu.UI
             SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_7, KeyCap.Pad7);
             SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_8, KeyCap.Pad8);
             SetKeyMapping(SDL.SDL_Keycode.SDLK_KP_9, KeyCap.Pad9);
-
-            Log.Debug(Category.Keyboard, "PERQ-2 (VT100) map initialized");
         }
 
-        /// <summary>
-        /// Show the current keyboard mappings.  Quick and dirty, for now.
-        /// </summary>
-        public void PrintMap()
-        {
-            var list = new List<string>();
-
-            Console.WriteLine("Host key to PERQ key map:");
-            foreach (var k in _map.Keys)
-            {
-                list.Add($"{k.ToString()} => {_map[k]}");
-            }
-
-            PERQemu.CLI.Columnify(list.ToArray(), 4, 36);
-
-        /*
-            To confirm the raw data:
-                
-            Console.WriteLine("Raw encoding:");
-            foreach (var pk in _keyCodes)
-            {
-                Console.WriteLine($"[{pk.Name}: 0x{pk.Normal:x2} 0x{pk.Shift:x2} 0x{pk.Control:x2} 0x{pk.CtrlShift:x2}]");
-            }
-        */
-        }
 
         // Map from SDL2 codes to a PERQ key
         Dictionary<SDL.SDL_Keycode, KeyCap> _map;
@@ -375,7 +308,7 @@ namespace PERQemu.UI
         // Which hardware map to use
         PERQKey[] _keyCodes;
 
-        // Have to catch/test for CAPS LOCK status ourselves, and maintain local state.  Ugh.
+        // Maintain local lock keys state
         bool _lockCaps;
         bool _lockNums;
     }

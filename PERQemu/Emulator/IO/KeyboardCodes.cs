@@ -19,12 +19,13 @@
 
 using System;
 
-namespace PERQemu.UI
-{
+using PERQemu.UI;
 
+namespace PERQemu.IO
+{
     /// <summary>
-    /// Store the four possible raw values transmitted by a PERQ key as encoded
-    /// in the keyboard's PROM.
+    /// Store the four possible values transmitted by a PERQ key as encoded
+    /// in the keyboard PROMs.
     /// </summary>
     public struct PERQKey
     {
@@ -69,7 +70,7 @@ namespace PERQemu.UI
     }
 
     /// <summary>
-    /// Set up the (static) tables of PERQ "raw" keyboard codes.
+    /// Static tables of PERQ "raw" 8-bit keyboard codes.
     /// </summary>
     public static class KeyboardCodes
     {
@@ -193,8 +194,8 @@ namespace PERQemu.UI
             PERQ2Codes[(int)KeyCap.Space] = new PERQKey(KeyCap.Space, 0xdf);
             PERQ2Codes[(int)KeyCap.BackSpace] = new PERQKey(KeyCap.BackSpace, 0xf7, 0xf7, 0x77, 0x77);
             PERQ2Codes[(int)KeyCap.Tab] = new PERQKey(KeyCap.Tab, 0xf6, 0xf6, 0x76, 0x76);
-            PERQ2Codes[(int)KeyCap.AccEsc] = new PERQKey(KeyCap.AccEsc, 0xe4, 0xe4, 0x64, 0x64);
-            PERQ2Codes[(int)KeyCap.RejDel] = new PERQKey(KeyCap.RejDel, 0x80, 0x80, 0xf4, 0xf4);
+            PERQ2Codes[(int)KeyCap.Ins] = new PERQKey(KeyCap.Ins, 0xe4, 0xe4, 0x64, 0x64);
+            PERQ2Codes[(int)KeyCap.Del] = new PERQKey(KeyCap.Del, 0x80, 0x80, 0xf4, 0xf4);
             PERQ2Codes[(int)KeyCap.Return] = new PERQKey(KeyCap.Return, 0xf2, 0xf2, 0x72, 0x72);
 
             PERQ2Codes[(int)KeyCap.Up] = new PERQKey(KeyCap.Up, 0x7f, 0x7f, 0xe3, 0xe3);

@@ -33,7 +33,7 @@ namespace PERQemu.UI
         {
             _system = sys;
 
-            _keymap = new KeyboardMap(_system.Config.Chassis);
+            _keymap = new KeyboardMap(_system.Config.Keyboard);
             _showKeys = false;
 
             _mouseOffTablet = false;
@@ -46,6 +46,8 @@ namespace PERQemu.UI
         public int MouseY => _mouseY;
         public int MouseButton => _mouseButton;
         public bool MouseOffTablet => _mouseOffTablet;
+
+        public KeyboardMap Keyboard => _keymap;
 
         public bool ShowKeycodes
         {
@@ -208,6 +210,11 @@ namespace PERQemu.UI
                     PERQemu.Controller.Break();
                     handled = true;
                     break;
+
+                case SDL.SDL_Keycode.SDLK_PRINTSCREEN:
+                    // Reserved: take a PERQ screenshot automatically! :-)
+                    handled = true;
+                    break;
             }
 
             // If the key is reserved, log it and bail
@@ -242,7 +249,7 @@ namespace PERQemu.UI
         }
 
         /// <summary>
-        /// Only used to handle the mouse button hacks.
+        /// Release the shift, control or alt (mouse off tablet) modifiers.
         /// </summary>
         void OnKeyUp(SDL.SDL_Event e)
         {
@@ -275,11 +282,6 @@ namespace PERQemu.UI
                               _mouseX, _mouseY, _alt, _keymap.CapsLock);
         }
 
-        public void DumpKeys()
-        {
-            _keymap.PrintMap();
-        }
-
         // Mouse
         int _mouseX;
         int _mouseY;
@@ -294,6 +296,7 @@ namespace PERQemu.UI
         // To assist in remapping
         bool _showKeys;
 
+        // The active map
         KeyboardMap _keymap;
 
         // Parent

@@ -44,6 +44,7 @@ namespace PERQemu.Config
             _geometries = new Hashtable();
             _driveSpecs = new Hashtable();
             _knownDrives = new Hashtable();
+            _knownAliases = new Hashtable();
         }
 
         /// <summary>
@@ -106,6 +107,8 @@ namespace PERQemu.Config
 
         public bool Quietly => _quietly;
 
+        #region Device database helpers
+
         public void AddGeometry(string key, DeviceGeometry geom)
         {
             Log.Detail(Category.MediaLoader, "Adding drive geometry '{0}'", key);
@@ -130,19 +133,32 @@ namespace PERQemu.Config
             return (DevicePerformance)_driveSpecs[key.ToLower()];
         }
 
-        public void AddKnownDrive(StorageDevice dev)
+        public void AddKnownDrive(StorageDevice dev, string alias = "")
         {
             Log.Detail(Category.MediaLoader, "Adding device definition '{0}', type {1}",
-                                            dev.Info.Name, dev.Info.Type);
+                                              dev.Info.Name, dev.Info.Type);
 
             _knownDrives.Add(dev.Info.Name.ToLower(), dev);
 
+            if (!string.IsNullOrEmpty(alias) && !_knownAliases.ContainsKey(alias.ToLower()))
+            {
+                _knownAliases.Add(alias.ToLower(), dev);
+                Log.Detail(Category.MediaLoader, "Added device alias '{0}' for {1}",
+                                                  alias, dev.Info.Name);
+            }
+
             // Update the "DriveTypes" keyword nodes!
-            PERQemu.CLI.UpdateKeywordMatchHelpers("DriveTypes", GetKnownDevices());
+            PERQemu.CLI.UpdateKeywordMatchHelpers("DriveTypes", GetAllDevices());
         }
 
         public StorageDevice GetKnownDeviceByName(string key)
         {
+            // Check aliases first
+            if (_knownAliases.ContainsKey(key))
+            {
+                return (StorageDevice)_knownAliases[key];
+            }
+
             return (StorageDevice)_knownDrives[key];
         }
 
@@ -152,6 +168,31 @@ namespace PERQemu.Config
             _knownDrives.Keys.CopyTo(a, 0);
             return a;
         }
+
+        public string[] GetKnownAliases()
+        {
+            var a = new string[_knownAliases.Keys.Count];
+            _knownAliases.Keys.CopyTo(a, 0);
+            return a;
+        }
+
+        /// <summary>
+        /// This is slow and dumb but it only runs once at startup and I just
+        /// can't be arsed to do it "properly."  Meh.
+        /// </summary>
+        string[] GetAllDevices()
+        {
+            // Mash 'em together!
+            var n = _knownDrives.Keys.Count;
+            var a = new string[n + _knownAliases.Keys.Count];
+            _knownDrives.Keys.CopyTo(a, 0);
+            _knownAliases.Keys.CopyTo(a, n);
+            return a;
+        }
+
+        #endregion
+
+        #region Configuration preload and selection
 
         /// <summary>
         /// Add to the list of predefined configurations.
@@ -203,6 +244,42 @@ namespace PERQemu.Config
         }
 
         /// <summary>
+        /// Scan the Conf dir for saved system configs and preload them into
+        /// the Prefabs list.  Sure.  Why not.
+        /// </summary>
+        void LoadPrefabs()
+        {
+            // Let's be discreet, shall we?
+            _quietly = true;
+
+            Log.Debug(Category.MediaLoader, "Loading configurations from '{0}'",
+                                            Paths.Canonicalize(Paths.ConfigDir));
+
+            foreach (var file in Directory.EnumerateFiles(Paths.ConfigDir, "*.cfg"))
+            {
+                _current = new Configuration();
+
+                if (Load(Paths.Canonicalize(file)))
+                {
+                    AddPrefab(_current);
+                    Log.Detail(Category.MediaLoader, "Added configuration '{0}'", _current.Name);
+                }
+                else
+                {
+                    Log.Info(Category.MediaLoader, _current.Reason);
+                }
+            }
+
+            // Reset for normal CLI interactions
+            _quietly = false;
+            _current = Default;
+        }
+
+        #endregion
+
+        #region Loading and saving
+
+        /// <summary>
         /// Initiate loading a configuration from disk.  This basically just
         /// hands the file off to the CommandExecutor and runs it as if the
         /// commands were being typed at the console, rather than work out a
@@ -240,38 +317,6 @@ namespace PERQemu.Config
         }
 
         /// <summary>
-        /// Scan the Conf dir for saved system configs and preload them into
-        /// the Prefabs list.  Sure.  Why not.
-        /// </summary>
-        void LoadPrefabs()
-        {
-            // Let's be discreet, shall we?
-            _quietly = true;
-
-            Log.Debug(Category.MediaLoader, "Loading configurations from '{0}'",
-                      Paths.Canonicalize(Paths.ConfigDir));
-
-            foreach (var file in Directory.EnumerateFiles(Paths.ConfigDir, "*.cfg"))
-            {
-                _current = new Configuration();
-
-                if (Load(Paths.Canonicalize(file)))
-                {
-                    AddPrefab(_current);
-                    Log.Detail(Category.MediaLoader, "Added configuration '{0}'", _current.Name);
-                }
-                else
-                {
-                    Log.Info(Category.MediaLoader, _current.Reason);
-                }
-            }
-
-            // Reset for normal CLI interactions
-            _quietly = false;
-            _current = Default;
-        }
-
-        /// <summary>
         /// Saves the configuration to disk as a simple script file that can
         /// be read at startup (command-line argument), with the "@file" syntax
         /// from the CLI, or using the "Load" button in the Configurator GUI.
@@ -306,6 +351,12 @@ namespace PERQemu.Config
                     sw.WriteLine("io board " + _current.IOBoard);
                     sw.WriteLine("display " + _current.Display);
                     sw.WriteLine("tablet " + _current.Tablet);
+
+                    // If a keymap is assigned, save it
+                    if (_current.Keymap != string.Empty && _current.Keymap != "default")
+                    {
+                        sw.WriteLine("keymap " + _current.Keymap);
+                    }
 
                     // Save serial ports, if enabled
                     if (_current.RSAEnable) sw.WriteLine("enable rs232 a");
@@ -362,6 +413,10 @@ namespace PERQemu.Config
             }
         }
 
+        #endregion
+
+        #region Validation
+
         /// <summary>
         /// Validate the configuration and set the IsValid property.  This is a
         /// sanity check only; the configurator (CLI or GUI) should simply not
@@ -389,6 +444,10 @@ namespace PERQemu.Config
 
             return conf.IsValid;
         }
+
+#endregion
+
+        #region CPU and Memory validation
 
         /// <summary>
         /// Checks that the CPU selected is compatible with the configuration.
@@ -512,6 +571,10 @@ namespace PERQemu.Config
             return true;
         }
 
+        #endregion
+
+        #region IO and Options validation
+
         public bool HasEthernet(Configuration conf)
         {
             return (conf.IOBoard == IOBoardType.EIO ||
@@ -634,6 +697,10 @@ namespace PERQemu.Config
 
             return true;
         }
+
+        #endregion
+
+        #region Storage validation and update
 
         /// <summary>
         /// Checks that the list of disk devices is appropriate for the selected
@@ -905,6 +972,10 @@ namespace PERQemu.Config
             }
         }
 
+        #endregion
+
+        #region Media assignment
+
         /// <summary>
         /// Validate a media file and assign it to the appropriate device.
         /// </summary>
@@ -1000,6 +1071,8 @@ namespace PERQemu.Config
             return true;
         }
 
+        #endregion
+
         // Common memory sizes in bytes
         public const int HALF_MEG = 512 * 1024;
         public const int ONE_MEG = 1024 * 1024;
@@ -1014,6 +1087,7 @@ namespace PERQemu.Config
         Hashtable _geometries;
         Hashtable _driveSpecs;
         Hashtable _knownDrives;
+        Hashtable _knownAliases;
 
         Configuration _default;
         Configuration _current;

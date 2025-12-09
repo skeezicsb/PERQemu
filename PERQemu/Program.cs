@@ -98,6 +98,9 @@ namespace PERQemu
             _config = new Configurator();
             _config.Initialize();
 
+            _keymapper = new Keymapper();
+            _keymapper.Initialize();
+
             // Read user settings file, or set defaults if it doesn't yet exist
             Settings.Load();
             Log.Info(Category.All, Settings.Reason);
@@ -175,6 +178,7 @@ namespace PERQemu
         public static EventLoop GUI => _gui;
         public static CommandProcessor CLI => _cli;
         public static Configurator Config => _config;
+        public static Keymapper Keymaps => _keymapper;
         public static ExecutionController Controller => _controller;
         public static PERQSystem Sys => _controller.System;
 
@@ -237,6 +241,7 @@ namespace PERQemu
         static CommandProcessor _cli;
 
         static Configurator _config;
+        static Keymapper _keymapper;
         static ExecutionController _controller;
     }
 }

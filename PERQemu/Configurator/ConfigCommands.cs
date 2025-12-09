@@ -59,13 +59,19 @@ namespace PERQemu.UI
         [Command("configure", "Enter the configuration subsystem", Prefix = true)]
         public void SetConfigPrefix()
         {
-            PERQemu.CLI.SetPrefix("configure");
+            PERQemu.CLI.SetPrefix("configure", ConfigChanged);
         }
 
         [Command("configure commands", "Show configuration commands")]
         public void ShowConfigCommands()
         {
             PERQemu.CLI.ShowCommands("configure");
+        }
+
+        // Delegate for command prompt check
+        public bool ConfigChanged()
+        {
+            return PERQemu.Config.Changed;
         }
 
         [Command("configure done", "Exit configuration mode, return to top-level")]
@@ -108,6 +114,8 @@ namespace PERQemu.UI
             }
         }
 
+        #region List and show commands
+
         [Command("configure list", "List available machine configurations")]
         public void ListPrefabs()
         {
@@ -149,27 +157,9 @@ namespace PERQemu.UI
             }
         }
 
-        [Command("configure check", "Check that the configuration is valid")]
-        public void CheckConfig()
-        {
-            if (!PERQemu.Config.Validate())
-            {
-                Console.WriteLine("Configuration is not valid:");
-                Console.WriteLine(PERQemu.Config.Current.Reason);
-            }
-            else
-            {
-                if (PERQemu.Config.Current.Reason != string.Empty)
-                {
-                    Console.WriteLine("Configuration is valid, with warnings:");
-                    Console.WriteLine(PERQemu.Config.Current.Reason);
-                }
-                else
-                {
-                    Console.WriteLine("This configuration is valid.");
-                }
-            }
-        }
+        #endregion
+
+        #region Load and save commands
 
         /// <summary>
         /// Load a new configuration.  Tries the prefabs list first, then falls
@@ -240,6 +230,10 @@ namespace PERQemu.UI
             }
         }
 
+        #endregion
+
+        #region Naming commands
+
         [Command("configure name", "Name the current configuration")]
         public void SetName(string name)
         {
@@ -262,6 +256,10 @@ namespace PERQemu.UI
             PERQemu.Config.Current.Description = desc;
             PERQemu.Config.Changed = true;
         }
+
+        #endregion
+
+        #region Chassis and CPU commands
 
         [Command("configure chassis", "Set the machine type")]
         public void SetChassis(ChassisType perq)
@@ -312,6 +310,10 @@ namespace PERQemu.UI
                 }
             }
         }
+
+        #endregion
+
+        #region Memory and display commands
 
         uint RoundToPowerOf2(uint n)
         {
@@ -382,6 +384,36 @@ namespace PERQemu.UI
                 }
             }
         }
+
+
+        [Command("configure display", "Configure the display device")]
+        public void SetDisplay(DisplayType disp)
+        {
+            if (PERQemu.Config.Quietly)
+            {
+                PERQemu.Config.Current.Display = disp;
+                return;
+            }
+
+            if (OKtoReconfig())
+            {
+                if (disp != PERQemu.Config.Current.Display)
+                {
+                    PERQemu.Config.Current.Display = disp;
+                    PERQemu.Config.Changed = true;
+                    Console.WriteLine($"{disp} display option selected.");
+                }
+
+                if (!PERQemu.Config.CheckMemory())
+                {
+                    Console.WriteLine(PERQemu.Config.Current.Reason);
+                }
+            }
+        }
+
+        #endregion
+
+        #region IO and Option Board commands
 
         [Command("configure io board", "Configure the IO board type")]
         public void SetIO(IOBoardType ioType)
@@ -607,6 +639,10 @@ namespace PERQemu.UI
             }
         }
 
+        #endregion
+
+        #region Ethernet, RTC and serial ports
+
         [Command("configure ethernet address", "Set the low word (two octets) of the Ethernet address")]
         public void SetEthernetAddress(ushort address)
         {
@@ -687,51 +723,6 @@ namespace PERQemu.UI
             }
         }
 
-        [Command("configure display", "Configure the display device")]
-        public void SetDisplay(DisplayType disp)
-        {
-            if (PERQemu.Config.Quietly)
-            {
-                PERQemu.Config.Current.Display = disp;
-                return;
-            }
-
-            if (OKtoReconfig())
-            {
-                if (disp != PERQemu.Config.Current.Display)
-                {
-                    PERQemu.Config.Current.Display = disp;
-                    PERQemu.Config.Changed = true;
-                    Console.WriteLine($"{disp} display option selected.");
-                }
-
-                if (!PERQemu.Config.CheckMemory())
-                {
-                    Console.WriteLine(PERQemu.Config.Current.Reason);
-                }
-            }
-        }
-
-        [Command("configure tablet", "Configure the pointing device(s)")]
-        public void SetTablet(TabletType tab)
-        {
-            if (PERQemu.Config.Quietly)
-            {
-                PERQemu.Config.Current.Tablet = tab;
-                return;
-            }
-
-            if (OKtoReconfig())
-            {
-                if (tab != PERQemu.Config.Current.Tablet)
-                {
-                    PERQemu.Config.Current.Tablet = tab;
-                    PERQemu.Config.Changed = true;
-                    Console.WriteLine($"Tablet option {tab} selected.");
-                }
-            }
-        }
-
         [Command("configure enable rs232", "Enable use of a serial port")]
         public void EnableRS232(char port = 'a')
         {
@@ -790,6 +781,49 @@ namespace PERQemu.UI
             Console.WriteLine($"Invalid RS-232 port '{port}'.");
             return false;
         }
+
+        #endregion
+
+        #region Tablet and keyboard commands
+
+        [Command("configure tablet", "Configure the pointing device(s)")]
+        public void SetTablet(TabletType tab)
+        {
+            if (PERQemu.Config.Quietly)
+            {
+                PERQemu.Config.Current.Tablet = tab;
+                return;
+            }
+
+            if (OKtoReconfig())
+            {
+                if (tab != PERQemu.Config.Current.Tablet)
+                {
+                    PERQemu.Config.Current.Tablet = tab;
+                    PERQemu.Config.Changed = true;
+                    Console.WriteLine($"Tablet option {tab} selected.");
+                }
+            }
+        }
+
+        [Command("configure keymap", "Configure a custom keyboard map")]
+        public void SetKeymap([KeywordMatch("Keymaps")] string mapName)
+        {
+            if (mapName == "default") mapName = string.Empty;
+
+            if (mapName != PERQemu.Config.Current.Keymap)
+            {
+                PERQemu.Config.Current.Keymap = mapName;
+                PERQemu.Config.Changed = true;
+
+                Console.WriteLine("Keyboard map is now {0}.",
+                                 mapName == "" ? "unset" : mapName);
+            }
+        }
+
+        #endregion
+
+        #region Media commands
 
         /// <summary>
         /// Get the device type from a media file and assign it to the first
@@ -864,6 +898,31 @@ namespace PERQemu.UI
             // NO error checking, no output, assumes "quiet"
             PERQemu.Config.Current.SetDeviceType(unit, dev);
             PERQemu.Config.Current.SetMediaPath(unit, file);
+        }
+
+        #endregion
+
+
+        [Command("configure check", "Check that the configuration is valid")]
+        public void CheckConfig()
+        {
+            if (!PERQemu.Config.Validate())
+            {
+                Console.WriteLine("Configuration is not valid:");
+                Console.WriteLine(PERQemu.Config.Current.Reason);
+            }
+            else
+            {
+                if (PERQemu.Config.Current.Reason != string.Empty)
+                {
+                    Console.WriteLine("Configuration is valid, with warnings:");
+                    Console.WriteLine(PERQemu.Config.Current.Reason);
+                }
+                else
+                {
+                    Console.WriteLine("This configuration is valid.");
+                }
+            }
         }
     }
 }

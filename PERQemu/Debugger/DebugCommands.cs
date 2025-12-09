@@ -1193,30 +1193,6 @@ namespace PERQemu
         // Miscellany and temporary/debugging hacks
         //
 
-        [Command("debug show key mapping", "Display current host->PERQ keyboard map")]
-        void ShowKeyMap()
-        {
-            if (PERQemu.Sys == null)
-            {
-                Console.WriteLine("No PERQ defined, can't show keyboard map.");
-                return;
-            }
-
-            PERQemu.Sys.HID.DumpKeys();
-        }
-
-        [Command("debug show key presses", "Enable or disable key press information")]
-        void ShowKeypress(bool enable)
-        {
-            if (PERQemu.Sys == null) return;
-
-            if (enable != PERQemu.Sys.HID.ShowKeycodes)
-            {
-                PERQemu.Sys.HID.ShowKeycodes = enable;
-                Console.WriteLine((enable ? "Showing" : "Not showing") + " key presses.");
-            }
-        }
-
         // [Conditional("DEBUG")]
         [Command("debug dump dma registers")]
         void DumpDMARegisters()

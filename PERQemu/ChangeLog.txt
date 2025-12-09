@@ -5,7 +5,31 @@ Summary of changes on the development branch since the v0.6.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+December, 2025:
+
+    1. Anything worth killing is worth OVERKILLING.  Remapping keyboards isn't
+    just a matter of dropping a hand wrought text file in the Conf directory,
+    no sirree.  A WHOLE NEW CLI SUBSYSTEM.  Settings and Configuration commands.
+    Dynamic updates while the VM is running.  An entire new appendix in the User
+    Guide.  This is so stupidly over the top -- but by now you expect nothing
+    less, amirite?  Bump to v0.8.4 for platform testing.  After some testing and
+    further fussing over it, a v0.8.5 release will probably be it for this year?
+    Would still love to get audio hooked up and push out a v1.0 before the 31st,
+    though.
+
+
 November, 2025:
+
+    4. Cleaned up the Storage subsystem a bit, and add an alias feature so that
+    device types can be referenced by a colloquial name or model number, since
+    my initial choices were, um, not always intuitive.  This is a PERQemu-only
+    hack, for now, since I didn't want to introduce a change to the PERQmedia
+    library to support aliases directly - yet.  Type "storage commands" to see
+    the updated commands; UserGuide updates coming shortly.
+
+    NOTE: changes to the StorageDevices.db file for v0.8.x will not be backward
+    compatible with older versions, but aside from "Invalid command" warnings at
+    startup should still load.  Not that you'd ever do that, surely.
 
     3. Refactored the SDL keyboard handling.  For consistency between layouts,
     the PERQ-1 HELP, OOPS and LF keys (F1..F3) are now remapped to F5..F7 by
@@ -342,4 +366,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Thu Nov 13 12:52:58 PST 2025
+Last update: skeezics    Sun Dec  7 22:38:19 PST 2025

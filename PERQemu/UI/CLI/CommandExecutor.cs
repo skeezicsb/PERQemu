@@ -130,7 +130,11 @@ namespace PERQemu.UI
 
             if (command == null)
             {
+#if DEBUG
+                Console.WriteLine($"Invalid command '{line}'.");
+#else
                 Console.WriteLine("Invalid command.");
+#endif
                 return;
             }
 
@@ -406,6 +410,13 @@ namespace PERQemu.UI
 
                 if (next != null)
                 {
+                    // Properly check for "discreet" subsystems: don't traverse the
+                    // node if marked as a Prefix and the prompt is not in scope
+                    if (current.Prefix && current.Hidden && current != _currentRoot)
+                    {
+                        return null;    // Don't traverse!
+                    }
+
                     current = next;
                 }
                 else

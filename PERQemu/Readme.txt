@@ -524,21 +524,25 @@ v1.0 - TBD
   Sometime before the heat death of the universe:
   - Feature complete, with a nice GUI, full screen mode, VR, scratch 'n sniff
   - Massive software library organized, catalogued, available for use and study
-  - Working audio output :-)
+  - See if CIO Micropolis has any real software support?
+  - Remaining items from the "What's Not" list above
 
 v0.9 - TBD
   Fill in the final pieces:
-  - Full-featured Ethernet
-  - See if CIO Micropolis has any real software support?
-  - Multibus and SMD disks?
+  - Full-featured Ethernet with encapsulation options/no root requirement
+  - Working audio output :-)
 
-v0.8.2 - Experiments branch
+v0.8.4 - Experiments branch (v0.8.5 pre-release)
   - Minor updates to Nuget package dependencies (now tested/verified against
     SDL 2.32.4, SDL_image 2.8.8, PacketDotNet 0.30.3)
   - Shrinks the display window to accommodate small screens; automatically
     resizes when moved between screens on hosts with multiple monitors
-  - Refactored SDL2 keyboard handling to allow (future) custom remapping
-    and updated default HELP/OOPS/LF assignment for PERQ-2 "VT-100" layout.
+  - Refactored SDL2 keyboard handling and updated default HELP/OOPS/LF key
+    assignments for PERQ-2 "VT-100" layout
+  - Can now define, edit, save and apply custom keyboard mappings on a per-
+    configuration basis (UserGuide updated in excruciating detail)
+  - Add aliases to the storage device list so more common/colloquial names
+    can be used to specific drive types
 
 v0.7.8 - Main branch (v0.8.x pre-release)
   - 24-bit CPU with 4MB memory fixes (now boots Accent; more testing to do)
@@ -699,7 +703,7 @@ v0.1 - First public release
 
 Update history:
 
-11/13/2025 - skeezicsb - v0.8.2 (experiments)
+12/7/2025 - skeezicsb - v0.8.4 (experiments)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)

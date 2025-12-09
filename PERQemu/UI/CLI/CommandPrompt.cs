@@ -24,12 +24,17 @@ using System.Collections.Generic;
 namespace PERQemu.UI
 {
     /// <summary>
+    /// For subsystems that maintain editing state, a method to see if there
+    /// are unsaved changes (updates the prompt).
+    /// </summary>
+    public delegate bool SaveNeededCallback();
+
+    /// <summary>
     /// Interactive part of the command-line interface.  Provides for editing
     /// functions, tab-completion, history recall, and other nifty stuff.
     /// </summary>
     public class CommandPrompt
     {
-
         public CommandPrompt(CommandNode root)
         {
             _commandTreeRoot = root;
@@ -38,6 +43,7 @@ namespace PERQemu.UI
             _historyIndex = 0;
 
             _prompt = "";
+            _unsaved = null;
 
             _lastWidth = Console.BufferWidth;
             _lastHeight = Console.BufferHeight;
@@ -50,7 +56,7 @@ namespace PERQemu.UI
         /// Invoke a "subsystem" -- change the prompt and narrow our grammar to
         /// include only the nodes below it.  Saves typing and looks old school.
         /// </summary>
-        public CommandNode SetPrefix(string subsys)
+        public CommandNode SetPrefix(string subsys, SaveNeededCallback check)
         {
             var nodes = CommandExecutor.SplitArgs(subsys);
             var newRoot = _commandTreeRoot;
@@ -68,6 +74,7 @@ namespace PERQemu.UI
 
             // Turtles all the way down
             _prompt = subsys;
+            _unsaved = check;
             _commandTree = newRoot;
 
             return _commandTree;
@@ -80,6 +87,7 @@ namespace PERQemu.UI
         {
             _commandTree = _commandTreeRoot;
             _prompt = "";
+            _unsaved = null;
 
             return _commandTree;
         }
@@ -160,7 +168,7 @@ namespace PERQemu.UI
                     case ConsoleKey.Tab:
                         if (InsideString())
                         {
-                            InsertChar(' ');
+                            InsertChar(' ');        // Convert to space
                         }
                         else
                         {
@@ -230,17 +238,10 @@ namespace PERQemu.UI
             // Force column zero
             Console.SetCursorPosition(0, Console.CursorTop);
 
-            // A "workmanlike" way to show if there are unsaved changes
-            // todo: this really needs to be less janky
-            if ((_commandTree.Name == "configure" && PERQemu.Config.Changed) ||
-                (_commandTree.Name == "settings" && Settings.Changed))
-            {
-                Console.Write($"{_prompt}*> ");
-            }
-            else
-            {
-                Console.Write($"{_prompt}> ");
-            }
+            // Update the prompt if the subsystem has changes wot need savin'
+            var flag = (_unsaved != null && _unsaved.Invoke());
+
+            Console.Write("{0}{1}> ", _prompt, flag ? "*" : "");
 
             // Reset for where we at now
             _lastRow = _originRow = Console.CursorTop;
@@ -650,7 +651,7 @@ namespace PERQemu.UI
 #if !DEBUG
                                 if (!c.Hidden)
 #endif
-                                result.Completions.Add(c.ToString());
+                                    result.Completions.Add(c.ToString());
                             }
                         }
 
@@ -875,6 +876,8 @@ namespace PERQemu.UI
 
         string _prompt;
         string _input;
+
+        SaveNeededCallback _unsaved;
 
         int _textPosition;
         int _originRow;

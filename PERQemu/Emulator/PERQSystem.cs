@@ -178,6 +178,9 @@ namespace PERQemu
             // Not sure that RunModes make sense anymore
             SetMode();
 
+            // Apply a custom keyboard map, if configured
+            CustomizeKeymap();
+
             // Okay!  We have a PERQ!  Now listen for state change events
             // from the Controller (or Debugger)
             PERQemu.Controller.RunStateChanged += OnRunStateChange;
@@ -788,6 +791,40 @@ namespace PERQemu
                 default:
                     throw new InvalidConfigurationException($"Device type {dev} is not supported, cannot save");
             }
+        }
+
+        #endregion
+
+        #region Customization
+
+        /// <summary>
+        /// Check if a custom keymap is desired and if so, attempt to load and
+        /// apply it.  Looks at Settings first, then the Configuration record.
+        /// If requested but the map can't be found or loaded for any reason,
+        /// is a no-op (doesn't prevent machine startup).
+        /// </summary>
+        void CustomizeKeymap()
+        {
+            // Is a default set?
+            string customMap = Settings.Keymap;
+
+            // Or a configuration/override?
+            if (!string.IsNullOrEmpty(_conf.Keymap)) customMap = _conf.Keymap;
+
+            // If nothing set, nothing to do
+            if (customMap == "" || customMap == "none") return;
+
+            // Ask Keymapper to find and apply it
+            var map = PERQemu.Keymaps.GetMapByName(customMap);
+
+            if (map == null)
+            {
+                Log.Info(Category.Emulator, "Could not find custom keymap {0}, continuing", customMap);
+                return;
+            }
+
+            PERQemu.Keymaps.Apply(map);
+            Log.Info(Category.Emulator, "Applied custom keymap {0}.", map.Name);
         }
 
         #endregion
