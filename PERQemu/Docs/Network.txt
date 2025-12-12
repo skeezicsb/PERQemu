@@ -10,7 +10,7 @@ well as software interactions with the 2910-based state machine.
 As an early adopter of Ethernet, Three Rivers built their own implementation
 in discrete logic; at the time there weren't any "VLSI" solutions (like the AMD
 LANCE chip) available.  So while the original PERQ-1 IOB was intended to provide
-Ethernet (see schematics for IOB-F, 1981) that wasn't integrated until the EIO
+Ethernet (see schematics for IOB-F, 1981) it wasn't integrated until the EIO
 board shipped with the PERQ-2.  Instead an IO Option board was produced for the
 original PERQ.  There are slight differences between the OIO and EIO, though
 they are both emulated here by the general Ether10MbitController class:
@@ -20,7 +20,9 @@ they are both emulated here by the general Ether10MbitController class:
     the multicast registers are done a word at a time.
 
     PERQ-2/EIO uses the designated "Network" interrupt and the EIO's DMA
-    registers.  Multicast bytes are programmed one byte at a time.
+    registers.  Multicast bytes are programmed one byte at a time.  There
+    is one extra control register for setting the net interrupt mask bit,
+    rather than using the bit defined in the usual control word.
 
 
 The 3Mbit Ethernet option board was used extensively at CMU, but it doesn't
@@ -264,11 +266,13 @@ present even if the network isn't "plugged in".
 
 NullEthernet is the "fake" implementation that doesn't transmit or receive any
 packets and doesn't attempt to open the host device; it does not require that
-PERQemu be run with elevated priviliges.
+PERQemu be run with elevated privileges.  It takes on the OIO or EIO personality
+depending on the configuration.
 
-Ether10MbitController is the "standard" implementation that adapts itself for
-operation as an OIO or EIO device at runtime.  It is responsible for managing
-the host side as well.
+Ether10MbitController is the "standard" implementation that connects a host NIC
+and allows full "raw" access to the network.  It now is a subclass of Null, so
+that it doesn't duplicate all of the PERQ/IOB register interface -- it can now
+focus on being the transmit/receive shim between the host adapter and the VM.
 
 Ether3MbitController is not yet implemented.  This will be compatible with the
 UDP-encapsulated implementation used by ContrAlto so that emulated PERQs and
@@ -306,14 +310,14 @@ Ether10 controller is instantiated.  The interface is opened at "power on" so
 that if an error occurs (misconfiguration or permissions problem) we can abort
 startup, rather than lazily open it when the OS pokes at the control registers.
 
-OIO (and EIO, when implemented) manages all interactions from the PERQ side
-through the usual IOBus register reads/writes.  Like all DMA devices (for now)
-the network copies packets directly to and from memory, so the CPU never has
-memory cycles stolen by the DMA engine.  This is slightly unrealistic, but to
-compensate the controller calculates a reasonable packet delay based on the
-number of octets transmitted or received.  Other status bits are simulated to
-allow the microcode to see things like "packet in progress" or "carrier detect"
-[TBD].
+The OIO or EIO board (as appropriate for the machine type) manages interactions
+from the PERQ side through the usual IOBus register reads/writes.  Like all DMA
+devices (for now) the network copies packets directly to and from memory, so the
+CPU never has memory cycles stolen by the DMA engine.  To compensate for this
+and provide a more faithful emulation, the controller calculates a reasonable
+packet delay based on the number of octets transmitted or received.  Status bits
+are simulated to allow the microcode to see things like "packet in progress" or
+"carrier detect" but these don't reflect the actual state of the host interface.
 
 The PERQ interface is half duplex and cannot "see" its own transmitted packets.
 SharpPcap does seem to copy outbound packets to the input queue, so PERQemu
@@ -337,7 +341,8 @@ isn't reading them (or can't keep up) the oldest packet is dropped so a newer
 one can take its place.  The default (for now) is 15; lots of testing/tuning is
 required to determine if that's reasonable.  (Somewhere in the code or docs the
 phrase "can have up to 14 receives pending" stuck in my brain, but maybe that's
-POS specific based on memory allocation?)
+POS specific based on memory allocation?  I think Accent or PNX allocates eight
+packet buffers by default?)
 
 When the microcode enables the receiver, the Controller always checks for any
 queued packets, otherwise it simply waits for the OnPacketArrival event to
@@ -350,7 +355,7 @@ or boot another OS or choose another (random) MAC address, so we rebuild the
 table at the start of every session.
 
 Because the PERQ presents a "half-duplex" hardware and programming model, the
-software has idle/reset the receiver before transmitting packets.  So this
+software has to idle/reset the receiver before transmitting packets.  So this
 simplifies things as far as the controller/adapter interface goes; we can still
 receive and queue packets while the PERQ is sending but they'll only appear at
 the interface as if they just arrived.  For both sends and receives, the delay
@@ -437,6 +442,12 @@ it'd be nice to at least have the first one up be able to accurately set its
 own time...
 
 
+Logging has been split into three categories for debugging:  Ethernet is for the
+PERQ side of the interface; Network is for logging much of the NAT/host side 
+interaction; NetAdapter is for NIC and packet handling at the lowest level. This
+allows a bit more focus on debugging a particular aspect of the implementation.
+
+
 THIS IS ALL STILL VERY MUCH UNDER DEVELOPMENT AND IS IN NO WAY FINALIZED!
 
 Plus, this document (as usual) could use some editing.  Sheesh.  You'd think I
@@ -444,4 +455,4 @@ get paid by the word.
 
 
 ---
-Last update: skeezics    Mon Jun 30 10:28:14 PDT 2025
+Last update: skeezics    Fri Sep 19 23:21:28 PDT 2025

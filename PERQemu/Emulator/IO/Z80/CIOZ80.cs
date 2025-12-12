@@ -173,20 +173,20 @@ namespace PERQemu.IO.Z80
         /// </remarks>
         public override void WriteStatus(int status)
         {
-            bool prevState = _running;
+            bool runState = _running;
 
-            if (status == 0x80 && _running)
+            if (status == 0x80 && runState)
             {
                 Log.Debug(Category.Z80, "Shut down by write to Status register");
                 _running = false;
             }
-            else if (status == 0 && !_running)
+            else if (status == 0 && !runState)
             {
                 Log.Debug(Category.Z80, "Started by write to Status register");
                 Reset(true);
             }
 
-            if (_running != prevState)
+            if (_running != runState)
             {
                 _system.MachineStateChange(WhatChanged.Z80RunState, _running);
             }

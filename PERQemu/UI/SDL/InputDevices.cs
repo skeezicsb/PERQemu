@@ -33,7 +33,8 @@ namespace PERQemu.UI
         {
             _system = sys;
 
-            _keymap = new KeyboardMap(_system.Config.Chassis);
+            _keymap = new KeyboardMap(_system.Config.Keyboard);
+            _showKeys = false;
 
             _mouseOffTablet = false;
             _mouseButton = 0x0;
@@ -45,6 +46,14 @@ namespace PERQemu.UI
         public int MouseY => _mouseY;
         public int MouseButton => _mouseButton;
         public bool MouseOffTablet => _mouseOffTablet;
+
+        public KeyboardMap Keyboard => _keymap;
+
+        public bool ShowKeycodes
+        {
+            get { return _showKeys; }
+            set { _showKeys = value; }
+        }
 
         public void Initialize()
         {
@@ -74,22 +83,7 @@ namespace PERQemu.UI
 
         void OnMouseWheel(SDL.SDL_Event e)
         {
-            
-            if (e.wheel.y > 0)
-            {
-                /*
-                    TODO/FIXME  have to test on a display that's too short
-                    and figure out how to scroll the SDL display (scaling the
-                    1bpp screen is way too ugly on a non-high dpi screen)
-                */
-                //Console.WriteLine("scroll up!");
-                // _dispBox.Top = _display.ClientRectangle.Height - VideoController.PERQ_DISPLAYHEIGHT;
-            }
-            else if (e.wheel.y < 0)
-            {
-                //Console.WriteLine("scroll down!");
-                // _dispBox.Top = 0;
-            }
+            _system.Display.Scroll(e.wheel.y);
         }
 
         void OnMouseMove(SDL.SDL_Event e)
@@ -97,7 +91,6 @@ namespace PERQemu.UI
             _mouseX = e.motion.x;
             _mouseY = e.motion.y;
         }
-
 
         /// <summary>
         /// Map the host mouse buttons to the Kriz tablet (passed straight through).
@@ -115,7 +108,7 @@ namespace PERQemu.UI
         /// </summary>
         void OnMouseDown(SDL.SDL_Event e)
         {
-            // todo: if the perq tracks individual button states, we should too?
+            // Todo: if the Perq tracks individual button states, we should too?
             switch (e.button.button)
             {
                 case 4:
@@ -138,7 +131,7 @@ namespace PERQemu.UI
 
         void OnMouseUp(SDL.SDL_Event e)
         {
-            _mouseButton = 0x0;     // todo: see above
+            _mouseButton = 0x0;     // Todo: see above
         }
 
         /// <summary>
@@ -158,28 +151,27 @@ namespace PERQemu.UI
         {
             var keycode = e.key.keysym.sym;
             byte perqCode = 0;
+            bool handled = false;
 
             //
-            // Handle any keys that may affect the Window itself, and are not passed
-            // to the PERQ.
+            // Handle any keys that may affect the Window itself, and are
+            // not passed to the PERQ.
             //
-            bool handled = false;
             switch (keycode)
             {
-                // Allow Home/PageUp and End/PageDown keys to scroll the display.
-                // Useful on laptop touchpads which don't simulate (or mice that
-                // don't have) scroll wheels.  TODO: do SDL equivalent
+                // Home and End keys to scroll the display (alternative to
+                // a mouse scroll wheel or touchpad input)
                 case SDL.SDL_Keycode.SDLK_HOME:
-                    //_dispBox.Top = 0;                    
+                    _system.Display.Scroll(0);
                     handled = true;
                     break;
 
                 case SDL.SDL_Keycode.SDLK_END:
-                    //_dispBox.Top = _display.ClientRectangle.Height - VideoController.PERQ_DISPLAYHEIGHT;                    
+                    _system.Display.Scroll(_system.VideoController.DisplayHeight);
                     handled = true;
                     break;
 
-                // Toggle the "lock" keys... this needs work.
+                // Toggle the "lock" keys
                 case SDL.SDL_Keycode.SDLK_CAPSLOCK:
                 case SDL.SDL_Keycode.SDLK_NUMLOCKCLEAR:
                     _keymap.SetLockKeyState(keycode);
@@ -189,7 +181,7 @@ namespace PERQemu.UI
                 // Quirks: On Windows, the Control, Shift and Alt keys repeat when
                 // held down even briefly.  The PERQ never needs to receive a plain
                 // modifier key event like that, so skip the mapping step and quietly
-                // handle them here.  TODO: WinForms did this; does SDL as well?
+                // handle them here.
                 case SDL.SDL_Keycode.SDLK_LSHIFT:
                 case SDL.SDL_Keycode.SDLK_RSHIFT:
                     _shift = true;
@@ -211,29 +203,53 @@ namespace PERQemu.UI
                     break;
 
                 // Provide a key to jump into the debugger when focus is on the PERQ,
-                // rather than having to select the console window to hit ^C.
+                // rather than having to select the console window to hit ^C
+                // Fixme: this should be configurable!
                 case SDL.SDL_Keycode.SDLK_PAUSE:            // Windows keyboards
                 case SDL.SDL_Keycode.SDLK_F8:               // Mac equivalent...
                     PERQemu.Controller.Break();
                     handled = true;
                     break;
+
+                case SDL.SDL_Keycode.SDLK_PRINTSCREEN:
+                    // Reserved: take a PERQ screenshot automatically! :-)
+                    handled = true;
+                    break;
             }
 
-            // If the key wasn't handled above, see if there's an ASCII equivalent
-            if (!handled)
+            // If the key is reserved, log it and bail
+            if (handled)
             {
-                perqCode = _keymap.GetKeyMapping(keycode, _shift, _ctrl);
-
-                if (perqCode != 0)
+                if (_showKeys)
                 {
-                    _system.IOB.Z80System.QueueKeyboardInput(perqCode);   // Ship it!
-                    handled = true;
+                    Console.WriteLine($"Key {keycode.ToString()} is reserved by PERQemu");
                 }
+                return;
+            }
+
+            // See if it's mapped to a PERQ key
+            perqCode = _keymap.GetKeyValue(keycode, _shift, _ctrl);
+
+            if (perqCode != 0)
+            {
+                _system.IOB.Z80System.QueueKeyboardInput(perqCode);   // Ship it!
+                handled = true;
+            }
+
+            // Show the result, if any, to aid in customizing key mappings
+            if (_showKeys)
+            {
+                Console.Write($"Key {keycode.ToString()} is ");
+
+                if (handled)
+                    Console.WriteLine($"mapped to {_keymap.GetKeyMapping(keycode).ToString()}");
+                else
+                    Console.WriteLine("not mapped");
             }
         }
 
         /// <summary>
-        /// Only used to handle the mouse button hacks.
+        /// Release the shift, control or alt (mouse off tablet) modifiers.
         /// </summary>
         void OnKeyUp(SDL.SDL_Event e)
         {
@@ -262,7 +278,7 @@ namespace PERQemu.UI
         // debugging
         public void Status()
         {
-            Console.WriteLine("mouseX,Y={0},{1} alt={2}, caps={3}",
+            Console.WriteLine("Mouse X,Y={0},{1} alt={2}, caps={3}",
                               _mouseX, _mouseY, _alt, _keymap.CapsLock);
         }
 
@@ -277,6 +293,10 @@ namespace PERQemu.UI
         bool _ctrl;
         bool _alt;
 
+        // To assist in remapping
+        bool _showKeys;
+
+        // The active map
         KeyboardMap _keymap;
 
         // Parent

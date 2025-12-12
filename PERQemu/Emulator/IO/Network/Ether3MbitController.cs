@@ -1,4 +1,4 @@
-﻿//
+//
 // Ether3MbitController.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
@@ -70,7 +70,7 @@ namespace PERQemu.IO.Network
             throw new NotImplementedException();
         }
 
-        public void DoReceive(byte[] packet)
+        public void Receive(byte[] packet)
         {
             throw new NotImplementedException();
         }

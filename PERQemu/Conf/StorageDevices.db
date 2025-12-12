@@ -49,12 +49,14 @@ define Disk14Inch Shugart12
 description "Shugart SA4004 12MB hard disk"
 geometry Shugart12
 performance SA4000
+alias SA4004
 done
 
 define Disk14Inch Shugart24
 description "Shugart SA4008 24MB hard disk"
 geometry Shugart24
 performance SA4000
+alias SA4008
 done
 
 # Include this mythical beast for fun - NO software support for this (yet)
@@ -63,6 +65,7 @@ define Disk14Inch Shugart48
 description "Shugart SA4104 48MB hard disk (unsupported)"
 geometry Shugart48 202 16 30 512 16
 performance SA4000
+alias SA4104
 done
 
 # Standard 8" drives
@@ -71,6 +74,7 @@ define Disk8Inch Microp35
 description "Micropolis 1203 35MB hard disk"
 geometry Microp35 580 5 24 512 16
 performance M1200 3600 10000 25000 4 96 8 705000
+alias M1203
 done
 
 # Shown in the documentation, but the software always assumes 5 heads!?
@@ -86,9 +90,11 @@ define Disk5Inch Microp33
 description "Micropolis 1303 33MB hard disk"
 geometry M1303 830 5 16 512 16
 performance M1300 3600 200000 25000 7 66 1 625000
+alias M1303
 done
 
 define Disk5Inch Microp40
+alias M1304
 description "Micropolis 1304 40MB hard disk"
 geometry M1304 830 6 16 512 16
 performance M1300
@@ -98,68 +104,80 @@ define Disk5Inch Toshiba43
 description "Toshiba MK-53 43MB hard disk"
 geometry MK53 830 5 16 512 16
 performance MK50 3600 10000 25000 6 45 1 625000
+alias MK53
 done
 
 define Disk5Inch Toshiba60
 description "Toshiba MK-54 60MB hard disk"
 geometry MK54 830 7 16 512 16
 performance MK50
+alias MK54
 done
 
 define Disk5Inch Toshiba86
 description "Toshiba MK-56 86MB hard disk"
 geometry MK56 830 10 16 512 16
 performance MK50
+alias MK56
 done
 
-# A rare 3.5" MFM drive for fun
+# A rare 3.5" MFM drive (supported!)
+# Include in the Disk5Inch class for emulation purposes
 
 define Disk5Inch Toshiba53
 description "Toshiba MK-134 53MB (3.5in) hard disk"
 geometry MK134 733 7 16 512 16
 performance MK134 3600 10000 25000 7 50 1 625000
+alias MK134
 done
 
 define Disk5Inch Vertex51
 description "Priam/Vertex V150 51MB hard disk"
 geometry V150 987 5 16 512 16
 performance V100 3600 200000 25000 5 60 3 625000
+alias V150
 done
 
 define Disk5Inch Vertex72
 description "Priam/Vertex V170 72MB hard disk"
 geometry V170 987 7 16 512 16
 performance V100
+alias V170
 done
 
 define Disk5Inch Vertex85
 description "Priam/Vertex V185 85MB hard disk"
 geometry V185 1166 7 16 512 16
 performance V100
+alias V185
 done
 
 define Disk5Inch Maxtor71
 description "Maxtor XT-1085 71MB hard disk"
 geometry XT1085 1024 8 16 512 16
 performance XT1000 3600 5340 20000 4 43 3 625000
+alias XT1085
 done
 
 define Disk5Inch Maxtor85
 description "Maxtor XT-1105 85MB hard disk"
 geometry XT1105 918 11 16 512 16
 performance XT1000
+alias XT1105
 done
 
 define Disk5Inch Maxtor120
 description "Maxtor XT-1140 120MB hard disk"
 geometry XT1140 918 15 16 512 16
 performance XT1000
+alias XT1140
 done
 
 define Disk5Inch Maxtor160
 description "Maxtor XT-2190 160MB hard disk"
 geometry XT2190 1224 15 16 512 16
 performance XT1000
+alias XT2190
 done
 
 # SMD drives
@@ -180,27 +198,21 @@ done
 
 # Additional SMD types that are wicked cool
 
-define DiskSMD Eagle
-description "Fujitsu M2351A 'Eagle' 474MB hard disk"
+define DiskSMD Fujitsu474
+description "Fujitsu M2351A 474MB hard disk"
 geometry Eagle474 842 20 48 512 16
 performance M2351A 3961 1076 30000 5 35 1 1859000
+alias Eagle
 done
             
-define DiskSMD SuperEagle
-description "Fujitsu M2361A 'Super Eagle' 689MB hard disk"
+define DiskSMD Fujitsu689
+description "Fujitsu M2361A 689MB hard disk"
 geometry Eagle689 842 20 69 512 16
 performance M2361A 3600 1627 40000 5 35 1 2458000
+alias SuperEagle
 done
             
 # Streamer tape
-
-# This tiny test tape is for dev/debug only
-# define TapeQIC TestTape
-# description "Archive 3020I Test cartridge (2MB)"
-# geometry QICtest 1 4 1024 512 4
-# performance Archive30IPS
-# removable true
-# done
 
 # Standard drive: 4 tracks, 450' cartridge
 # The default geometry for the Archive 3020I is built-in
@@ -210,6 +222,7 @@ define TapeQIC Archive20
 description "Archive 3020I DC-300XL (20MB) QIC tape"
 geometry QIC20
 performance Archive30IPS
+alias Sidewinder
 removable true
 done
 
@@ -230,4 +243,4 @@ performance Archive90Ext 90 0 300 5910 80671500 0 86700
 removable true
 done
 
-# End of PERQemu 0.7.0 standard definitions
+# End of PERQemu 0.8.5 standard definitions

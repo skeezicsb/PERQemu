@@ -53,6 +53,7 @@ namespace PERQemu.Config
             _key = "default";
             _description = "Default configuration";
             _filename = "";
+            _keymap = "";
             _chassis = ChassisType.PERQ1;
             _cpuBoard = CPUType.PERQ1A;
             _ioBoard = IOBoardType.IOB;
@@ -64,7 +65,7 @@ namespace PERQemu.Config
 
             // Pre-assign a standard disk image supplied with PERQemu
             // That way there's something to actually run, by default
-            _drives = new Drive[MAX_DRIVES];
+            _drives = new Drive[MaxDrives];
             _drives[0] = new Drive(0, DeviceType.Floppy);
             _drives[1] = new Drive(1, DeviceType.Disk14Inch, Paths.BuildDiskPath("f1.prqm"));
             _drives[2] = new Drive(2, DeviceType.Unused);
@@ -237,6 +238,15 @@ namespace PERQemu.Config
             set { _tabletType = value; }
         }
 
+        public KeyboardType Keyboard => _chassis == ChassisType.PERQ1 ?
+                                       KeyboardType.PERQ : KeyboardType.VT100;
+
+        public string Keymap
+        {
+            get { return _keymap; }
+            set { _keymap = value; }
+        }
+
         public int RTCYearOffset
         {
             get { return _rtcOffset; }
@@ -251,29 +261,37 @@ namespace PERQemu.Config
 
         #endregion
 
+        /// <summary>
+        /// Return a formatted summary in a large string, suitable for printing
+        /// in the CLI or in the summary panel of the GUI (someday).
+        /// </summary>
         public string Summary()
         {
             var sb = new StringBuilder();
 
-            sb.AppendLine("Configuration: " + Name);
-            sb.AppendLine("Description:   " + Description);
+            sb.AppendLine($"Configuration: {_name}");
+            sb.AppendLine($"Description:   {_description}");
 
             if (!string.IsNullOrEmpty(_filename))
             {
-                sb.AppendLine("Filename:      " + Filename);
+                sb.AppendLine($"Filename:      {_filename}");
             }
 
             sb.AppendLine("--------------");
-            sb.AppendLine("Machine type:  " + Chassis);
-            sb.AppendLine("CPU type:      " + CPU);             // todo: add description (WCS/bits)
-            sb.AppendLine("Memory size:   " + MemSizeToString());
-            sb.AppendLine("Display type:  " + Display);
-            sb.AppendLine("Tablet type:   " + Tablet);
-            sb.AppendLine("IO board:      " + IOBoard);
+            sb.AppendLine($"Machine type:  {_chassis}");
+            sb.AppendLine($"CPU type:      {_cpuBoard}");             // todo: add description (WCS/bits)
+            sb.AppendLine($"Memory size:   {MemSizeToString()}");
+            sb.AppendLine($"Display type:  {_displayType}");
+            sb.AppendLine($"Tablet type:   {_tabletType}");
 
-            if ((IOBoard == IOBoardType.EIO || IOBoard == IOBoardType.NIO) && RTCYearOffset != 0)
+            if (!string.IsNullOrEmpty(_keymap))
+                sb.AppendLine($"Keyboard map:  {_keymap}");
+
+            sb.AppendLine($"IO board:      {_ioBoard}");
+
+            if ((_ioBoard == IOBoardType.EIO || _ioBoard == IOBoardType.NIO) && _rtcOffset != 0)
             {
-                sb.AppendLine("  RTC offset:  " + RTCYearOffset);
+                sb.AppendLine($"  RTC offset:  {_rtcOffset}");
             }
 
             if (_rsaEnabled)
@@ -282,30 +300,30 @@ namespace PERQemu.Config
                 sb.AppendLine(Settings.RSADevice == string.Empty ? "<unassigned>" : Settings.RSADevice);
             }
 
-            if ((IOBoard == IOBoardType.EIO || IOBoard == IOBoardType.NIO) && _rsbEnabled)
+            if ((_ioBoard == IOBoardType.EIO || _ioBoard == IOBoardType.NIO) && _rsbEnabled)
             {
                 sb.Append("    RS-232 B:  ");
                 sb.AppendLine(Settings.RSBDevice == string.Empty ? "<unassigned>" : Settings.RSBDevice);
             }
 
-            if (IOBoard == IOBoardType.EIO && EtherAddress != 0)
+            if (_ioBoard == IOBoardType.EIO && _etherAddr != 0)
             {
-                sb.AppendLine("    Ethernet:  node " + EtherAddress);
+                sb.AppendLine($"    Ethernet:  node {_etherAddr}");
             }
 
-            if (IOOptionBoard != OptionBoardType.None)
+            if (_ioOptionBoard != OptionBoardType.None)
             {
-                sb.Append("Option board:  " + IOOptionBoard);
+                sb.Append($"Option board:  {_ioOptionBoard}");
 
-                if (IOOptions != IOOptionType.None)
+                if (_ioOptions != IOOptionType.None)
                 {
-                    sb.Append("  Options:  " + IOOptions);
+                    sb.Append($"  Options:  {_ioOptions}");
                 }
                 sb.AppendLine();
 
-                if (IOOptionBoard == OptionBoardType.OIO && IOBoard != IOBoardType.EIO && EtherAddress != 0)
+                if (_ioOptionBoard == OptionBoardType.OIO && _ioBoard != IOBoardType.EIO && _etherAddr != 0)
                 {
-                    sb.AppendLine("    Ethernet:  node " + EtherAddress);
+                    sb.AppendLine($"    Ethernet:  node {_etherAddr}");
                 }
 
                 // Todo: for 3Mbit Ethernet, address is a single octet, not the
@@ -339,8 +357,8 @@ namespace PERQemu.Config
             return Name;
         }
 
-        public int MaxDrives => MAX_DRIVES;
-        public int MaxUnitNum => _drives.Length - 1;
+        public int MaxDrives => 4;
+        public int MaxUnitNum => MaxDrives - 1;
 
         public string MemSizeToString()
         {
@@ -382,13 +400,11 @@ namespace PERQemu.Config
             return match.ToArray();
         }
 
-        // For now...
-        public const byte MAX_DRIVES = 4;
-
         string _name;               // short name
         string _key;                // unique key for matching
         string _description;        // brief description
         string _filename;           // set on load or save
+        string _reason;             // result of last op (for cli/gui)
 
         ChassisType _chassis;
         CPUType _cpuBoard;
@@ -402,11 +418,11 @@ namespace PERQemu.Config
 
         ushort _etherAddr;
         int _rtcOffset;
+        string _keymap;
 
         bool _rsaEnabled;
         bool _rsbEnabled;
 
-        string _reason;
         bool _validated;
         bool _modified;
         bool _saved;

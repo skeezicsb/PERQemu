@@ -45,6 +45,7 @@ namespace PERQemu
                     new ExecCommands(),
                     new DebugCommands(),
                     new ConfigCommands(),
+                    new KeymapCommands(),
                     new StorageCommands(),
                     new SettingsCommands()
                 };
@@ -61,9 +62,9 @@ namespace PERQemu
         /// <summary>
         /// Enter a subsystem.
         /// </summary>
-        public void SetPrefix(string pfx)
+        public void SetPrefix(string pfx, SaveNeededCallback check = null)
         {
-            _exec.CurrentRoot = _editor.SetPrefix(pfx);
+            _exec.CurrentRoot = _editor.SetPrefix(pfx, check);
         }
 
         /// <summary>
@@ -373,8 +374,7 @@ namespace PERQemu
         [Command("gui", "Start the graphical interface")]
         void LaunchGUI()
         {
-            // I'm looking at YOU, 64-bit Cocoa WinForms port that was promised
-            // over four YEARS ago.  Sigh.
+            // Sigh.  Maybe by v2.0?
             Console.WriteLine("Nope.  No cross-platform GUI available yet.");
         }
 

@@ -114,7 +114,7 @@ namespace PERQemu.Processor
             // Breakpoint set at this address?
             if (_system.Debugger.WatchedMicroaddress.IsWatched(_usequencer.PC))
             {
-                _break = _system.Debugger.WatchedMicroaddress.BreakpointReached(_usequencer.PC);
+                _break |= _system.Debugger.WatchedMicroaddress.BreakpointReached(_usequencer.PC);
             }
 #endif
 
@@ -251,7 +251,7 @@ namespace PERQemu.Processor
             if ((uOp.A == AField.NextOp || uOp.JMP == JumpOperation.NextInstReviveVictim) &&
                 _system.Debugger.WatchedOpCodes.IsWatched(_lastOpcode))
             {
-                _break = _system.Debugger.WatchedOpCodes.BreakpointReached(_lastOpcode);
+                _break |= _system.Debugger.WatchedOpCodes.BreakpointReached(_lastOpcode);
             }
 #endif
             return _break;
@@ -409,8 +409,8 @@ namespace PERQemu.Processor
             if (_interrupt.Raise(i) == 0)
             {
                 // Cut down on the spewage for debugging
-                if (i != InterruptSource.LineCounter)
-                    Log.Debug(Category.Interrupt, "{0} raised, active now {1}", i, _interrupt.Flag);
+                Log.Write(i == InterruptSource.LineCounter ? Severity.Detail : Severity.Debug,
+                          Category.Interrupt, "{0} raised, active now {1}", i, _interrupt.Flag);
 
                 // Check for, fire if breakpoint set
                 if (_system.Debugger.WatchedInterrupts.IsWatched((int)i))
@@ -432,14 +432,14 @@ namespace PERQemu.Processor
             // Log it if it wasn't already clear
             if (_interrupt.Clear(i) != 0)
             {
-                // Cut down on the spewage for debugging
-                if (i != InterruptSource.LineCounter)
-                    Log.Debug(Category.Interrupt, "{0} cleared, active now {1}", i, _interrupt.Flag);
+                // Cut down on the spewage for debugging               
+                Log.Write(i == InterruptSource.LineCounter ? Severity.Detail : Severity.Debug,
+                          Category.Interrupt, "{0} cleared, active now {1}", i, _interrupt.Flag);
 
                 // Check for, fire if breakpoint set
                 if (_system.Debugger.WatchedInterrupts.IsWatched((int)i))
                 {
-                    _break = _system.Debugger.WatchedInterrupts.BreakpointReached((int)i, false);
+                    _break |= _system.Debugger.WatchedInterrupts.BreakpointReached((int)i, false);
                 }
             }
 #else
@@ -555,8 +555,7 @@ namespace PERQemu.Processor
                         }
                     }
 
-                    // Note: There are two subtle hazards here, but this is how the
-                    // hardware does it.
+                    // Note: There are two subtle hazards here, but this is how the hardware does it
                     amux = _opFile[BPC];
                     _incrementBPC = true;           // Increment BPC at start of next cycle
 
@@ -573,18 +572,18 @@ namespace PERQemu.Processor
                     // Watched address?
                     if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MADR))
                     {
-                        _break = _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MADR, amux);
+                        _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MADR, amux);
                     }
 #endif
                     break;
 
                 case AField.MDX:
-                    amux = (_memory.MDI & (CPUBoard.CPUBits == 24 ? 0x00ff : 0x000f)) << 16;
+                    amux = (_memory.MDI << 16) & CPUBoard.CPUMask;
 #if DEBUG
                     // Watched address?
                     if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MADR))
                     {
-                        _break = _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MADR, amux);
+                        _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MADR, amux);
                     }
 #endif
                     break;
@@ -712,8 +711,11 @@ namespace PERQemu.Processor
                                 //
                                 if (_rasterOp.MulDivInst == MulDivCommand.Off)
                                 {
-                                    if (_mqEnabled) Log.Debug(Category.MulDiv, "Unit disabled\n");  // DEBUG
-                                    _mqEnabled = false;
+                                    if (_mqEnabled)
+                                    {
+                                        Log.Debug(Category.MulDiv, "Unit disabled\n");  // DEBUG
+                                        _mqEnabled = false;
+                                    }
                                 }
                                 else
                                 {
@@ -732,24 +734,25 @@ namespace PERQemu.Processor
                             break;
 
                         case 0xa:   // LoadOp
+                            //
                             // LoadOp triggers a hardware assisted refill of the Op file by copying
                             // the four words following a Fetch4 request into the 8x8 RAM.  Here we
                             // ask the memory controller if we're in the right cycle; this should
                             // always return true, since otherwise the microcode is buggy!
+                            //
                             _refillOp = _memory.LoadOpFile();
 
                             if (_refillOp)
                             {
                                 Log.Debug(Category.OpFile, "Load init");
                             }
-#if DEBUG
                             else
                             {
                                 // This often appears during boot/testing and is harmless in that
                                 // case; turn off these alerts in Release builds to reduce noise
-                                Log.Debug(Category.OpFile, "LoadOp called in wrong cycle! T{0}", _memory.TState);
+                                Log.Debug(Category.OpFile, "LoadOp called in wrong cycle! T{0} @ PC {1:x}",
+                                          _memory.TState, _system.CPU.PC);
                             }
-#endif
 
                             if (_ustore.ROMEnabled)
                             {
@@ -783,7 +786,7 @@ namespace PERQemu.Processor
                                 // Check for breakpoint on this port
                                 if (_system.Debugger.WatchedIOPorts.IsWatched(uOp.IOPort))
                                 {
-                                    _break = _system.Debugger.WatchedIOPorts.BreakpointReached(uOp.IOPort);
+                                    _break |= _system.Debugger.WatchedIOPorts.BreakpointReached(uOp.IOPort);
                                 }
 #endif
                                 // Input if the msb of Z is unset, Output otherwise
@@ -850,13 +853,14 @@ namespace PERQemu.Processor
                                     break;
 
                                 case 0x1:   // Multiply / DivideStep
-                                    Log.Detail(Category.MulDiv, "Step: MQ in ={0} R={1} R<15>={2}",
-                                                               _mq, _alu.R.Lo, ((_alu.R.Lo >> 15) & 0x1));
                                     //
                                     // For the hardware assisted Multiply/Divide steps, we've already done
                                     // the ALU op on the high word of the product or quotient during the ALU
                                     // execution above; here we take care of the low word in the MQ register.
                                     //
+                                    Log.Detail(Category.MulDiv, "Step: MQ in ={0} R={1} R<15>={2}",
+                                                               _mq, _alu.R.Lo, ((_alu.R.Lo >> 15) & 0x1));
+
                                     switch (_rasterOp.MulDivInst)
                                     {
                                         case MulDivCommand.Off:
@@ -1002,7 +1006,8 @@ namespace PERQemu.Processor
         /// </summary>
         public void LoadOpWord()
         {
-            int opAddr = _memory.MIndex * 2;
+            // Use Tstate, not word Index, so that LoadOp works with Fetch4 and 4R
+            int opAddr = ((_memory.TState + 2) & 0x3) << 1;
 
             _opFile[opAddr] = (byte)(_memory.MDI & 0xff);
             _opFile[opAddr + 1] = (byte)((_memory.MDI & 0xff00) >> 8);
@@ -1010,7 +1015,7 @@ namespace PERQemu.Processor
             Log.Debug(Category.OpFile, "Loaded {0:x2} into Op[{1:x}] from {2:x6}", _opFile[opAddr], opAddr, _memory.MADR);
             Log.Debug(Category.OpFile, "Loaded {0:x2} into Op[{1:x}] from {2:x6}", _opFile[opAddr + 1], opAddr + 1, _memory.MADR);
 
-            _refillOp = (_memory.MIndex != 3);
+            _refillOp = (_memory.TState != 1);
         }
 
         /// <summary>
@@ -1148,6 +1153,7 @@ namespace PERQemu.Processor
         //
         // Housekeeping
         //
+
         ulong _clocks;
         bool _break;
 

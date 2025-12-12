@@ -98,6 +98,9 @@ namespace PERQemu
             _config = new Configurator();
             _config.Initialize();
 
+            _keymapper = new Keymapper();
+            _keymapper.Initialize();
+
             // Read user settings file, or set defaults if it doesn't yet exist
             Settings.Load();
             Log.Info(Category.All, Settings.Reason);
@@ -153,9 +156,11 @@ namespace PERQemu
             Console.WriteLine();
             Console.WriteLine("[DEBUG version]");
             Console.WriteLine($"[Working directory is {Environment.CurrentDirectory}]");
-            Console.WriteLine($"[Host is configured for {Environment.ProcessorCount} processor(s)]");
+            Console.WriteLine($"[Host {Environment.MachineName} is configured for {Environment.ProcessorCount} processor(s)]");
             Console.WriteLine($"[Console buffer is {Console.BufferWidth}x{Console.BufferHeight}]");
             Console.WriteLine($"[Console window is {Console.WindowWidth}x{Console.WindowHeight}]");
+            Console.WriteLine(_gui.GetSDLVersion(true));
+            Console.WriteLine(_gui.GetSDLVersion(false));
 #endif
 #if TRACING_ENABLED
             Console.WriteLine("[Tracing is available]");
@@ -173,6 +178,7 @@ namespace PERQemu
         public static EventLoop GUI => _gui;
         public static CommandProcessor CLI => _cli;
         public static Configurator Config => _config;
+        public static Keymapper Keymaps => _keymapper;
         public static ExecutionController Controller => _controller;
         public static PERQSystem Sys => _controller.System;
 
@@ -235,6 +241,7 @@ namespace PERQemu
         static CommandProcessor _cli;
 
         static Configurator _config;
+        static Keymapper _keymapper;
         static ExecutionController _controller;
     }
 }

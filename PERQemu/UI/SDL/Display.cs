@@ -52,6 +52,7 @@ namespace PERQemu.UI
 
             _customEventType = 0;
             _fpsTimerId = -1;
+            _screenIndex = -1;
 
             _last = 0;
             _frames = 0;
@@ -64,6 +65,7 @@ namespace PERQemu.UI
             // Keep a local copy
             _displayWidth = _system.VideoController.DisplayWidth;
             _displayHeight = _system.VideoController.DisplayHeight;
+            _visibleHeight = _displayHeight;
             _freeHeight = _displayHeight + EXTRA_LINES;
 
             // Allocate our hunka hunka burnin' pixels
@@ -75,6 +77,9 @@ namespace PERQemu.UI
             // Just once at power on :-)
             _warmedUp = false;
         }
+
+        public int TopY => _visibleRect.y;
+        public int Screen => _screenIndex;
 
         /// <summary>
         /// Set up our SDL window and the rendering machinery.
@@ -89,6 +94,18 @@ namespace PERQemu.UI
 
             Log.Debug(Category.Display, "Initializing");
 
+            // Set up a rectangle for fading/painting the full display, and
+            // a clipping rect if it's too large for the screen
+            _displayRect = new SDL.SDL_Rect();
+            _visibleRect = new SDL.SDL_Rect();
+            _visibleRect.w = _displayRect.w = _displayWidth;
+            _visibleRect.h = _displayRect.h = _displayHeight;
+            _visibleRect.x = _displayRect.x = 0;
+            _visibleRect.y = _displayRect.y = 0;
+
+            // Check it against the maximum screen size
+            SizeForScreen(0);
+
             //
             // Create the display window
             //
@@ -97,13 +114,11 @@ namespace PERQemu.UI
                 SDL.SDL_WINDOWPOS_UNDEFINED,
                 SDL.SDL_WINDOWPOS_UNDEFINED,
                 _displayWidth,
-                _displayHeight,
+                _visibleHeight,
                 SDL.SDL_WindowFlags.SDL_WINDOW_SHOWN);
 
             if (_sdlWindow == IntPtr.Zero)
-            {
                 throw new InvalidOperationException("SDL_CreateWindow failed");
-            }
 
             //
             // Create the renderer
@@ -114,16 +129,10 @@ namespace PERQemu.UI
                 // Fall back to software
                 _sdlRenderer = SDL.SDL_CreateRenderer(_sdlWindow, -1, SDL.SDL_RendererFlags.SDL_RENDERER_SOFTWARE);
 
+                // Still no luck
                 if (_sdlRenderer == IntPtr.Zero)
-                {
-                    // Still no luck.
                     throw new InvalidOperationException("SDL_CreateRenderer failed");
-                }
             }
-
-            // Setting the renderer's "logical size" may help with the scaling
-            // issue on displays too short to hold the entire screen?
-            SDL.SDL_RenderSetLogicalSize(_sdlRenderer, _displayWidth, _displayHeight);
 
             //
             // Create the display textures
@@ -136,10 +145,7 @@ namespace PERQemu.UI
                 _displayHeight);
 
             if (_displayTexture == IntPtr.Zero)
-            {
-                throw new InvalidOperationException(
-                    string.Format("SDL_CreateTexture failed: {0}", SDL.SDL_GetError()));
-            }
+                throw new InvalidOperationException($"SDL_CreateTexture failed: {SDL.SDL_GetError()}");
 
             _freeRunTexture = SDL.SDL_CreateTexture(
                 _sdlRenderer,
@@ -149,17 +155,7 @@ namespace PERQemu.UI
                 _freeHeight);
 
             if (_freeRunTexture == IntPtr.Zero)
-            {
-                throw new InvalidOperationException(
-                    string.Format("SDL_CreateTexture failed: {0}", SDL.SDL_GetError()));
-            }
-
-            // Set up a rectangle for fading/painting the full display
-            _displayRect = new SDL.SDL_Rect();
-            _displayRect.h = _displayHeight;
-            _displayRect.w = _displayWidth;
-            _displayRect.x = 0;
-            _displayRect.y = 0;
+                throw new InvalidOperationException($"SDL_CreateTexture failed: {SDL.SDL_GetError()}");
 
             // Set up for initial warm-up
             _enabled = true;
@@ -193,7 +189,7 @@ namespace PERQemu.UI
             _floppyRect.h = 32;
             _floppyRect.w = 32;
             _floppyRect.x = _displayWidth - 36;
-            _floppyRect.y = _displayHeight - 36;
+            _floppyRect.y = _visibleHeight - 36;
 
             // Create a texture for our streamer tape activity "light"
             _streamerTexture = SDL_image.IMG_LoadTexture(_sdlRenderer, Paths.BuildResourcePath("qictape.png"));
@@ -281,15 +277,15 @@ namespace PERQemu.UI
         /// </summary>
         public void Refresh(bool enabled)
         {
-#if DEBUG
             if (enabled != _enabled)
             {
-                Status();
-                Console.Write("Screen is now {0}, ", enabled ? "ON" : "OFF");
-                Console.WriteLine("DDS @ {0} (clocks {1})", PERQemu.Sys.CPU.DDS, PERQemu.Sys.CPU.Clocks);
+                Log.Info(Category.UI, "Screen is now {0}, DDS @ {1} (clocks {2})",
+                                  enabled ? "ON" : "OFF",
+                                  PERQemu.Sys.CPU.DDS, PERQemu.Sys.CPU.Clocks);
+
+                _visibleRect.y = 0;     // reset to top!
+                _enabled = enabled;
             }
-#endif
-            _enabled = enabled;
 
             SDL.SDL_PushEvent(ref _renderEvent);
         }
@@ -325,6 +321,78 @@ namespace PERQemu.UI
             e.window.windowEvent = SDL.SDL_WindowEventID.SDL_WINDOWEVENT_RESTORED;
 
             SDL.SDL_PushEvent(ref e);
+        }
+
+        /// <summary>
+        /// Handle scroll wheel or HOME/END events to adjust the visible part of
+        /// the display when the host's screen is too small for the PERQ display.
+        /// </summary>
+        public void Scroll(int amt)
+        {
+            // Full size?  No need to scroll
+            if (_visibleHeight == _displayHeight) return;
+
+            var y = Conversion.Clamp(_visibleRect.y + amt, 0, _displayHeight - _visibleHeight - 1);
+
+            if (y != _visibleRect.y)
+            {
+                Log.Debug(Category.UI, "Scroll by {0}, top now {1}", amt, y);
+                _visibleRect.y = y;
+            }
+        }
+
+        /// <summary>
+        /// Size the display window for the current screen.  For now we only
+        /// handle vertical scrolling if the height is too short -- no width
+        /// check or horizontal panning.
+        /// </summary>
+        /// <remarks>
+        /// SDL2's get "usable" area yields a window that still spills slightly
+        /// off the bottom of the screen, at least on MacOSX 10.13 :-(  It does
+        /// properly account for whether the Dock is visible or not, surprisingly.
+        /// The "yFudge" factor is a gross hack until I redo the entire GUI in
+        /// Avalonia or something.
+        /// </remarks>
+        public void SizeForScreen(int index)
+        {
+            // Todo: check this on Windows and Linux, too; probably OS/WM dependent
+            const int yFudge = 24;
+
+            int curW = _displayWidth;
+            int curH = _displayHeight;
+
+            // If we have a window, get its current size.  Love this API.
+            if (_sdlWindow != IntPtr.Zero)
+            {
+                SDL.SDL_GetWindowSize(_sdlWindow, out curW, out curH);
+                Log.Debug(Category.UI, "Current display window is size {0}x{1}", curW, curH);
+            }
+
+            var boundsRect = new SDL.SDL_Rect();
+            var ok = SDL.SDL_GetDisplayUsableBounds(index, out boundsRect);
+            if (ok < 0)
+                throw new InvalidOperationException($"Failed to get UsableBounds: {SDL.SDL_GetError()}");
+
+            Log.Debug(Category.UI, "Max usable size is {0}x{1}", boundsRect.w, boundsRect.h);
+
+            // Save it and check if the window should shrink or grow
+            _screenIndex = index;
+
+            var newH = Math.Min(boundsRect.h - yFudge, _displayHeight);
+
+            if ((newH < curH) || (newH > curH && _visibleHeight < _displayHeight))
+            {
+                // This is ridiculous
+                _visibleHeight = _visibleRect.h = _displayRect.h = newH;
+
+                // Now resize it on screen
+                if (_sdlWindow != IntPtr.Zero)
+                {
+                    SDL.SDL_SetWindowSize(_sdlWindow, _displayWidth, _visibleHeight);
+
+                    // Todo: if the machine is paused, do a refresh or the window turns black?
+                }
+            }
         }
 
         /// <summary>
@@ -366,7 +434,7 @@ namespace PERQemu.UI
                 SDL.SDL_UnlockTexture(_displayTexture);
 
                 // Send the display texture to the renderer
-                SDL.SDL_RenderCopy(_sdlRenderer, _displayTexture, IntPtr.Zero, IntPtr.Zero);
+                SDL.SDL_RenderCopy(_sdlRenderer, _displayTexture, ref _visibleRect, ref _displayRect);
             }
             else
             {
@@ -405,10 +473,10 @@ namespace PERQemu.UI
                 // interesting way.  Doesn't have to be terribly fast. ;-)
                 var jiggle = new Random().Next(0, 9);
                 _freeY = (_freeY >= EXTRA_LINES - jiggle) ? 0 : _freeY + jiggle;
-                _displayRect.y = _freeY;
+                _visibleRect.y = _freeY;
 
                 // Blend in the _freeRunTexture
-                SDL.SDL_RenderCopy(_sdlRenderer, _freeRunTexture, ref _displayRect, IntPtr.Zero);
+                SDL.SDL_RenderCopy(_sdlRenderer, _freeRunTexture, ref _visibleRect, ref _displayRect);
             }
 
             // Overlay the activity icon if the floppy drive is busy
@@ -620,15 +688,20 @@ namespace PERQemu.UI
         /// </summary>
         public void Status()
         {
-            Console.WriteLine("renderEvent={0}, fpsUpdateEvent={1}, frames={2}",
-                              _renderEvent.type, _fpsUpdateEvent.type, _frames);
+            int numScreens = SDL.SDL_GetNumVideoDisplays();
+            if (numScreens < 1)
+                throw new InvalidOperationException($"Failed to get NumDisplays: {SDL.SDL_GetError()}");
 
-            Console.WriteLine("warmedUp={0}, fader={1}, enabled={2}, freeY={3}",
-                              _warmedUp, _fader, _enabled, _freeY);
+            Console.WriteLine($"Display: {_displayRect.w}x{_displayRect.h} on screen {_screenIndex} [{numScreens}]");
+            Console.WriteLine($"Visible: {_visibleRect.w}x{_visibleRect.h} @ {_visibleRect.x},{_visibleRect.y}");
+
+            Console.WriteLine("Frames={0}, warmedUp={1}, fader={2}, enabled={3}, freeY={4}",
+                              _frames, _warmedUp, _fader, _enabled, _freeY);
 
             var flags = SDL.SDL_GetWindowFlags(_sdlWindow);
-            Console.WriteLine("flags={0}", (SDL.SDL_WindowFlags)flags);
+            Console.WriteLine("Flags={0}", (SDL.SDL_WindowFlags)flags);
 
+            // debug - to be removed
             if (SDL.SDL_RenderTargetSupported(_sdlRenderer) != SDL.SDL_bool.SDL_TRUE)
                 Console.WriteLine("RENDER TARGET NOT SUPPORTED");
         }
@@ -702,6 +775,12 @@ namespace PERQemu.UI
         int _displayWidth;
         int _displayHeight;
 
+        // For laptops or small screens
+        int _visibleHeight;
+
+        // For hosts with multiple screens
+        int _screenIndex;
+
         // Buffers for rendering pixels.  The two-step shuffle blows a ton of RAM
         // for a reasonable boost in speed, even though it makes that vein in my
         // temple throb.  What's a few dozen wasted megabytes between friends?
@@ -749,6 +828,7 @@ namespace PERQemu.UI
         IntPtr _freeRunTexture = IntPtr.Zero;
         IntPtr _displayTexture = IntPtr.Zero;
         SDL.SDL_Rect _displayRect;
+        SDL.SDL_Rect _visibleRect;
 
         // Events and stuff
         SDL.SDL_EventType _customEventType;
@@ -784,6 +864,5 @@ namespace PERQemu.UI
 
         // Parent
         PERQSystem _system;
-
     }
 }

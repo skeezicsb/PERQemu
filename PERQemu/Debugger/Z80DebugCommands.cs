@@ -315,6 +315,7 @@ namespace PERQemu
             eio.RTC.DumpRTC();
         }
 
+#if DEBUG
         [Command("debug z80 dump cpi histogram")]
         void CPIHistogram()
         {
@@ -339,6 +340,7 @@ namespace PERQemu
 
             Console.WriteLine($"  Total instructions: {total}");
         }
+#endif
 
         // todo: ram & rom disassembler, like the perq microcode disassembler?
         // todo: i/o port reads - and writes!?

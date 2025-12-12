@@ -5,13 +5,122 @@ Summary of changes on the development branch since the v0.6.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+December, 2025:
+
+    2. Some small tweaks and cleanups plus more cursory testing of the keyboard
+    mapping stuff.  Updates to the Configurator and more tuning and fussing.
+    Seems to work okay (no major regressions); will push v0.8.5 for release and
+    focus on in-depth testing with the next one.  Kick that can down the road.
+
+    1. Anything worth killing is worth OVERKILLING.  Remapping keyboards isn't
+    just a matter of dropping a hand wrought text file in the Conf directory,
+    no sirree.  A WHOLE NEW CLI SUBSYSTEM.  Settings and Configuration commands.
+    Dynamic updates while the VM is running.  An entire new appendix in the User
+    Guide.  This is so stupidly over the top -- but by now you expect nothing
+    less, amirite?  Bump to v0.8.4 for platform testing.  After some testing and
+    further fussing over it, a v0.8.5 release will probably be it for this year?
+    Would still love to get audio hooked up and push out a v1.0 before the 31st,
+    though.
+
+
+November, 2025:
+
+    4. Cleaned up the Storage subsystem a bit, and add an alias feature so that
+    device types can be referenced by a colloquial name or model number, since
+    my initial choices were, um, not always intuitive.  This is a PERQemu-only
+    hack, for now, since I didn't want to introduce a change to the PERQmedia
+    library to support aliases directly - yet.  Type "storage commands" to see
+    the updated commands; UserGuide updates coming shortly.
+
+    NOTE: changes to the StorageDevices.db file for v0.8.x will not be backward
+    compatible with older versions, but aside from "Invalid command" warnings at
+    startup should still load.  Not that you'd ever do that, surely.
+
+    3. Refactored the SDL keyboard handling.  For consistency between layouts,
+    the PERQ-1 HELP, OOPS and LF keys (F1..F3) are now remapped to F5..F7 by
+    default, and are now the same on the PERQ-2 "VT-100" layout.  The PERQ-2
+    function keys PF1..PF4 are mapped to F1..F4 on the host.  F8 remains the
+    "pause" key to stop execution without switching back to the console first.
+    Updated the UserGuide to explain this and how to set up custom mappings.
+
+    2. Began plumbing to make the keyboard reconfigurable.  Bump to 0.8.1 for
+    platform testing.
+
+    1. For laptops or other small screens that can't handle the PERQ's 1024-
+    line display plus all the host OS/window manager ornamentation, PERQemu will
+    now shrink the window to fit and allow the scroll wheel (or HOME/END keys)
+    to pan up and down (like the old WinForms PERQemu did it).  If you have
+    multiple screens and drag the display window between them, it will enlarge
+    to full size or shrink to fit accordingly.  [Experimental; tested on MacOSX
+    with multiple machines, only lightly on Windows/Linux so far.]
+
+
+October, 2025:
+
+    4. Was LoadOp ever intended to work with Fetch4R?  ICL thought so, since
+    they wrote a test for it in the SYSB microcode shipped with PNX 5.  So now
+    the emulator reloads the op file, in the order the hardware does it, when a
+    Fetch4R is issued before a LoadOp.  The test microcode still sails right
+    through and there's no change in behavior -- because upon closer inspection
+    it seems the half-assed test never actually checks the op bytes after the
+    reversed reload, AND it seems that the kernel doesn't rely on the "feature"
+    that extra test didn't really test anyway.  <poke_fork_in_eye>repeatedly</>
+
+    3. Networking changes to correct/improve Ethernet reliability after the
+    PacketDotNet version bump.  Still pretty rickety but it's coming along.
+    Will require a major architectural overhaul soon, but at least you can do
+    basic FTP between hosts and use most of the Accent features; FLEX network
+    installs exchange greetings but never actually transfer filestore data?  No
+    idea if the PNX-version-which-must-not-be-named Ethernet works at all.
+
+    2. Bump the version of SDL2-CS and PacketDotNet.  To maintain compatibility
+    with the current .NET Framework build environment, specific versions are
+    used (far from the latest).  Probably nobody else on the planet cares about
+    running this on platforms this old, using Mono... so here's fair warning
+    that very likely, come 2026, the minimum system requirements will finally
+    shift toward something slightly more up-to-date.  Somehow.  Maybe.
+
+    1. If PERQemu detects that you are attempting to run PNX 5, it will delete
+    itself from your hard drive and report you to the FBI.  PNX 5 is a fake OS,
+    a hoax, it doesn't exist, we have always been at war with Eastasia.
+
+    The patches/mods here roll up some of the latest attempts to address the
+    numerous bugs and outright bizarre behavior exhibited by the PNX 5 kernel.
+    Despite improving the near-cycle-accurate behavior of the emulator by making
+    it more faithful to the hardware, PNX 5 remains stubbornly, stupidly broken.
+    Without source code or a shred of documentation, further effort is pointless
+    so I'm setting it aside for now.
+
+    Pushing an interim update to clear the decks and shifting focus to pressing
+    UI matters (screen size and keyboard mapping).  Bump to v0.8.0.
+
+
+September, 2025:
+
+    2. More Ethernet testing and tuning; POS TestEther, FTP, Accent services
+    are working with better reliability.  That is to say, as well as can be
+    expected given how fragile and bare bones a lot of that original software
+    is, but it's exciting to see Accent living up to its billing as a network
+    OS and distributed computing environment.  Many ideas cooking for how to
+    help manage/integrate VMs with any existing host network infrastructure.
+
+    1. Debugging.  Refactoring the Ether10MbitController because it was getting
+    unwieldy.  Now 50% more wieldy.  Bumped version to v0.7.9 and push for some
+    platform testing.  PNX 5 is still intransigent.
+
+
 August, 2025:
 
-    2. Small victory: FLEX now runs, thanks to an RTC clock fix. Doh. Making
-    it think it's still 1985 does the trick.  New settings/configurator commands
-    to save an RTC offset so the virtual machine can innocently party like it's
-    still 1989.  PERQ-2 VT100-style keyboard mappings need fixin'.  Updates to
-    the UserGuide for recent changes.  Push for testing prior to v0.7.8 release.
+    3. Pushed v0.7.8 to main for pre-release.  Dug into the PDMA/FIFO stuff yet
+    again for PNX but it's failing before any of that.  Has to be a memory state
+    machine issue (they abuse the living hell out of the overlapped fetch/store
+    rules) but still haven't nailed it down.
+
+    2. Small victory: FLEX now runs, thanks to an RTC clock fix.  New settings/
+    configurator commands to save an RTC offset so the virtual machine can party
+    like it's still 1989.  PERQ-2 VT100-style keyboard mappings need fixin'.
+    Updates to the UserGuide for recent changes.  Push for testing prior to 
+    v0.7.8 pre-release.
 
     1. Video updates.  Memory state updates.  Fixing "bugs" that improve the
     accuracy and completeness of the emulator without actually affecting the
@@ -262,4 +371,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Fri Aug  8 06:23:01 PDT 2025
+Last update: skeezics    Thu Dec 11 13:28:22 PST 2025

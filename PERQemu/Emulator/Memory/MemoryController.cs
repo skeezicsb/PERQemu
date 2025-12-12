@@ -410,8 +410,7 @@ namespace PERQemu.Memory
             //
             int lookup = (book & 0x0f) << 4 | ((int)state << 2) | _mem.TState;
 
-            if (lookup >= 0x50 && lookup <= 0x7f)
-                Log.Debug(Category.MemCycle, "{0} Bookmark[{1:x3}]: {2}", _name, lookup, _bkmTable[lookup]);
+            Log.Detail(Category.MemCycle, "{0} Bookmark[{1:x3}]: {2}", _name, lookup, _bkmTable[lookup]);
 
             return _bkmTable[lookup];
         }

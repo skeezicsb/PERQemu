@@ -153,6 +153,17 @@ namespace PERQemu.Memory
             // If output is pending, we never wait; otherwise, let the combined
             // status of the request queues determine our result.
             _wait = !MDONeeded && (_mdiQueue.Wait || _mdoQueue.Wait);
+
+#if DEBUG
+            // Debug: look for Fetch/Store overlaps that might be missed by the
+            // split-queues implementation  (do it after the clock to ignore any
+            // op where the previous retired, so not a true overlap)
+            if (!RopEnabled && _mdiQueue.Cycle != MemoryCycle.None && _mdoQueue.Cycle != MemoryCycle.None)
+            {
+                Log.Info(Category.MemCycle, "Overlap in T{0}:  {1} + {2} @ PC 0x{3:x}",
+                         _Tstate, _mdiQueue.Cycle, _mdoQueue.Cycle, _system.CPU.PC);
+            }
+#endif
         }
 
         /// <summary>
@@ -178,9 +189,11 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool LoadOpFile()
         {
-            // If currently executing a Fetch4, start the refill on the
-            // next T2 state (i.e., next cycle)
-            return (_mdiQueue.Cycle == MemoryCycle.Fetch4 && _Tstate == 1);
+            // If currently executing a Fetch4/4R, start the refill on the next
+            // T2 state (i.e., next cycle).  Note: I've never seen any production
+            // ucode that uses a LoadOp with Fetch4R, but OF COURSE PNX 5 does it
+            return (_Tstate == 1 && (_mdiQueue.Cycle == MemoryCycle.Fetch4 ||
+                                     _mdiQueue.Cycle == MemoryCycle.Fetch4R));
         }
 
         /// <summary>
@@ -245,9 +258,9 @@ namespace PERQemu.Memory
         /// In the Accent kernel init microcode, there is a note in the memory
         /// sizing routine that says memory boards >2MB do _not_ wrap around, but
         /// no mention of what happens to fetches/stores to addresses that are
-        /// out of bounds.  Here we'll try ignoring stores but clip fetches in
-        /// FetchWord() above, to see if the 24-bit kernel will properly size and
-        /// use the 4MB (and larger?) boards.  Affects DMA too.
+        /// out of bounds.  After extensive experimentation, it seems the 24-bit
+        /// kernel will only properly size and use the 4MB board if the usual
+        /// mask/wrap behavior is restored.  Affects DMA too.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void StoreWord(int address, ushort data)

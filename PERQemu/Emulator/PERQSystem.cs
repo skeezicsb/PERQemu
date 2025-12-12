@@ -178,6 +178,9 @@ namespace PERQemu
             // Not sure that RunModes make sense anymore
             SetMode();
 
+            // Apply a custom keyboard map, if configured
+            CustomizeKeymap();
+
             // Okay!  We have a PERQ!  Now listen for state change events
             // from the Controller (or Debugger)
             PERQemu.Controller.RunStateChanged += OnRunStateChange;
@@ -194,7 +197,7 @@ namespace PERQemu
         public MemoryBoard Memory => _mem;
         public VideoController VideoController => _mem.Video;
         public Display Display => _display;
-        public InputDevices Mouse => _inputs;
+        public InputDevices HID => _inputs;
 
         public IOBus IOBus => _ioBus;
         public IOBoard IOB => _iob;
@@ -211,6 +214,45 @@ namespace PERQemu
         public event MachineStateChangeEventHandler StreamerActivity;
         public event MachineStateChangeEventHandler PowerDownRequested;
 
+        #region Run/halt modes
+
+        /// <summary>
+        /// Provide a hook to catch errors and halt execution.
+        /// </summary>
+        public void Halt(Exception e)
+        {
+            // The emulation has hit a serious error.  Return to the CLI.
+            Log.Error(Category.All, "\nBreak due to internal emulation error: {0}", e.Message);
+#if DEBUG
+            Log.Write(e.StackTrace);
+#else
+            Log.Error(Category.All, "Source: {0}  Target: {1}", e.Source, e.TargetSite);
+#endif
+            Log.Error(Category.All, "System state may be inconsistent.\n");
+
+            // Make sure both threads stop
+            PERQemu.Controller.TransitionTo(RunState.Halted);
+        }
+
+        /// <summary>
+        /// Completely shut down this instance.
+        /// </summary>
+        public void Shutdown()
+        {
+            // Detach events
+            PERQemu.Controller.RunStateChanged -= OnRunStateChange;
+
+            // Now go away or I shall taunt you some more
+            _inputs.Shutdown();
+            _display.Shutdown();
+            _ioBus.Shutdown();
+            _cpu.Shutdown();
+
+            _iob = null;
+            _ioBus = null;
+
+            Log.Detail(Category.Emulator, "PERQSystem shutdown.");
+        }
 
         /// <summary>
         /// Set the user's preferred run mode.  We assume async mode if the
@@ -229,6 +271,26 @@ namespace PERQemu
                          "Asynchronous execution not supported; falling back to Synchronous mode.");
             }
         }
+
+        /// <summary>
+        /// Executes the specified emulation delegate inside a try/catch block that
+        /// properly handles PowerDown and other exceptions to return to debug state.
+        /// </summary>
+        void RunGuarded(RunDelegate execute)
+        {
+            try
+            {
+                execute();
+            }
+            catch (Exception e)
+            {
+                Halt(e);
+            }
+        }
+
+        #endregion
+
+        #region State change callbacks
 
         /// <summary>
         /// Moves to a new run state as the Controller commands.
@@ -335,7 +397,7 @@ namespace PERQemu
                     _cpu.Stop();
                     _iob.Stop();
 #if DEBUG
-                    // Ah!  If we've paused on a breakpoint and there's a script
+                    // If we've paused on a breakpoint and there's a script
                     // to run, do it now;  Otherwise this is a no-op.  Kewl.
                     _debugger.RunDeferredActions();
 #endif
@@ -345,91 +407,69 @@ namespace PERQemu
         }
 
         /// <summary>
-        /// Executes the specified emulation delegate inside a try/catch block that
-        /// properly handles PowerDown and other exceptions to return to debug state.
+        /// Deal with MachineStateChange events.  For now (with no GUI, especially
+        /// not a full-blown debugger) there aren't handlers/subscribers for some
+        /// events, so they're dealt with locally.  This is kind of terrible.
         /// </summary>
-        void RunGuarded(RunDelegate execute)
+        public void MachineStateChange(WhatChanged w, params object[] args)
         {
-            try
+            MachineStateChangeEventHandler handler = null;
+
+            switch (w)
             {
-                execute();
+                case WhatChanged.DDSChanged:
+                    handler = DDSChanged;
+                    break;
+
+                case WhatChanged.FloppyActivity:
+                    handler = FloppyActivity;
+                    break;
+
+                case WhatChanged.StreamerActivity:
+                    handler = StreamerActivity;
+                    break;
+
+                case WhatChanged.PrinterActivity:
+                    handler = PrinterActivity;
+                    break;
+
+                case WhatChanged.Z80RunState:
+                    // For now, just a debug message; in future, Z80 debugger/GUI update
+                    Log.Write(Category.Emulator, "Z80 power state changed: running={0}", (bool)args[0]);
+                    return;
+
+                case WhatChanged.DebugBreakpoint:
+                    // The action has already fired; if in Async mode we just want to force
+                    // the transition to Paused so the RunState isn't indeterminate)
+                    Log.Write("-- Emulation paused on breakpoint --");
+                    PERQemu.Controller.Break();
+                    return;
+
+                case WhatChanged.HaltedInLoop:
+                    // We don't actually fire an event; just call Halt()
+                    Log.Write("The CPU has halted in a loop at PC {0:x4}", (ushort)args[0]);
+                    PERQemu.Controller.TransitionTo(RunState.Halted);
+                    return;
+
+                case WhatChanged.PowerDown:
+                    // Could probably just deal with this here, firing an SDL_QUIT directly...
+                    handler = PowerDownRequested;
+                    break;
+
+                default:
+                    // This can't/shouldn't happen
+                    Log.Warn(Category.Emulator, "Unhandled MachineStateChange type {0}", w);
+                    return;
             }
-            catch (Exception e)
+
+            if (handler != null)
             {
-                Halt(e);
-            }
-        }
-
-        /// <summary>
-        /// Provide a hook to catch errors and halt execution.
-        /// </summary>
-        public void Halt(Exception e)
-        {
-            // The emulation has hit a serious error.  Return to the CLI.
-            Log.Error(Category.All, "\nBreak due to internal emulation error: {0}", e.Message);
-#if DEBUG
-            Log.Write(e.StackTrace);
-#else
-            Log.Error(Category.All, "Source: {0}  Target: {1}", e.Source, e.TargetSite);
-#endif
-            Log.Error(Category.All, "System state may be inconsistent.\n");
-
-            // Make sure both threads stop
-            PERQemu.Controller.TransitionTo(RunState.Halted);
-        }
-
-        /// <summary>
-        /// Completely shut down this instance.
-        /// </summary>
-        public void Shutdown()
-        {
-            // Detach events
-            PERQemu.Controller.RunStateChanged -= OnRunStateChange;
-
-            // Now go away or I shall taunt you some more
-            _inputs.Shutdown();
-            _display.Shutdown();
-            _ioBus.Shutdown();
-            _cpu.Shutdown();
-
-            _iob = null;
-            _ioBus = null;
-
-            Log.Detail(Category.Emulator, "PERQSystem shutdown.");
-        }
-
-        /// <summary>
-        /// Prints the status of both processors at the current instruction.
-        /// Should probably be made more configurable (some debug flag to turn
-        /// on or off one or both disassemblies?).  (A graphical debugger would
-        /// update itself based on the runstate/machinestate change events.)
-        /// </summary>
-        public void PrintStatus()
-        {
-            _iob.Z80System.ShowZ80State();
-            _cpu.Processor.ShowCPUState();
-
-            Console.WriteLine("ucode {0}",
-                              Disassembler.Disassemble(CPU.PC, CPU.GetInstruction(CPU.PC)));
-
-            // Print the current Q-code in 1- or 2-byte form
-            if (CPU.LastOpcode > 255)
-            {
-                Console.WriteLine("inst  {0:x4}+{1} (@BPC {2})", CPU.LastOpcode,
-                                  QCodeHelper.GetExtendedOpCode(CPU.LastOpcode).Mnemonic, CPU.BPC);
-            }
-            else
-            {
-                Console.WriteLine("inst  {0:x2}-{1} (@BPC {2})", CPU.LastOpcode,
-                                  QCodeHelper.GetQCodeFromOpCode((byte)CPU.LastOpcode).Mnemonic, CPU.BPC);
+                Log.Debug(Category.Emulator, "MachineStateChange {0} firing", w);
+                handler(new MachineStateChangeEventArgs(w, args));
             }
         }
 
-        // Debugging
-        public void ShowThreadStatus()
-        {
-            _cpu.ShowThreadStatus();
-        }
+        #endregion
 
         #region The white zone is for media loading and unloading only
 
@@ -445,23 +485,31 @@ namespace PERQemu
         /// </remarks>
         public bool LoadAllMedia()
         {
-            for (var unit = 0; unit < _conf.Drives.Length; unit++)
+            try
             {
-                var drive = _conf.Drives[unit];
-
-                // If we have a path OR the drive is a removable type, load it
-                if (!string.IsNullOrEmpty(drive.MediaPath) ||
-                    drive.Type == DeviceType.Floppy ||
-                    drive.Type == DeviceType.TapeQIC)
+                for (var unit = 0; unit < _conf.Drives.Length; unit++)
                 {
-                    if (!LoadMedia(drive))
+                    var drive = _conf.Drives[unit];
+
+                    // If we have a path OR the drive is a removable type, load it
+                    if (!string.IsNullOrEmpty(drive.MediaPath) ||
+                        drive.Type == DeviceType.Floppy ||
+                        drive.Type == DeviceType.TapeQIC)
                     {
-                        return false;
+                        if (!LoadMedia(drive))
+                        {
+                            return false;
+                        }
                     }
                 }
-            }
 
-            return true;
+                return true;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                return false;
+            }
         }
 
         /// <summary>
@@ -612,11 +660,7 @@ namespace PERQemu
                 return false;
             }
 
-            // todo: here's where we should decide to pause the emulator if
-            // running, do the save, then continue.  probably not necessary
-            // for floppies, but for a large hard disk we don't want to take
-            // a snapshot that might be modified as we're writing it out!
-
+            // Do it!
             _volumes[unit].Save();
 
             // A successful save clears the Modified flag
@@ -751,69 +795,76 @@ namespace PERQemu
 
         #endregion
 
+        #region Customization
+
         /// <summary>
-        /// Deal with MachineStateChange events.  For now (with no GUI, especially
-        /// not a full-blown debugger) there aren't handlers/subscribers for some
-        /// events, so they're dealt with locally.  This is kind of terrible.
+        /// Check if a custom keymap is desired and if so, attempt to load and
+        /// apply it.  Looks at Settings first, then the Configuration record.
+        /// If requested but the map can't be found or loaded for any reason,
+        /// is a no-op (doesn't prevent machine startup).
         /// </summary>
-        public void MachineStateChange(WhatChanged w, params object[] args)
+        void CustomizeKeymap()
         {
-            MachineStateChangeEventHandler handler = null;
+            // Is a default set?
+            string customMap = Settings.Keymap;
 
-            switch (w)
+            // Or a configuration/override?
+            if (!string.IsNullOrEmpty(_conf.Keymap)) customMap = _conf.Keymap;
+
+            // If nothing set, nothing to do
+            if (customMap == "" || customMap == "none") return;
+
+            // Ask Keymapper to find and apply it
+            var map = PERQemu.Keymaps.GetMapByName(customMap);
+
+            if (map == null)
             {
-                case WhatChanged.DDSChanged:
-                    handler = DDSChanged;
-                    break;
-
-                case WhatChanged.FloppyActivity:
-                    handler = FloppyActivity;
-                    break;
-
-                case WhatChanged.StreamerActivity:
-                    handler = StreamerActivity;
-                    break;
-
-                case WhatChanged.PrinterActivity:
-                    handler = PrinterActivity;
-                    break;
-
-                case WhatChanged.Z80RunState:
-                    // For now, just a debug message; in future, Z80 debugger/GUI update
-                    Log.Write(Category.Emulator, "Z80 power state changed: running={0}", (bool)args[0]);
-                    return;
-
-                case WhatChanged.DebugBreakpoint:
-                    // The action has already fired; if in Async mode we just want to force
-                    // the transition to Paused so the RunState isn't indeterminate)
-                    Log.Write("-- Emulation paused on breakpoint --");
-                    PERQemu.Controller.Break();
-                    return;
-
-                case WhatChanged.HaltedInLoop:
-                    // We don't actually fire an event; just call Halt()
-                    Log.Write("The CPU has halted in a loop at PC {0:x4}", (ushort)args[0]);
-                    PERQemu.Controller.TransitionTo(RunState.Halted);
-                    return;
-
-                case WhatChanged.PowerDown:
-                    // Could probably just deal with this here, firing an SDL_QUIT directly...
-                    handler = PowerDownRequested;
-                    break;
-
-                default:
-                    // This can't/shouldn't happen
-                    Log.Warn(Category.Emulator, "Unhandled MachineStateChange type {0}", w);
-                    return;
+                Log.Info(Category.Emulator, "Could not find custom keymap {0}, continuing", customMap);
+                return;
             }
 
-            if (handler != null)
+            PERQemu.Keymaps.Apply(map);
+            Log.Info(Category.Emulator, "Applied custom keymap {0}.", map.Name);
+        }
+
+        #endregion
+
+        #region Debugging and status
+
+        /// <summary>
+        /// Prints the status of both processors at the current instruction.
+        /// Should probably be made more configurable (some debug flag to turn
+        /// on or off one or both disassemblies?).  (A graphical debugger would
+        /// update itself based on the runstate/machinestate change events.)
+        /// </summary>
+        public void PrintStatus()
+        {
+            _iob.Z80System.ShowZ80State();
+            _cpu.Processor.ShowCPUState();
+
+            Console.WriteLine("ucode {0}",
+                              Disassembler.Disassemble(CPU.PC, CPU.GetInstruction(CPU.PC)));
+
+            // Print the current Q-code in 1- or 2-byte form
+            if (CPU.LastOpcode > 255)
             {
-                Log.Debug(Category.Emulator, "MachineStateChange {0} firing", w);
-                handler(new MachineStateChangeEventArgs(w, args));
+                Console.WriteLine("inst  {0:x4}+{1} (@BPC {2})", CPU.LastOpcode,
+                                  QCodeHelper.GetExtendedOpCode(CPU.LastOpcode).Mnemonic, CPU.BPC);
+            }
+            else
+            {
+                Console.WriteLine("inst  {0:x2}-{1} (@BPC {2})", CPU.LastOpcode,
+                                  QCodeHelper.GetQCodeFromOpCode((byte)CPU.LastOpcode).Mnemonic, CPU.BPC);
             }
         }
 
+        // Debugging
+        public void ShowThreadStatus()
+        {
+            _cpu.ShowThreadStatus();
+        }
+
+        #endregion
 
         // The PERQ
         Configuration _conf;

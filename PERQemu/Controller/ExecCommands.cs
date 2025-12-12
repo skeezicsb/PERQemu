@@ -1,4 +1,4 @@
-﻿//
+//
 // ExecCommands.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
@@ -45,7 +45,7 @@ namespace PERQemu
             PERQemu.Sys.ShowThreadStatus();
             PERQemu.Sys.IOB.Z80System.ShowThreadStatus();
             PERQemu.Sys.Display.Status();
-            PERQemu.Sys.Mouse.Status();
+            PERQemu.Sys.HID.Status();
             PERQemu.Sys.VideoController.Status();
         }
 

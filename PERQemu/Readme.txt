@@ -85,6 +85,7 @@ PERQemu v0.7.5 wraps up all the work since v0.5.0 along with a batch of new
 bundled hard disk images with new software to play with.  It is a release to
 "skeezicsb/main" and a candidate to sync up with the master branch.
 
+Version 0.8.5 
 Please check back often for updates!
 
 
@@ -126,7 +127,8 @@ There are several subdirectories:
     Conf/
         Contains a collection of "prefab" system configurations as well as
         device data required for operation.  By default, all custom PERQ
-        configurations are also saved in and loaded from this directory.
+        configurations and keyboard maps are also saved in and loaded from
+        this directory.
 
     Disks/
         Contains disk images that the emulator can access.  Included with
@@ -300,7 +302,7 @@ New in v0.7.8:
 
 NOTE: PNX 1 only supports 1MB of memory and will crash if configured with more.
 PNX 2, PNX 3, POS, MPOS and Accent have no trouble with a full megaword (2MB)
-of memory.
+of memory.  So far only Accent S6 has been tested with 4MB (PERQ-2/T4).
 
 Accent mouse tracking takes a little getting used to since it runs in relative
 mode.  To simulate mouse "swipes" you have to use the Alt key (Option key on
@@ -324,7 +326,8 @@ The following hardware has been implemented in the emulator:
 
   Memory/VideoController:
     - Now can be configured at runtime, up to 8MB in the 24-bit models;
-    - Only tested for operation with the 20-bit processors (max 2MB / 1MW).
+    - Verified for operation with the 20-bit processors (max 2MB / 1MW) and the
+      24-bit CPU (max 4MB / 2MW).
 
   Hard disk:
     - The original PERQ-1 14" Shugart SA4000-series drives and controllers are
@@ -346,10 +349,11 @@ The following hardware has been implemented in the emulator:
 
   Displays:
     - The standard 768 x 1024 portrait display is available for all models;
-    - The 1280 x 1024 landscape display is supported and tested with POS G.7
-      and Accent S6!  Although PERQ-1 landscape configurations were very rare,
-      the emulator runs 'em just fine!  Became standard equipment on most
-      PERQ-2 models.
+    - The 1280 x 1024 landscape display is supported and tested with all
+      PERQ-2 configurations.  POS G and several versions of Accent, PNX and
+      FLEX support the landscape monitor;
+    - Although PERQ-1 landscape configurations were very rare, the emulator
+      runs 'em just fine!  Consult the UserGuide for more.
 
   Z80 I/O Processor:
     - Simulation replaced by a real Z80 emulator running actual PERQ ROM code;
@@ -365,9 +369,10 @@ The following hardware has been implemented in the emulator:
     - Now uses the SDL2 interface so no more horrible hacks required for MacOS;
     - Support for the VT100-style PERQ-2 keyboard is now included and is working
       (but is not fully tested and has some limitations);
+    - Keyboard re-mapping is now fully supported so you can customize PERQemu
+      for your host/preferences (See UserGuide.pdf for details!);
     - Currently caps lock is problematic and can get out of sync with the host.
-      This is a minor inconvenience but it's on the bug list.  [TODO: check if
-      this is still the case under SDL2.]
+      This is a minor inconvenience but it's on the bug list.
 
   RS-232:
     - The Z80 SIO chip is implemented to work with the new Z80 emulator;
@@ -404,7 +409,7 @@ The following hardware has been implemented in the emulator:
   Canon:
     - Laser printer interface can now be enabled as an OIO option for all valid
       PERQ chassis/IO Board combinations.  It provides high quality output in
-      PNG or TIFF format at 240- or 300-dpi.
+      PNG or TIFF format at 240 or 300 dpi.
 
 
 There is a ton of additional detail about the internals of PERQemu itself in
@@ -418,6 +423,8 @@ Docs/ directory for way, way more information than you need.  Way more.
 - Ethernet.  In development! [See above]
 
 - Option boards:  3Mbit Ethernet.  On the list.
+
+- Z80 disassembly/source debugging when running from RAM (PERQ-2/EIO).
  
 - PERQLink.  Unimplemented other than a stub that tells the microcode that
   there's nothing connected to it.
@@ -490,7 +497,7 @@ session, and will not stop at 255 when PNX has completed booting.
 
 Solution:  A patch to detect and fix this automatically was included in PERQemu
 v0.5.8 through v0.6.5; the CPU was modified to correct the issue and the patch
-removed in v0.6.6 (experiments branch).  Suggest upgrade to v0.7.5.
+removed in v0.6.6 (experiments branch).  Suggest upgrade to v0.7.5 or later.
 
 
 5. PNX video glitches.
@@ -498,7 +505,7 @@ removed in v0.6.6 (experiments branch).  Suggest upgrade to v0.7.5.
 Symptom: The PNX 2 window manager sometimes randomly paints its background 
 pattern with strange stripes or other visual anomalies.
 
-Solution:  Corrected in PERQemu v0.6.9.  Suggest upgrade to v0.7.5.
+Solution:  Corrected in PERQemu v0.6.9.  Suggest upgrade to v0.7.5 or later.
 
 
 6. PNX 5 kernel panic after boot.
@@ -520,19 +527,30 @@ v1.0 - TBD
   Sometime before the heat death of the universe:
   - Feature complete, with a nice GUI, full screen mode, VR, scratch 'n sniff
   - Massive software library organized, catalogued, available for use and study
-  - Working audio output :-)
+  - See if CIO Micropolis has any real software support?
+  - Remaining items from the "What's Not" list above
 
 v0.9 - TBD
   Fill in the final pieces:
-  - Full-featured Ethernet
-  - 24-bit "T4" model with larger memory
-  - See if CIO Micropolis has any real software support?
-  - Multibus and SMD disks?
+  - Full-featured Ethernet with encapsulation options/no root requirement
+  - Working audio output :-)
 
-v0.7.8 - Experiments branch
+v0.8.5 - Main branch
+  - Minor updates to Nuget package dependencies (now tested/verified against
+    SDL 2.32.4, SDL_image 2.8.8, PacketDotNet 0.30.3)
+  - Shrinks the display window to accommodate small screens; automatically
+    resizes when moved between screens on hosts with multiple monitors
+  - Refactored SDL2 keyboard handling and updated default HELP/OOPS/LF key
+    assignments for PERQ-2 "VT-100" layout
+  - Can now define, edit, save and apply custom keyboard mappings on a per-
+    configuration basis (UserGuide updated in excruciating detail)
+  - Add aliases to the storage device list so more common/colloquial names
+    can be used to specific drive types (will be revisited/improved when a
+    new PERQmedia and PERQdisk update drops)
+
+v0.7.8 - Main branch (v0.8.x pre-release)
   - 24-bit CPU with 4MB memory fixes (now boots Accent; more testing to do)
-  - Update for FLEX custom floppy format, Z80 DMA and RTC changes to allow it
-    to run
+  - Added FLEX custom floppy format, Z80 DMA and RTC changes
   - Changes to the DDS since FLEX drives it at several MHz and that's silly
   - New import/export commands for exchanging PERQemu 5.25" disk images with
     the Gesswein MFM emulator (emulated disks <-> real PERQ!)
@@ -689,7 +707,8 @@ v0.1 - First public release
 
 Update history:
 
-8/8/2025 - skeezicsb - v0.7.8 (experiments)
+12/12/2025 - skeezicsb - v0.8.5 (main)
+8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)
 12/8/2024 - skeezicsb - v0.6.5 (main)

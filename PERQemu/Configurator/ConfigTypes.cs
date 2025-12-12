@@ -51,9 +51,9 @@ namespace PERQemu.Config
     public enum OptionBoardType
     {
         None = 0,
-        Ether3,
         OIO,
-        MLO
+        MLO,
+        Ether3
     }
 
     [Flags]
@@ -80,5 +80,11 @@ namespace PERQemu.Config
         Kriz = 0x1,
         BitPad = 0x2,
         Both = 0x3
+    }
+
+    public enum KeyboardType
+    {
+        PERQ = 1,
+        VT100
     }
 }

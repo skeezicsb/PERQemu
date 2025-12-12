@@ -59,13 +59,19 @@ namespace PERQemu.UI
         [Command("configure", "Enter the configuration subsystem", Prefix = true)]
         public void SetConfigPrefix()
         {
-            PERQemu.CLI.SetPrefix("configure");
+            PERQemu.CLI.SetPrefix("configure", ConfigChanged);
         }
 
         [Command("configure commands", "Show configuration commands")]
         public void ShowConfigCommands()
         {
             PERQemu.CLI.ShowCommands("configure");
+        }
+
+        // Delegate for command prompt check
+        public bool ConfigChanged()
+        {
+            return PERQemu.Config.Changed;
         }
 
         [Command("configure done", "Exit configuration mode, return to top-level")]
@@ -108,6 +114,8 @@ namespace PERQemu.UI
             }
         }
 
+        #region List and show commands
+
         [Command("configure list", "List available machine configurations")]
         public void ListPrefabs()
         {
@@ -149,27 +157,9 @@ namespace PERQemu.UI
             }
         }
 
-        [Command("configure check", "Check that the configuration is valid")]
-        public void CheckConfig()
-        {
-            if (!PERQemu.Config.Validate())
-            {
-                Console.WriteLine("Configuration is not valid:");
-                Console.WriteLine(PERQemu.Config.Current.Reason);
-            }
-            else
-            {
-                if (PERQemu.Config.Current.Reason != string.Empty)
-                {
-                    Console.WriteLine("Configuration is valid, with warnings:");
-                    Console.WriteLine(PERQemu.Config.Current.Reason);
-                }
-                else
-                {
-                    Console.WriteLine("This configuration is valid.");
-                }
-            }
-        }
+        #endregion
+
+        #region Load and save commands
 
         /// <summary>
         /// Load a new configuration.  Tries the prefabs list first, then falls
@@ -240,6 +230,10 @@ namespace PERQemu.UI
             }
         }
 
+        #endregion
+
+        #region Naming commands
+
         [Command("configure name", "Name the current configuration")]
         public void SetName(string name)
         {
@@ -262,6 +256,10 @@ namespace PERQemu.UI
             PERQemu.Config.Current.Description = desc;
             PERQemu.Config.Changed = true;
         }
+
+        #endregion
+
+        #region Chassis and CPU commands
 
         [Command("configure chassis", "Set the machine type")]
         public void SetChassis(ChassisType perq)
@@ -312,6 +310,10 @@ namespace PERQemu.UI
                 }
             }
         }
+
+        #endregion
+
+        #region Memory and display commands
 
         uint RoundToPowerOf2(uint n)
         {
@@ -383,6 +385,36 @@ namespace PERQemu.UI
             }
         }
 
+
+        [Command("configure display", "Configure the display device")]
+        public void SetDisplay(DisplayType disp)
+        {
+            if (PERQemu.Config.Quietly)
+            {
+                PERQemu.Config.Current.Display = disp;
+                return;
+            }
+
+            if (OKtoReconfig())
+            {
+                if (disp != PERQemu.Config.Current.Display)
+                {
+                    PERQemu.Config.Current.Display = disp;
+                    PERQemu.Config.Changed = true;
+                    Console.WriteLine($"{disp} display option selected.");
+                }
+
+                if (!PERQemu.Config.CheckMemory())
+                {
+                    Console.WriteLine(PERQemu.Config.Current.Reason);
+                }
+            }
+        }
+
+        #endregion
+
+        #region IO and Option Board commands
+
         [Command("configure io board", "Configure the IO board type")]
         public void SetIO(IOBoardType ioType)
         {
@@ -438,18 +470,39 @@ namespace PERQemu.UI
                     PERQemu.Config.Changed = true;
                     Console.WriteLine($"IO Option board type {oioType} selected.");
 
-                    // Board changed; reset the selected options to defaults
-                    if (oioType == OptionBoardType.OIO)
+                    // Board changed; reset the selected options to defaults if
+                    // nothing set; remove or carry over any that still apply
+                    var option = PERQemu.Config.Current.IOOptions;
+
+                    switch (oioType)
                     {
-                        PERQemu.Config.Current.IOOptions = IOOptionType.Link;
-                    }
-                    else if (oioType == OptionBoardType.MLO)
-                    {
-                        PERQemu.Config.Current.IOOptions = IOOptionType.Canon;
-                    }
-                    else
-                    {
-                        PERQemu.Config.Current.IOOptions = IOOptionType.None;
+                        case OptionBoardType.OIO:
+                            // Add Link if nothing else selected
+                            if (option == IOOptionType.None)
+                                PERQemu.Config.Current.IOOptions = IOOptionType.Link;
+
+                            // Remove SMD (incompatible)
+                            RemoveIOOption(IOOptionType.SMD);
+                            break;
+
+                        case OptionBoardType.MLO:
+                        case OptionBoardType.Ether3:
+                            // No changes -- these boards not yet supported
+
+                            // Add Canon if not already selected
+                            //if (option == IOOptionType.None)
+                            //    PERQemu.Config.Current.IOOptions = IOOptionType.Canon;
+
+                            // Remove Link, Ether if present
+                            //RemoveIOOption(IOOptionType.Link);
+                            //RemoveIOOption(IOOptionType.Ether);
+                            break;
+
+                        case OptionBoardType.None:
+                            // Remove Tape (resets unit 3), zap the rest and let Validate() whine
+                            RemoveIOOption(IOOptionType.Tape);
+                            PERQemu.Config.Current.IOOptions = IOOptionType.None;
+                            break;
                     }
                 }
 
@@ -473,38 +526,47 @@ namespace PERQemu.UI
             {
                 switch (opt)
                 {
-                    // Always valid; resets the selected options
+                    // Adding nothing is a no-op?  Not a reset...
                     case IOOptionType.None:
-                        if (PERQemu.Config.Current.IOOptions != opt)
-                        {
-                            PERQemu.Config.Current.IOOptions = opt;
-                            PERQemu.Config.Changed = true;
-                            Console.WriteLine("IO options reset.");
-                        }
+                        //if (PERQemu.Config.Current.IOOptions != opt)
+                        //{
+                        //    PERQemu.Config.Current.IOOptions = opt;
+                        //    PERQemu.Config.Changed = true;
+                        //    Console.WriteLine("IO options reset.");
+                        //}
                         break;
 
                     // These are valid for OIO and MLO
                     case IOOptionType.Link:
                     case IOOptionType.Tape:
                     case IOOptionType.Canon:
-                        if (PERQemu.Config.Current.IOOptionBoard == OptionBoardType.OIO ||
-                            PERQemu.Config.Current.IOOptionBoard == OptionBoardType.MLO)
-                        {
-                            PERQemu.Config.Current.IOOptions |= opt;
-                            PERQemu.Config.Changed = true;
-                            Console.WriteLine($"IO option '{opt}' selected.");
-                        }
-                        else
+                        if (PERQemu.Config.Current.IOOptionBoard != OptionBoardType.OIO &&
+                            PERQemu.Config.Current.IOOptionBoard != OptionBoardType.MLO)
                         {
                             Console.WriteLine("That option is incompatible with the selected IO Option board.");
+                            break;
+                        }
+
+                        PERQemu.Config.Current.IOOptions |= opt;
+                        PERQemu.Config.Changed = true;
+                        Console.WriteLine($"IO option '{opt}' selected.");
+
+                        // Streamer support: if we've added the QIC controller, make sure
+                        // unit 3 (fixed, currently) is configured to accept QIC tapes
+                        if (opt == IOOptionType.Tape)
+                        {
+                            if (PERQemu.Config.Current.Drives[3].Type == DeviceType.Unused)
+                            {
+                                PERQemu.Config.Current.SetDeviceType(3, DeviceType.TapeQIC);
+                                Console.WriteLine("* Drive unit 3 now accepts QIC tapes.");
+                            }
                         }
                         break;
 
                     // Ethernet is valid for OIO, unless the EIO is selected; in
                     // theory you could use an NIO + OIO Ethernet but that's just silly.
                     case IOOptionType.Ether:
-                        if (PERQemu.Config.Current.IOBoard == IOBoardType.NIO &&
-                            opt.HasFlag(IOOptionType.Ether))
+                        if (PERQemu.Config.Current.IOBoard == IOBoardType.NIO && opt == IOOptionType.Ether)
                         {
                             // Special case: if the user wants to add Ethernet to a 
                             // machine configured with an NIO board, I'll just switch
@@ -542,39 +604,7 @@ namespace PERQemu.UI
                         break;
                 }
 
-                //
-                // Streamer support: if we've added the board/option combo that
-                // provides a QIC controller, make sure unit 3 (fixed, currently)
-                // is configured to accept QIC tapes.  Otherwise, revert it to
-                // "unused" so we don't bomb trying to load a non-existent drive
-                //
-                if (PERQemu.Config.Current.IOOptionBoard == OptionBoardType.OIO ||
-                    PERQemu.Config.Current.IOOptionBoard == OptionBoardType.MLO)
-                {
-                    if (PERQemu.Config.Current.IOOptions.HasFlag(IOOptionType.Tape))
-                    {
-                        // WITH tape option, make sure unit 3 accepts the media
-                        if (PERQemu.Config.Current.Drives[3].Type == DeviceType.Unused)
-                        {
-                            PERQemu.Config.Current.SetDeviceType(3, DeviceType.TapeQIC);
-                            Console.WriteLine("* Drive unit 3 now accepts QIC tapes.");
-                        }
-                    }
-                    else
-                    {
-                        // WITHOUT the tape option, reset unit 3 (losing any assigned file?)
-                        if (PERQemu.Config.Current.Drives[3].Type == DeviceType.TapeQIC)
-                        {
-                            // Zap the file, or leave it defined?  Hmm...
-                            PERQemu.Config.Current.SetDeviceType(3, DeviceType.Unused);
-                            Console.WriteLine("* Drive unit 3 is now unassigned.");
-                        }
-                    }
-                }
-
-                // CheckOptions should catch the case where Tape is defined but
-                // the board type doesn't support the controller...
-
+                // Sanity check
                 if (!PERQemu.Config.CheckOptions())
                 {
                     Console.WriteLine(PERQemu.Config.Current.Reason);
@@ -599,6 +629,15 @@ namespace PERQemu.UI
                     PERQemu.Config.Changed = true;
                     Console.WriteLine($"IO Option '{opt}' deselected.");
 
+                    // If removing the tape option, reset unit 3
+                    if (opt == IOOptionType.Tape && PERQemu.Config.Current.Drives[3].Type == DeviceType.TapeQIC)
+                    {
+                        // Zap the file, or leave it defined?  Hmm...
+                        PERQemu.Config.Current.SetDeviceType(3, DeviceType.Unused);
+                        Console.WriteLine("* Drive unit 3 is now unassigned.");
+                    }
+
+                    // Check that things still make sense
                     if (!PERQemu.Config.CheckOptions())
                     {
                         Console.WriteLine(PERQemu.Config.Current.Reason);
@@ -606,6 +645,10 @@ namespace PERQemu.UI
                 }
             }
         }
+
+        #endregion
+
+        #region Ethernet, RTC and serial ports
 
         [Command("configure ethernet address", "Set the low word (two octets) of the Ethernet address")]
         public void SetEthernetAddress(ushort address)
@@ -687,51 +730,6 @@ namespace PERQemu.UI
             }
         }
 
-        [Command("configure display", "Configure the display device")]
-        public void SetDisplay(DisplayType disp)
-        {
-            if (PERQemu.Config.Quietly)
-            {
-                PERQemu.Config.Current.Display = disp;
-                return;
-            }
-
-            if (OKtoReconfig())
-            {
-                if (disp != PERQemu.Config.Current.Display)
-                {
-                    PERQemu.Config.Current.Display = disp;
-                    PERQemu.Config.Changed = true;
-                    Console.WriteLine($"{disp} display option selected.");
-                }
-
-                if (!PERQemu.Config.CheckMemory())
-                {
-                    Console.WriteLine(PERQemu.Config.Current.Reason);
-                }
-            }
-        }
-
-        [Command("configure tablet", "Configure the pointing device(s)")]
-        public void SetTablet(TabletType tab)
-        {
-            if (PERQemu.Config.Quietly)
-            {
-                PERQemu.Config.Current.Tablet = tab;
-                return;
-            }
-
-            if (OKtoReconfig())
-            {
-                if (tab != PERQemu.Config.Current.Tablet)
-                {
-                    PERQemu.Config.Current.Tablet = tab;
-                    PERQemu.Config.Changed = true;
-                    Console.WriteLine($"Tablet option {tab} selected.");
-                }
-            }
-        }
-
         [Command("configure enable rs232", "Enable use of a serial port")]
         public void EnableRS232(char port = 'a')
         {
@@ -790,6 +788,49 @@ namespace PERQemu.UI
             Console.WriteLine($"Invalid RS-232 port '{port}'.");
             return false;
         }
+
+        #endregion
+
+        #region Tablet and keyboard commands
+
+        [Command("configure tablet", "Configure the pointing device(s)")]
+        public void SetTablet(TabletType tab)
+        {
+            if (PERQemu.Config.Quietly)
+            {
+                PERQemu.Config.Current.Tablet = tab;
+                return;
+            }
+
+            if (OKtoReconfig())
+            {
+                if (tab != PERQemu.Config.Current.Tablet)
+                {
+                    PERQemu.Config.Current.Tablet = tab;
+                    PERQemu.Config.Changed = true;
+                    Console.WriteLine($"Tablet option {tab} selected.");
+                }
+            }
+        }
+
+        [Command("configure keymap", "Configure a custom keyboard map")]
+        public void SetKeymap([KeywordMatch("Keymaps")] string mapName)
+        {
+            if (mapName == "default") mapName = string.Empty;
+
+            if (mapName != PERQemu.Config.Current.Keymap)
+            {
+                PERQemu.Config.Current.Keymap = mapName;
+                PERQemu.Config.Changed = true;
+
+                Console.WriteLine("Keyboard map is now {0}.",
+                                 mapName == "" ? "unset" : mapName);
+            }
+        }
+
+        #endregion
+
+        #region Media commands
 
         /// <summary>
         /// Get the device type from a media file and assign it to the first
@@ -864,6 +905,31 @@ namespace PERQemu.UI
             // NO error checking, no output, assumes "quiet"
             PERQemu.Config.Current.SetDeviceType(unit, dev);
             PERQemu.Config.Current.SetMediaPath(unit, file);
+        }
+
+        #endregion
+
+
+        [Command("configure check", "Check that the configuration is valid")]
+        public void CheckConfig()
+        {
+            if (!PERQemu.Config.Validate())
+            {
+                Console.WriteLine("Configuration is not valid:");
+                Console.WriteLine(PERQemu.Config.Current.Reason);
+            }
+            else
+            {
+                if (PERQemu.Config.Current.Reason != string.Empty)
+                {
+                    Console.WriteLine("Configuration is valid, with warnings:");
+                    Console.WriteLine(PERQemu.Config.Current.Reason);
+                }
+                else
+                {
+                    Console.WriteLine("This configuration is valid.");
+                }
+            }
         }
     }
 }

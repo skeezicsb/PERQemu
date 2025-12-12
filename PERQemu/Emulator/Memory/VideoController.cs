@@ -95,6 +95,7 @@ namespace PERQemu.Memory
             _lineCounterInit = 0;
             _lineCountOverflow = false;
             _startOver = false;
+            _raised = false;
 
             _system.Scheduler.Cancel(_currentEvent);
             _currentEvent = null;
@@ -154,7 +155,7 @@ namespace PERQemu.Memory
                     //  15:8    High byte is the "video control port", below
                     //     7    StartOver bit (not in hardware)
                     //   6:0    2's complement of N
-                    _lineCounterInit = 128 - (value & 0x7f);
+                    _lineCounterInit = 128 - (value & (int)StatusRegister.LineCountMask);
                     _lineCounter = _lineCounterInit;
                     _lineCountOverflow = false;
 
@@ -185,7 +186,7 @@ namespace PERQemu.Memory
                     }
 
                     // Clear interrupt
-                    _system.CPU.ClearInterrupt(InterruptSource.LineCounter);
+                    SetInterrupt(false);
 
                     Log.Debug(Category.Display, "Line counter set to {0} scanlines (value {1:x4}, StartOver {2})",
                                                 _lineCounterInit, value, _startOver);
@@ -223,7 +224,7 @@ namespace PERQemu.Memory
 
                     if ((value & 0x1f00) == 0 && VSyncEnabled)
                     {
-                        // ** PNX 3 HACK **
+                        // ** PNX 3 & 5 HACK **
                         // Okay, ICL.  You ALMOST got it right: using two bands for
                         // vertical sync (20 lines + 23 lines) and you properly set
                         // the StartOver bit on the second one -- but you only set
@@ -245,20 +246,28 @@ namespace PERQemu.Memory
                     _cursorFunc = (CursorFunction)((value & 0xe000) >> 13);
                     _videoStatus = (StatusRegister)(value & 0x1f00);
 
+                    Log.Debug(Category.Display, "Video status port set to {0} (0x{1:x}) @ line {2}",
+                                                _videoStatus, value, _scanLine);
+
                     if (CursorEnabled)
                     {
                         _cursorY = 0;
                         Log.Debug(Category.Display, "Cursor Y enabled at line {0}", _scanLine);
                     }
 
-                    Log.Debug(Category.Display, "Video status port set to {0} (0x{1:x}) @ line {2}",
-                                                _videoStatus, value, _scanLine);
-
                     // Clear in case we transition at a weird time?
                     _system.Scheduler.Cancel(_currentEvent);
                     _currentEvent = null;
 
-                    // Check the enable conditions in order of priority
+                    // Clear interrupt if the enable bit is turned off
+                    if (!InterruptEnabled)
+                    {
+                        SetInterrupt(false);
+                    }
+
+                    // Check the enable conditions in order of priority; setting
+                    // the vertical blanking state AND the display enable bit is
+                    // technically wrong (but see the Accent hack above)
                     if (VSyncEnabled)
                     {
                         _state = VideoState.VBlank;
@@ -267,6 +276,7 @@ namespace PERQemu.Memory
                     {
                         _state = VideoState.Active;
                     }
+                    // else remain in the current state
 
                     RunStateMachine();
                     break;
@@ -420,15 +430,10 @@ namespace PERQemu.Memory
 
                 case VideoState.EndOfBand:
 
-                    // Trigger an interrupt if the line counter is set and has reached 0
-                    if (InterruptEnabled && !_lineCountOverflow)
-                    {
-                        Log.Debug(Category.Display, "Line counter overflow @ scanline {0}", _scanLine);
-                        _system.CPU.RaiseInterrupt(InterruptSource.LineCounter);
-                    }
-
-                    // Set our flag; this will be reset when _lineCounterInit is reloaded
+                    // Flag will be reset when _lineCounterInit is reloaded
                     _lineCountOverflow = true;
+
+                    Log.Debug(Category.Display, "Line counter overflow @ scanline {0}", _scanLine);
 
                     // Check the StartOver bit: at the end of the second vertical
                     // blanking band we're about to start a new frame, so reset the
@@ -439,10 +444,33 @@ namespace PERQemu.Memory
                         _scanLine = 0;
                     }
 
+                    // Raise the interrupt if appropriate
+                    SetInterrupt(true);
+
                     // Return to idle
                     _state = VideoState.Idle;
                     RunStateMachine();
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Set or clear the LineCount interrupt.  The hardwawre clears it when
+        /// the counter is loaded, or when disabled via the control register.
+        /// </summary>
+        void SetInterrupt(bool raise)
+        {
+            raise &= InterruptEnabled;
+
+            if (raise && !_raised)
+            {
+                _system.CPU.RaiseInterrupt(InterruptSource.LineCounter);
+                _raised = true;
+            }
+            else if (!raise && _raised)
+            {
+                _system.CPU.ClearInterrupt(InterruptSource.LineCounter);
+                _raised = false;
             }
         }
 
@@ -493,16 +521,14 @@ namespace PERQemu.Memory
             // Now overlay the cursor bytes if enabled
             if (CursorEnabled)
             {
-                // Calc the starting address of this line of cursor data
-                int cursorAddress = (_cursorAddress >> 2) + _cursorY++;
+                // Calc the starting address of this line of cursor data,
+                // fetch the quad and break it into 8 bytes for easy mixin'
+                GetCursorQuad((_cursorAddress >> 2) + _cursorY);
+                _cursorY++;
 
-                // Fetch the quad and break it into 8 bytes for easy mixin'!
-                GetCursorQuad(cursorAddress);
-
-                int cursorStartByte = _cursorX;
                 int cursByte = 0;
 
-                for (int dispByte = cursorStartByte; dispByte < cursorStartByte + 8; dispByte++)
+                for (int dispByte = _cursorX; dispByte < _cursorX + 8; dispByte++)
                 {
                     // Could be much cleverer about this and shorten the loop
                     // if the cursor is off the edge; for now, just clip to range
@@ -706,6 +732,7 @@ namespace PERQemu.Memory
         int _lineCounterInit;
         bool _lineCountOverflow;
         bool _startOver;
+        bool _raised;
 
         // IO registers
         int _lineCounter;

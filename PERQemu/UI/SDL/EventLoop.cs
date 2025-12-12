@@ -164,7 +164,6 @@ namespace PERQemu.UI
             }
         }
 
-
         /// <summary>
         /// Process any pending SDL events.  This must be run on the main thread
         /// (on Mac, maybe not on Windows/Linux?) or events will be quietly
@@ -230,6 +229,11 @@ namespace PERQemu.UI
                         _winStateChanged = true;
                         return;
 
+                    case SDL.SDL_WindowEventID.SDL_WINDOWEVENT_MOVED:
+                    case SDL.SDL_WindowEventID.SDL_WINDOWEVENT_DISPLAY_CHANGED:
+                        MoveOrResize();
+                        return;
+
                     default:
                         Log.Detail(Category.UI, "Unhandled window event {0}", winEvent);
                         break;
@@ -250,6 +254,9 @@ namespace PERQemu.UI
             {
                 Log.Detail(Category.UI, "Unhandled event type {0}, user.type {1}", e.type, e.user.type);
             }
+
+            // Todo: handle TEXTINPUT so drag/drop or paste of long filenames (e.g.)
+            // doesn't have to be handled one character at a time
 #endif
         }
 
@@ -261,7 +268,7 @@ namespace PERQemu.UI
         void UpdateWindowState()
         {
             var flags = SDL.SDL_GetWindowFlags(_displayWindow);
-            Log.Detail(Category.UI, "Update: Window flags {0}", flags);
+            Log.Info(Category.UI, "Update: Window flags {0}", flags);
 
             if (flags != _winFlags)
             {
@@ -321,6 +328,26 @@ namespace PERQemu.UI
         }
 
         /// <summary>
+        /// Check if the display window has moved to a different screen,
+        /// and if so tell Display to resize itself.
+        /// </summary>
+        void MoveOrResize()
+        {
+            // Get the screen # for the display window
+            var index = SDL.SDL_GetWindowDisplayIndex(_displayWindow);
+            if (index < 0)
+                throw new InvalidOperationException($"Failed to get DisplayIndex: {SDL.SDL_GetError()}");
+
+            // Move to a different screen?
+            if (index != PERQemu.Sys.Display.Screen)
+            {
+                Log.Info(Category.UI, "Display is now on screen {0}", index);
+
+                PERQemu.Sys.Display.SizeForScreen(index);
+            }
+        }
+
+        /// <summary>
         /// Set our preferred cursor on window focus.
         /// </summary>
         void FocusCursor()
@@ -348,7 +375,8 @@ namespace PERQemu.UI
         }
 
         /// <summary>
-        /// Close down the timer and free SDL resources.
+        /// Close down the timer and free SDL resources when the
+        /// emulator is powering off.
         /// </summary>
         public void ShutdownSDL()
         {
@@ -380,6 +408,38 @@ namespace PERQemu.UI
             }
         }
 
+        /// <summary>
+        /// Check that the SDL2 libraries are available (to aid in debugging).
+        /// </summary>
+        public string GetSDLVersion(bool build)
+        {
+            string vers;
+
+            try
+            {
+                if (build)
+                {
+                    SDL.SDL_VERSION(out _sdlVers);
+                    vers = $"[Compiled with SDL {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}, ";
+                    SDL_image.SDL_IMAGE_VERSION(out _sdlVers);
+                    vers += $" SDL_image {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}]";
+                }
+                else
+                {
+                    SDL.SDL_GetVersion(out _sdlVers);
+                    vers = $"[Linked with SDL {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}, ";
+                    _sdlVers = SDL_image.IMG_Linked_Version();
+                    vers += $" SDL_image {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}]";
+                }
+            }
+            catch
+            {
+                vers = "** Failed to obtain SDL version string!  Are the libraries installed?";
+            }
+
+            return vers;
+        }
+
 
         int _timerHandle;
         bool _sdlRunning;
@@ -390,6 +450,8 @@ namespace PERQemu.UI
         IntPtr _displayWindow;
         IntPtr _defaultCursor;
         IntPtr _crossHairs;
+
+        SDL.SDL_version _sdlVers;
 
         Dictionary<SDL.SDL_EventType, SDLMessageHandlerDelegate> _uiEventDispatch;
     }

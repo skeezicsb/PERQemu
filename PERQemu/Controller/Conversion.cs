@@ -136,5 +136,14 @@ namespace PERQemu
         {
             return (ulong)(1000000000 / (baud / 10));
         }
+
+        /// <summary>
+        /// Clamp the specified value, min and max.  Only until we finally
+        /// upgrade to a newer toolchain and can use Math.Clamp().  Sigh.
+        /// </summary>
+        public static int Clamp(int value, int min, int max)
+        {
+            return (value < min) ? min : (value > max) ? max : value;
+        }
     }
 }

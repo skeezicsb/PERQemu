@@ -134,6 +134,7 @@ namespace PERQemu
             RSBSettings = new SerialSettings(9600, 8, Parity.None, StopBits.One);
 
             RTCYearOffset = 1980;
+            Keymap = string.Empty;
 
             Reason = "Settings reset to defaults.";
             Changed = false;
@@ -181,7 +182,9 @@ namespace PERQemu
         public static string EtherDevice;
         //public static string AudioDevice;
 
+        // Customizations
         public static int RTCYearOffset;
+        public static string Keymap;
 
         // Housekeeping
         public static string Reason;
@@ -298,6 +301,10 @@ namespace PERQemu
                     if (RTCYearOffset != 1980)
                         sw.WriteLine($"rtc offset {RTCYearOffset}");
 
+                    // New in v0.8.4; save custom keymap, if set
+                    if (!string.IsNullOrEmpty(Keymap))
+                        sw.WriteLine($"keymap {Keymap}");
+                                       
                     sw.WriteLine("#");
                     sw.WriteLine("# These options are not yet implemented:");
                     sw.WriteLine($"# debug radix {DebugRadix}");

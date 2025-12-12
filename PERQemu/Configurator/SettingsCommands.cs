@@ -32,11 +32,10 @@ namespace PERQemu.UI
     /// </summary>
     public class SettingsCommands
     {
-
         [Command("settings", "Enter the settings subsystem", Prefix = true)]
         public void SetSettingsPrefix()
         {
-            PERQemu.CLI.SetPrefix("settings");
+            PERQemu.CLI.SetPrefix("settings", SettingsChanged);
         }
 
         [Command("settings commands", "Show settings commands and their descriptions")]
@@ -50,6 +49,12 @@ namespace PERQemu.UI
         {
             CheckSerialPorts();
             PERQemu.CLI.ResetPrefix();
+        }
+
+        // Delegate for the CommandPrompt check
+        public bool SettingsChanged()
+        {
+            return Settings.Changed;
         }
 
         [Command("settings show", "Show all program settings")]
@@ -66,15 +71,25 @@ namespace PERQemu.UI
             Console.WriteLine();
             Console.WriteLine($"Rate limiting options:  {Settings.Performance}");
             Console.WriteLine();
-            Console.WriteLine($"Default radix for CPU debugger: {Settings.DebugRadix}");
-            Console.WriteLine($"Default radix for Z80 debugger: {Settings.Z80Radix}");
-            Console.WriteLine();
+
+            // Format/output options
+            //Console.WriteLine($"Default radix for CPU debugger: {Settings.DebugRadix}");
+            //Console.WriteLine($"Default radix for Z80 debugger: {Settings.Z80Radix}");
             Console.WriteLine($"Default output directory:   {Settings.OutputDirectory}");
             Console.WriteLine($"Screenshot file format:     {Settings.ScreenshotFormat}");
             Console.WriteLine($"Canon output file format:   {Settings.CanonFormat}");
             Console.WriteLine($"Canon default paper type:   {Settings.CanonPaperSize}");
             Console.WriteLine($"Canon default resolution:   {Settings.CanonResolution}dpi");
-            Console.WriteLine($"EIO RTC chip year offset:   {Settings.RTCYearOffset}");
+            Console.WriteLine();
+
+            // Customizations
+            if (Settings.RTCYearOffset != 1980)
+                Console.WriteLine($"EIO RTC chip year offset:   {Settings.RTCYearOffset}");
+
+            if (!string.IsNullOrEmpty(Settings.Keymap))
+                Console.WriteLine($"Custom keyboard map:        {Settings.Keymap}");
+
+            // Devices
             Console.WriteLine();
             Console.Write("Host serial port A device:  ");
             Console.WriteLine(Settings.RSADevice == string.Empty ? "<unassigned>" :
@@ -114,6 +129,8 @@ namespace PERQemu.UI
             Settings.Save();
             Console.WriteLine(Settings.Reason);
         }
+
+        #region General settings
 
         [Command("settings autosave harddisk", "Save harddisks on shutdown")]
         public void SetAutosaveHard(Ask doit)
@@ -220,6 +237,10 @@ namespace PERQemu.UI
             QuietWrite($"Rate limit options set to {Settings.Performance}.");
         }
 
+        #endregion
+
+        #region Output settings
+
         [Command("settings output directory", "Set directory for saving printer output and screenshots")]
         public void SetOutputDir(string dir)
         {
@@ -278,6 +299,10 @@ namespace PERQemu.UI
                 QuietWrite($"Canon default output format set to {format}.");
             }
         }
+
+        #endregion
+
+        #region Serial port settings
 
         [Command("settings assign rs232 device", "Map a host device to a PERQ serial port")]
         public void SetRS232Device(char port, [KeywordMatch("ComPorts")] string hostDevice,
@@ -444,6 +469,9 @@ namespace PERQemu.UI
                      "might not load properly.  Please check your settings to reassign ports.");
         }
 
+        #endregion
+
+        #region Network settings
 
         [Command("settings show ethernet devices", "List available host Ethernet interfaces")]
         public void ShowEtherDevices()
@@ -474,6 +502,10 @@ namespace PERQemu.UI
             QuietWrite("Ethernet device unassigned.");
         }
 
+        #endregion
+
+        #region Customizations
+
         [Command("settings rtc offset", "Set the base year for the EIO RTC chip")]
         public void SetRTCOffset(int year)
         {
@@ -494,6 +526,29 @@ namespace PERQemu.UI
             }
         }
 
+        [Command("settings keymap", "Set a default custom keyboard map")]
+        public void SetKeymap([KeywordMatch("Keymaps")] string mapName)
+        {
+            if (mapName.ToLower() == "default" || mapName.ToLower() == "none")
+            {
+                mapName = string.Empty;
+            }
+
+            if (mapName != Settings.Keymap)
+            {
+                Settings.Keymap = mapName;
+                Settings.Changed = true;
+
+                if (string.IsNullOrEmpty(mapName))
+                    QuietWrite("No custom keyboard map will be applied.");
+                else
+                    QuietWrite($"Custom keyboard map is now '{mapName}'.");
+            }
+
+        }
+
+        #endregion
+
         // Pure cheese.  Don't spew messages when reading on startup.
         void QuietWrite(string s)
         {
@@ -503,7 +558,7 @@ namespace PERQemu.UI
 }
 
 /*
-	TODO:
+	Todo:
 	settings::screenshot format [jpg, png, tiff, ?]
 	settings::screenshot template [str] -- really?  cmon...
 	settings::canon template [str]      -- same 
@@ -511,7 +566,6 @@ namespace PERQemu.UI
 	settings::logging template [str]    -- hmm.
 	settings::logging keep [n]          -- how many files
 	settings::logging filesize [n]      -- in mb?  kb?
-	-- oh hey, i know, let's use log4j instead of rolling our own... :-P
 
 	Host interface to the network, serial and audio output devices
 	is globally set for all virtual machines:

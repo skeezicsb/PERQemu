@@ -36,7 +36,7 @@ namespace PERQemu.IO
         int ReadRegister(byte address);
 
         bool WantReceive(PhysicalAddress dest);
-        void DoReceive(byte[] packet);
+        void Receive(byte[] packet);
 
         void DumpEther();
     }

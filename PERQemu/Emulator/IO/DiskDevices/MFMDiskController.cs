@@ -43,12 +43,15 @@ namespace PERQemu.IO.DiskDevices
         }
 
         /// <summary>
-        /// Perform a "hardware reset" of the controller and drive.
+        /// Perform a "hardware reset" of the controller and drive(s).
         /// </summary>
         public void Reset()
         {
-            _dib.Reset();
+            // Clear interrupt and local state
             ResetFlags();
+
+            // Reset the DIB and drive(s)
+            _dib.Reset();
 
             Log.Debug(Category.HardDisk, "MFM controller reset");
         }
@@ -58,7 +61,7 @@ namespace PERQemu.IO.DiskDevices
         /// </summary>
         void ResetFlags()
         {
-            // Figure out what stuff gets reset, but assume everything?
+            // State machine reset to cancel any op in progress
             _system.Scheduler.Cancel(_busyEvent);
             _busyEvent = null;
 
@@ -68,7 +71,6 @@ namespace PERQemu.IO.DiskDevices
             _status = SMStatus.Idle;
             _command = SMCommand.Idle;
 
-            // Turn off interrupts
             SetInterrupt(false);
         }
 
@@ -592,7 +594,9 @@ namespace PERQemu.IO.DiskDevices
         /// </remarks>
         void SetInterrupt(bool raiseInterrupt)
         {
-            // If interrupts are disabled, force clear
+            // If interrupts are disabled, force clear.  This flag directly
+            // drives the interrupt line output enable but NOT the conditions
+            // (four flip-flops) that are combined to produce the signal!
             raiseInterrupt &= _flags.HasFlag(SMControl.InterruptsOn);
 
             if (raiseInterrupt && !_interrupting)
@@ -709,7 +713,7 @@ namespace PERQemu.IO.DiskDevices
             Fault = 0x020,          // Fault line from DIB (active low)
             OnCyl = 0x040,          // Seek Complete from DIB (active low)
             Ready = 0x080,          // Ready line from DIB (active low)
-            Index = 0x100           // Toggles on each revolution? Not the pulse?
+            Index = 0x100           // Toggles once each revolution
         }
 
         // MFM sector timing based on 5Mbit/sec typical transfer rate for 528-byte
@@ -831,16 +835,24 @@ namespace PERQemu.IO.DiskDevices
             /// Initiate a seek operation when the SeekLowCount register is written.
             /// The 5.25"/MFM controller goes _back_ to the Shugart SA-4000 style of
             /// pulsing the disk step line "manually", using a 555 timer circuit on
-            /// the DIB.  The currently selected unit must remain so during the seek
-            /// operation.
+            /// the DIB.  The selected unit must remain so during the seek operation.
             /// </summary>
             void StartSeek()
             {
+                // Sanity checks
                 if (SelectedDrive == null)
                 {
                     Log.Warn(Category.HardDisk, "MFM StartSeek on unattached unit {0}", _selected);
                     return;
                 }
+
+                if (_seekState != SeekState.Idle)
+                {
+                    Log.Warn(Category.HardDisk, "MFM StartSeek while {0} (unit {1})", _seekState, _selected);
+                    return;
+                }
+
+                ushort seekTo;
 
                 // Step count from the microcode is one less than the desired number!
                 _seekCount = (_seekHi << 6 | _seekLo) + 1;
@@ -851,20 +863,14 @@ namespace PERQemu.IO.DiskDevices
                     return;
                 }
 
-                // Sanity checks
-                if (_seekState != SeekState.Idle)
-                {
-                    Log.Warn(Category.HardDisk, "MFM StartSeek while {0} (unit {1})", _seekState, _selected);
-                    return;
-                }
-
                 // Doc says that OnCyl remains asserted until the first step pulse is
-                // issued, but if we're having overruns force the status update a bit early
-                // (OnCyl does NOT trigger an interrupt when de-asserted)
+                // issued, but PNX 5 (and possibly other implementations) seem to check
+                // status immediately and mistakenly report timeouts or errors if the
+                // OnCyl bit (seek complete) isn't forced off here.
                 _seekState = SeekState.Stepping;
                 UpdateStatus();
 
-                // Set our destination and check it / clip to range
+                // Compute distance and clip to range
                 if (_seekDir > 0)
                 {
                     // Don't seek past the end!
@@ -874,7 +880,7 @@ namespace PERQemu.IO.DiskDevices
                         Log.Warn(Category.HardDisk, "MFM unit {0} seek past last cylinder!  Clipped to {1} steps",
                                                     _selected, _seekCount);
                     }
-                    _cylinder = (ushort)(SelectedDrive.CurCylinder + _seekCount);
+                    seekTo = (ushort)(SelectedDrive.CurCylinder + _seekCount);
                 }
                 else
                 {
@@ -885,11 +891,11 @@ namespace PERQemu.IO.DiskDevices
                         Log.Warn(Category.HardDisk, "MFM unit {0} seek past first cylinder!  Clipped to {1} steps",
                                                     _selected, _seekCount);
                     }
-                    _cylinder = (ushort)(SelectedDrive.CurCylinder - _seekCount);
+                    seekTo = (ushort)(SelectedDrive.CurCylinder - _seekCount);
                 }
 
                 Log.Debug(Category.HardDisk, "MFM unit {0} starting seek from {1} to {2} ({3} steps)",
-                                             _selected, SelectedDrive.CurCylinder, _cylinder, _seekCount);
+                                             _selected, SelectedDrive.CurCylinder, seekTo, _seekCount);
 
                 _seekEvent = _control._system.Scheduler.Schedule(StepRate, SeekStepPulse);
             }
@@ -952,8 +958,8 @@ namespace PERQemu.IO.DiskDevices
             public void IndexPulse(ulong last)
             {
                 _latchedIndex = !_latchedIndex;
-                Log.Detail(Category.HardDisk, "EIO latched Index pulse {0} last {1}ns",
-                                              _latchedIndex, last);
+                Log.Verbose(Category.HardDisk, "EIO latched Index pulse {0} last {1}ns",
+                                               _latchedIndex, last);
             }
 
             /// <summary>
@@ -1071,8 +1077,8 @@ namespace PERQemu.IO.DiskDevices
                 _cylinder = SelectedDrive?.CurCylinder ?? 0;
 
                 _status.UnitReady = SelectedDrive?.Ready ?? false;
-                _status.DriveFault = SelectedDrive?.Fault ?? true;
-                _status.Index = SelectedDrive != null ? _latchedIndex : false;
+                _status.DriveFault = SelectedDrive?.Fault ?? false;
+                _status.Index = (SelectedDrive != null) && _latchedIndex;
 
                 _status.OnCylinder = _status.UnitReady && (_seekState == SeekState.Idle);
                 _status.Track0 = (_cylinder == 0);

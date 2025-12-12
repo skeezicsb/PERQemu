@@ -75,6 +75,18 @@ namespace PERQemu.UI
             }
         }
 
+        [Command("storage show", "Show storage status")]
+        void ShowStorageSettings()
+        {
+            Console.WriteLine("Storage status:");
+            Console.WriteLine("--------------");
+            Console.WriteLine("{0} mode.", _safe ? "Safe" : "Unsafe");
+            Console.WriteLine("{0} drive types defined, {1} aliases.",
+                              PERQemu.Config.GetKnownDevices().Length,
+                              PERQemu.Config.GetKnownAliases().Length);
+            StorageStatus();
+        }
+
         [Command("storage status", "Show status of loaded storage devices")]
         void StorageStatus()
         {
@@ -723,7 +735,8 @@ namespace PERQemu.UI
         /// <summary>
         /// Lists the known device types, all purdy like.
         /// </summary>
-        [Command("storage list", "List known storage devices")]
+        [Command("storage list")]   // deprecated
+        [Command("storage show devices", "List known storage devices")]
         void ListKnownTypes()
         {
             var drives = PERQemu.Config.GetKnownDevices();
@@ -743,9 +756,25 @@ namespace PERQemu.UI
         }
 
         /// <summary>
+        /// Lists the known device aliases.
+        /// </summary>
+        [Command("storage show aliases", "List colloquial device names")]
+        void ListKnownAliases()
+        {
+            var aliases = PERQemu.Config.GetKnownAliases();
+            Array.Sort(aliases);
+
+            foreach (var a in aliases)
+            {
+                var d = PERQemu.Config.GetKnownDeviceByName(a);
+                Console.WriteLine($"{a} is an alias for type {d.Info.Name}");
+            }
+        }
+
+        /// <summary>
         /// Shows the detailed specs for a particular drive.
         /// </summary>
-        [Command("storage show", "Show device specifications")]
+        [Command("storage show specifications", "Show device specifications")]
         void ShowDeviceSpecs([KeywordMatch("DriveTypes")] string driveType)
         {
             var drive = PERQemu.Config.GetKnownDeviceByName(driveType);
@@ -1148,7 +1177,6 @@ namespace PERQemu.UI
 
         #endregion
 
-
         #region Define new types
 
         //
@@ -1173,9 +1201,10 @@ namespace PERQemu.UI
             _dev.Info.Type = type;
             _dev.Info.Name = name;
             PERQemu.CLI.SetPrefix("storage define");
+
+            _alias = "";
         }
 
-        [Conditional("DEBUG")]
         [Command("storage define commands", "Show the sooper sekrit incantations")]
         void ShowDefineCommands()
         {
@@ -1188,6 +1217,12 @@ namespace PERQemu.UI
             _dev.Info.Description = desc;
         }
 
+        [Command("storage define alias", "Add a common alias for the drive")]
+        void DefineAlias(string alias)
+        {
+            _alias = alias;
+        }
+
         [Command("storage define geometry", "Define the drive's geometry")]
         void DefineNewGeometry(string tag, ushort cyl, byte heads, ushort sec, ushort secSize = 512, byte hdrSize = 0)
         {
@@ -1197,7 +1232,7 @@ namespace PERQemu.UI
             _dev.Geometry = geom;
         }
 
-        [Command("storage define geometry")]
+        [Command("storage define geometry", "Assign a previously defined geometry")]
         void DefineGeometry(string tag)
         {
             _dev.Geometry = PERQemu.Config.GetGeometry(tag);
@@ -1211,7 +1246,7 @@ namespace PERQemu.UI
             _dev.Specs = specs;
         }
 
-        [Command("storage define performance")]
+        [Command("storage define performance", "Assign a previously defined performance spec")]
         void DefineSpecs(string tag)
         {
             _dev.Specs = PERQemu.Config.GetDriveSpecs(tag);
@@ -1228,13 +1263,14 @@ namespace PERQemu.UI
         {
             try
             {
-                PERQemu.Config.AddKnownDrive(_dev);
+                PERQemu.Config.AddKnownDrive(_dev, _alias);
             }
             catch (Exception e)
             {
                 Log.Error(Category.Emulator, "Could not define drive {0}: {1}",
                           _dev.Info.Name, e.Message);
             }
+
             SetStoragePrefix();
         }
 
@@ -1243,5 +1279,7 @@ namespace PERQemu.UI
         static StorageDevice _dev;
 
         bool _safe;
+
+        string _alias;
     }
 }

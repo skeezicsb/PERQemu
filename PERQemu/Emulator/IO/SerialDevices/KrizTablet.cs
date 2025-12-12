@@ -37,6 +37,8 @@ namespace PERQemu.IO.SerialDevices
             _scheduler = scheduler;
             _system = system;
             _sendEvent = null;
+
+            _dataInterval = (ulong)(16.666667 * Conversion.MsecToNsec);
         }
 
         public void Reset()
@@ -88,15 +90,17 @@ namespace PERQemu.IO.SerialDevices
             // clipped to the PERQ screen dimensions for us, so there's no need
             // to adjust for display width.  Apply the X/Y "kluge" values based
             // on the POS tablet driver's expectations (see below)
-            int tabX = _system.Mouse.MouseX + 64;
-            int tabY = _system.VideoController.DisplayHeight - _system.Mouse.MouseY + 64;
+            int tabX = _system.HID.MouseX + 64;
+            int tabY = _system.VideoController.DisplayHeight -
+                       _system.Display.TopY -
+                       _system.HID.MouseY + 64;
 
             // Format 'em
             var tab1 = (byte)(((tabX >> 8) & 0x0f) |
-                               (_system.Mouse.MouseOffTablet ? 0x40 : 0) |
+                               (_system.HID.MouseOffTablet ? 0x40 : 0) |
                                (_system.Config.Display == Config.DisplayType.Landscape ? 0x20 : 0));
             var tab2 = (byte)(tabX & 0xff);
-            var tab3 = (byte)(((tabY >> 8) & 0x0f) | (_system.Mouse.MouseButton << 5));
+            var tab3 = (byte)(((tabY >> 8) & 0x0f) | (_system.HID.MouseButton << 5));
             var tab4 = (byte)(tabY & 0xff);
 
             // Send the data to the SIO - invert (active low data) if NOT EIO
@@ -112,13 +116,12 @@ namespace PERQemu.IO.SerialDevices
             Log.Debug(Category.Tablet, "Kriz sampled: x={0} y={1} button={2}",
                                         tabX, tabY, (tab3 >> 5));
 
-            // Wait 1/60th of a second and do it again
+            // Wait a jiffy and do it again
             _sendEvent = _scheduler.Schedule(_dataInterval, SendData);
         }
 
 
-        static readonly ulong _dataInterval = (ulong)(16.666667 * Conversion.MsecToNsec);
-
+        readonly ulong _dataInterval;
         byte _sync;
 
         ReceiveDelegate _rxDelegate;
@@ -132,7 +135,10 @@ namespace PERQemu.IO.SerialDevices
     Notes:
  
     The Kriz tablets send updates every 1/60th of a second to the Z80 on
-    serial port SIO B.  The message format is:
+    serial port SIO B.  But the ICL T2 Service guide says 90 updates/sec?
+    (Made no difference to PNX, and 60 is plenty smooth for every other OS.)
+
+    The message format is:
         <sync><data0>..<data4><pad0><pad1>
 
     The Sync char is 0x81 (for CIO) or 0x7e (EIO).  Two "junk" pad bytes are
