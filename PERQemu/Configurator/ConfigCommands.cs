@@ -470,18 +470,39 @@ namespace PERQemu.UI
                     PERQemu.Config.Changed = true;
                     Console.WriteLine($"IO Option board type {oioType} selected.");
 
-                    // Board changed; reset the selected options to defaults
-                    if (oioType == OptionBoardType.OIO)
+                    // Board changed; reset the selected options to defaults if
+                    // nothing set; remove or carry over any that still apply
+                    var option = PERQemu.Config.Current.IOOptions;
+
+                    switch (oioType)
                     {
-                        PERQemu.Config.Current.IOOptions = IOOptionType.Link;
-                    }
-                    else if (oioType == OptionBoardType.MLO)
-                    {
-                        PERQemu.Config.Current.IOOptions = IOOptionType.Canon;
-                    }
-                    else
-                    {
-                        PERQemu.Config.Current.IOOptions = IOOptionType.None;
+                        case OptionBoardType.OIO:
+                            // Add Link if nothing else selected
+                            if (option == IOOptionType.None)
+                                PERQemu.Config.Current.IOOptions = IOOptionType.Link;
+
+                            // Remove SMD (incompatible)
+                            RemoveIOOption(IOOptionType.SMD);
+                            break;
+
+                        case OptionBoardType.MLO:
+                        case OptionBoardType.Ether3:
+                            // No changes -- these boards not yet supported
+
+                            // Add Canon if not already selected
+                            //if (option == IOOptionType.None)
+                            //    PERQemu.Config.Current.IOOptions = IOOptionType.Canon;
+
+                            // Remove Link, Ether if present
+                            //RemoveIOOption(IOOptionType.Link);
+                            //RemoveIOOption(IOOptionType.Ether);
+                            break;
+
+                        case OptionBoardType.None:
+                            // Remove Tape (resets unit 3), zap the rest and let Validate() whine
+                            RemoveIOOption(IOOptionType.Tape);
+                            PERQemu.Config.Current.IOOptions = IOOptionType.None;
+                            break;
                     }
                 }
 
@@ -505,38 +526,47 @@ namespace PERQemu.UI
             {
                 switch (opt)
                 {
-                    // Always valid; resets the selected options
+                    // Adding nothing is a no-op?  Not a reset...
                     case IOOptionType.None:
-                        if (PERQemu.Config.Current.IOOptions != opt)
-                        {
-                            PERQemu.Config.Current.IOOptions = opt;
-                            PERQemu.Config.Changed = true;
-                            Console.WriteLine("IO options reset.");
-                        }
+                        //if (PERQemu.Config.Current.IOOptions != opt)
+                        //{
+                        //    PERQemu.Config.Current.IOOptions = opt;
+                        //    PERQemu.Config.Changed = true;
+                        //    Console.WriteLine("IO options reset.");
+                        //}
                         break;
 
                     // These are valid for OIO and MLO
                     case IOOptionType.Link:
                     case IOOptionType.Tape:
                     case IOOptionType.Canon:
-                        if (PERQemu.Config.Current.IOOptionBoard == OptionBoardType.OIO ||
-                            PERQemu.Config.Current.IOOptionBoard == OptionBoardType.MLO)
-                        {
-                            PERQemu.Config.Current.IOOptions |= opt;
-                            PERQemu.Config.Changed = true;
-                            Console.WriteLine($"IO option '{opt}' selected.");
-                        }
-                        else
+                        if (PERQemu.Config.Current.IOOptionBoard != OptionBoardType.OIO &&
+                            PERQemu.Config.Current.IOOptionBoard != OptionBoardType.MLO)
                         {
                             Console.WriteLine("That option is incompatible with the selected IO Option board.");
+                            break;
+                        }
+
+                        PERQemu.Config.Current.IOOptions |= opt;
+                        PERQemu.Config.Changed = true;
+                        Console.WriteLine($"IO option '{opt}' selected.");
+
+                        // Streamer support: if we've added the QIC controller, make sure
+                        // unit 3 (fixed, currently) is configured to accept QIC tapes
+                        if (opt == IOOptionType.Tape)
+                        {
+                            if (PERQemu.Config.Current.Drives[3].Type == DeviceType.Unused)
+                            {
+                                PERQemu.Config.Current.SetDeviceType(3, DeviceType.TapeQIC);
+                                Console.WriteLine("* Drive unit 3 now accepts QIC tapes.");
+                            }
                         }
                         break;
 
                     // Ethernet is valid for OIO, unless the EIO is selected; in
                     // theory you could use an NIO + OIO Ethernet but that's just silly.
                     case IOOptionType.Ether:
-                        if (PERQemu.Config.Current.IOBoard == IOBoardType.NIO &&
-                            opt.HasFlag(IOOptionType.Ether))
+                        if (PERQemu.Config.Current.IOBoard == IOBoardType.NIO && opt == IOOptionType.Ether)
                         {
                             // Special case: if the user wants to add Ethernet to a 
                             // machine configured with an NIO board, I'll just switch
@@ -574,39 +604,7 @@ namespace PERQemu.UI
                         break;
                 }
 
-                //
-                // Streamer support: if we've added the board/option combo that
-                // provides a QIC controller, make sure unit 3 (fixed, currently)
-                // is configured to accept QIC tapes.  Otherwise, revert it to
-                // "unused" so we don't bomb trying to load a non-existent drive
-                //
-                if (PERQemu.Config.Current.IOOptionBoard == OptionBoardType.OIO ||
-                    PERQemu.Config.Current.IOOptionBoard == OptionBoardType.MLO)
-                {
-                    if (PERQemu.Config.Current.IOOptions.HasFlag(IOOptionType.Tape))
-                    {
-                        // WITH tape option, make sure unit 3 accepts the media
-                        if (PERQemu.Config.Current.Drives[3].Type == DeviceType.Unused)
-                        {
-                            PERQemu.Config.Current.SetDeviceType(3, DeviceType.TapeQIC);
-                            Console.WriteLine("* Drive unit 3 now accepts QIC tapes.");
-                        }
-                    }
-                    else
-                    {
-                        // WITHOUT the tape option, reset unit 3 (losing any assigned file?)
-                        if (PERQemu.Config.Current.Drives[3].Type == DeviceType.TapeQIC)
-                        {
-                            // Zap the file, or leave it defined?  Hmm...
-                            PERQemu.Config.Current.SetDeviceType(3, DeviceType.Unused);
-                            Console.WriteLine("* Drive unit 3 is now unassigned.");
-                        }
-                    }
-                }
-
-                // CheckOptions should catch the case where Tape is defined but
-                // the board type doesn't support the controller...
-
+                // Sanity check
                 if (!PERQemu.Config.CheckOptions())
                 {
                     Console.WriteLine(PERQemu.Config.Current.Reason);
@@ -631,6 +629,15 @@ namespace PERQemu.UI
                     PERQemu.Config.Changed = true;
                     Console.WriteLine($"IO Option '{opt}' deselected.");
 
+                    // If removing the tape option, reset unit 3
+                    if (opt == IOOptionType.Tape && PERQemu.Config.Current.Drives[3].Type == DeviceType.TapeQIC)
+                    {
+                        // Zap the file, or leave it defined?  Hmm...
+                        PERQemu.Config.Current.SetDeviceType(3, DeviceType.Unused);
+                        Console.WriteLine("* Drive unit 3 is now unassigned.");
+                    }
+
+                    // Check that things still make sense
                     if (!PERQemu.Config.CheckOptions())
                     {
                         Console.WriteLine(PERQemu.Config.Current.Reason);

@@ -41,6 +41,8 @@ namespace PERQemu.Config
 
             _description = string.Empty;
             _filename = string.Empty;
+            _modified = false;
+            _saved = false;
 
             Name = name;    // set key
         }
@@ -75,11 +77,27 @@ namespace PERQemu.Config
             set { _map = value; }
         }
 
+        public bool IsModified
+        {
+            get { return _modified; }
+            set { _modified = value; }
+        }
+
+        public bool IsSaved
+        {
+            get { return _saved; }
+            set { _saved = value; }
+        }
+
         string _name;           // short (file) name
         string _description;    // brief description
         string _filename;       // full saved filename
         string _key;            // hash key for matching
+
         KeyboardMap _map;       // actual SDL2->PERQ key maps
+
+        bool _modified;         // changes since last save?
+        bool _saved;            // saved to disk?
     }
 
     /// <summary>
@@ -100,7 +118,7 @@ namespace PERQemu.Config
         // Delegate for command prompt check
         public bool Changed()
         {
-            return _modified || !_saved;
+            return (_current != null && (_current.IsModified || !_current.IsSaved));
         }
 
         public void Initialize()
@@ -113,8 +131,6 @@ namespace PERQemu.Config
 
             // Unload
             _current = null;
-            _modified = false;
-            _saved = true;
         }
 
         public bool IsReserved(SDL.SDL_Keycode key)
@@ -127,6 +143,8 @@ namespace PERQemu.Config
             // Add the default (built-in)
             DefineMap("default");
             _current.Description = "Default (built-in) keyboard mapping";
+            _current.IsModified = false;
+            _current.IsSaved = true;
             AddOrUpdateMap();
 
             Log.Debug(Category.MediaLoader, "Loading keyboard maps from '{0}'",
@@ -137,6 +155,8 @@ namespace PERQemu.Config
                 if (Load(Paths.Canonicalize(file)))
                 {
                     // Loading always updates _current on success
+                    _current.IsModified = false;
+                    _current.IsSaved = true;
                     Log.Detail(Category.MediaLoader, "Added keyboard map '{0}'", _current.Name);
                 }
             }
@@ -228,13 +248,13 @@ namespace PERQemu.Config
                     sw.Close();
                 }
 
-                _modified = false;
-                _saved = true;
+                _current.IsModified = false;
+                _current.IsSaved = true;
                 Console.WriteLine("done.");
             }
             catch (Exception e)
             {
-                _saved = false;
+                _current.IsSaved = false;
                 Console.WriteLine("failed!");
                 Console.WriteLine(e.Message);
             }
@@ -292,32 +312,27 @@ namespace PERQemu.Config
 
         public void SetCurrent(KeymapFile map)
         {
-            if (_current != map)
-            {
-                _current = map;
-                _modified = false;
-                _saved = true;
-            }
+            _current = map;
         }
 
         public void DefineMap(string name)
         {
             _current = new KeymapFile(name);
             _current.Filename = Paths.QualifyPathname(_current.Key, Paths.ConfigDir, ".kbd", true);
-            _modified = false;
-            _saved = false;
+            _current.IsModified = false;
+            _current.IsSaved = false;
         }
 
         public void ResetMap()
         {
             _current.Map = new KeyboardMap(KeyboardType.VT100);
-            _modified = true;
+            _current.IsModified = true;
         }
 
         public void SetDescription(string desc)
         {
             _current.Description = desc;
-            _modified = true;
+            _current.IsModified = true;
         }
 
         public void AddOrUpdateMap()
@@ -402,7 +417,7 @@ namespace PERQemu.Config
                 }
             }
 
-            // if list is empty, no changes!
+            // If list is empty, no changes!
             if (list.Count == 0)
             {
                 Console.WriteLine("No changes from the default map.");
@@ -418,13 +433,12 @@ namespace PERQemu.Config
 
         public bool MapKey(SDL.SDL_Keycode hostKey, KeyCap perqKey)
         {
-            var currentKey = _current.Map.GetKeyMapping(hostKey);
-
-            if (currentKey == perqKey) return false;
+            if (_current.Map.GetKeyMapping(hostKey) == perqKey)
+                return false;
 
             // Change the map
             _current.Map.SetKeyMapping(hostKey, perqKey);
-            _modified = true;
+            _current.IsModified = true;
             return true;
         }
 
@@ -459,8 +473,5 @@ namespace PERQemu.Config
 
         // Working map
         KeymapFile _current;
-
-        bool _modified;
-        bool _saved;
     }
 }

@@ -857,7 +857,7 @@ namespace PERQemu.UI
                     // In DEBUG mode, expose the "hidden" commands...
                     if (!string.IsNullOrEmpty(cmd.Desc))
 #else
-                    if (!key.Hidden && !cmd.Hidden && !string.IsNullOrEmpty(cmd.Desc))
+                    if (!cmd.Hidden && !string.IsNullOrEmpty(cmd.Desc))
 #endif
                     {
                         cmds.Add(cmd);

@@ -85,6 +85,7 @@ PERQemu v0.7.5 wraps up all the work since v0.5.0 along with a batch of new
 bundled hard disk images with new software to play with.  It is a release to
 "skeezicsb/main" and a candidate to sync up with the master branch.
 
+Version 0.8.5 
 Please check back often for updates!
 
 
@@ -126,7 +127,8 @@ There are several subdirectories:
     Conf/
         Contains a collection of "prefab" system configurations as well as
         device data required for operation.  By default, all custom PERQ
-        configurations are also saved in and loaded from this directory.
+        configurations and keyboard maps are also saved in and loaded from
+        this directory.
 
     Disks/
         Contains disk images that the emulator can access.  Included with
@@ -367,9 +369,10 @@ The following hardware has been implemented in the emulator:
     - Now uses the SDL2 interface so no more horrible hacks required for MacOS;
     - Support for the VT100-style PERQ-2 keyboard is now included and is working
       (but is not fully tested and has some limitations);
+    - Keyboard re-mapping is now fully supported so you can customize PERQemu
+      for your host/preferences (See UserGuide.pdf for details!);
     - Currently caps lock is problematic and can get out of sync with the host.
-      This is a minor inconvenience but it's on the bug list.  [TODO: check if
-      this is still the case under SDL2.]
+      This is a minor inconvenience but it's on the bug list.
 
   RS-232:
     - The Z80 SIO chip is implemented to work with the new Z80 emulator;
@@ -532,7 +535,7 @@ v0.9 - TBD
   - Full-featured Ethernet with encapsulation options/no root requirement
   - Working audio output :-)
 
-v0.8.4 - Experiments branch (v0.8.5 pre-release)
+v0.8.5 - Main branch
   - Minor updates to Nuget package dependencies (now tested/verified against
     SDL 2.32.4, SDL_image 2.8.8, PacketDotNet 0.30.3)
   - Shrinks the display window to accommodate small screens; automatically
@@ -542,7 +545,8 @@ v0.8.4 - Experiments branch (v0.8.5 pre-release)
   - Can now define, edit, save and apply custom keyboard mappings on a per-
     configuration basis (UserGuide updated in excruciating detail)
   - Add aliases to the storage device list so more common/colloquial names
-    can be used to specific drive types
+    can be used to specific drive types (will be revisited/improved when a
+    new PERQmedia and PERQdisk update drops)
 
 v0.7.8 - Main branch (v0.8.x pre-release)
   - 24-bit CPU with 4MB memory fixes (now boots Accent; more testing to do)
@@ -703,7 +707,7 @@ v0.1 - First public release
 
 Update history:
 
-12/7/2025 - skeezicsb - v0.8.4 (experiments)
+12/12/2025 - skeezicsb - v0.8.5 (main)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)
 4/17/2025 - skeezicsb - v0.7.0 (experiments)

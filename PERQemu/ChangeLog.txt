@@ -7,6 +7,11 @@ Previous notes moved to ChangeLog-Old.txt.
 
 December, 2025:
 
+    2. Some small tweaks and cleanups plus more cursory testing of the keyboard
+    mapping stuff.  Updates to the Configurator and more tuning and fussing.
+    Seems to work okay (no major regressions); will push v0.8.5 for release and
+    focus on in-depth testing with the next one.  Kick that can down the road.
+
     1. Anything worth killing is worth OVERKILLING.  Remapping keyboards isn't
     just a matter of dropping a hand wrought text file in the Conf directory,
     no sirree.  A WHOLE NEW CLI SUBSYSTEM.  Settings and Configuration commands.
@@ -366,4 +371,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Sun Dec  7 22:38:19 PST 2025
+Last update: skeezics    Thu Dec 11 13:28:22 PST 2025

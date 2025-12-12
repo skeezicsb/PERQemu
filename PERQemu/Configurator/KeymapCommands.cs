@@ -254,6 +254,8 @@ namespace PERQemu.UI
         [Command("keymap editor", Prefix = true, Discreet = true)]
         public void StartEditing()
         {
+            if (PERQemu.Keymaps.Current == null) return;
+
             PERQemu.CLI.SetPrefix("keymap editor", PERQemu.Keymaps.Changed);
             ShowKeypresses(true);
         }
@@ -375,16 +377,16 @@ namespace PERQemu.UI
             SetKeymapPrefix();
         }
 
-void ShowKeypresses(bool enable)
-{
-	if (PERQemu.Sys == null) return;
+        void ShowKeypresses(bool enable)
+        {
+            if (PERQemu.Sys == null) return;
 
-	if (enable != PERQemu.Sys.HID.ShowKeycodes)
-	{
-		PERQemu.Sys.HID.ShowKeycodes = enable;
-		Console.WriteLine((enable ? "Showing" : "Not showing") + " key presses.");
-	}
-}
+            if (enable != PERQemu.Sys.HID.ShowKeycodes)
+            {
+                PERQemu.Sys.HID.ShowKeycodes = enable;
+                Console.WriteLine((enable ? "Showing" : "Not showing") + " key presses.");
+            }
+        }
 
         #endregion
 

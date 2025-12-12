@@ -1205,7 +1205,6 @@ namespace PERQemu.UI
             _alias = "";
         }
 
-        [Conditional("DEBUG")]
         [Command("storage define commands", "Show the sooper sekrit incantations")]
         void ShowDefineCommands()
         {
@@ -1233,7 +1232,7 @@ namespace PERQemu.UI
             _dev.Geometry = geom;
         }
 
-        [Command("storage define geometry")]
+        [Command("storage define geometry", "Assign a previously defined geometry")]
         void DefineGeometry(string tag)
         {
             _dev.Geometry = PERQemu.Config.GetGeometry(tag);
@@ -1247,7 +1246,7 @@ namespace PERQemu.UI
             _dev.Specs = specs;
         }
 
-        [Command("storage define performance")]
+        [Command("storage define performance", "Assign a previously defined performance spec")]
         void DefineSpecs(string tag)
         {
             _dev.Specs = PERQemu.Config.GetDriveSpecs(tag);

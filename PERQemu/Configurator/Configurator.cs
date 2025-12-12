@@ -273,6 +273,11 @@ namespace PERQemu.Config
             // Reset for normal CLI interactions
             _quietly = false;
             _current = Default;
+
+            // I am a dork, and sent out a hand-edited .cfg for FLEX that sets
+            // the boot character.  Reset that here, in case other preloads do
+            // similar such shenanigans
+            PERQemu.Controller.BootChar = 0;
         }
 
         #endregion
@@ -445,7 +450,7 @@ namespace PERQemu.Config
             return conf.IsValid;
         }
 
-#endregion
+        #endregion
 
         #region CPU and Memory validation
 
@@ -814,17 +819,8 @@ namespace PERQemu.Config
                         if (conf.IOOptionBoard != OptionBoardType.OIO &&
                             conf.IOOptionBoard != OptionBoardType.MLO)
                         {
-                            conf.Reason = $"IO Option board type '{conf.IOOptionBoard} doesn't support QIC Tape.";
+                            conf.Reason = $"IO Option board type '{conf.IOOptionBoard}' doesn't support QIC Tape.";
                             return false;
-                        }
-
-                        // Have a drive slot defined but no controller?  Add it...
-                        // This probably shouldn't come up, but this whole thing
-                        // is a little bit janky.  Hmm.
-                        if (!conf.IOOptions.HasFlag(IOOptionType.Tape))
-                        {
-                            conf.Reason = "QIC Tape unit defined but controller not configured (adding it).";
-                            conf.IOOptions |= IOOptionType.Tape;
                         }
                         break;
 
@@ -883,9 +879,21 @@ namespace PERQemu.Config
 
                     case DeviceType.DiskSMD:
                     case DeviceType.Tape9Track:
+                        // These aren't implemented yet
+                        keepMedia = false;
+                        break;
+
                     case DeviceType.TapeQIC:
-                        // Not relevant, since these are attached to option boards!
-                        keepMedia = true;
+                        // Check that the Tape option is valid and unit 3 matches
+                        if (conf.IOOptions.HasFlag(IOOptionType.Tape))
+                        {
+                            if (d.Type == DeviceType.TapeQIC)
+                                keepMedia = true;
+                            else
+                                conf.SetDeviceType(unit, DeviceType.TapeQIC);
+                        }
+                        else
+                            conf.SetDeviceType(unit, DeviceType.Unused);
                         break;
 
                     case DeviceType.Disk14Inch:
@@ -924,8 +932,7 @@ namespace PERQemu.Config
                             case IOBoardType.CIO:
                                 // Allow in the rare/weird case of a "CIO Micropolis"
                                 // configuration, even if they were only theoretical
-                                if (conf.Chassis == ChassisType.PERQ1)
-                                    keepMedia = true;
+                                keepMedia |= conf.Chassis == ChassisType.PERQ1;
                                 break;
 
                             case IOBoardType.EIO:
@@ -941,11 +948,12 @@ namespace PERQemu.Config
                     case DeviceType.Disk5Inch:
                         // 5.25" MFM drives only valid on EIO/NIO in the PERQ2Tx-type
                         // chassis; remapped to 8" in PERQ2 or 14" on PERQ1 IOB/CIO.
+                        // Drive unit #2 is always unmapped if we aren't a Tx.
                         switch (newType)
                         {
                             case IOBoardType.IOB:
                             case IOBoardType.CIO:
-                                conf.SetDeviceType(unit, DeviceType.Disk14Inch);
+                                conf.SetDeviceType(unit, unit == 1 ? DeviceType.Disk14Inch : DeviceType.Unused);
                                 break;
 
                             case IOBoardType.EIO:
@@ -953,7 +961,7 @@ namespace PERQemu.Config
                                 if (conf.Chassis == ChassisType.PERQ2Tx)
                                     keepMedia = true;
                                 else
-                                    conf.SetDeviceType(unit, DeviceType.Disk8Inch);
+                                    conf.SetDeviceType(unit, unit == 1 ? DeviceType.Disk8Inch : DeviceType.Unused);
                                 break;
                         }
                         break;
