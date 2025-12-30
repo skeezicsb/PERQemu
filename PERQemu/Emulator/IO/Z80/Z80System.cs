@@ -23,6 +23,7 @@ using System.Threading;
 using Konamiman.Z80dotNet;
 
 using PERQemu.Debugger;
+using PERQemu.IO.SerialDevices;
 
 namespace PERQemu.IO.Z80
 {
@@ -68,6 +69,7 @@ namespace PERQemu.IO.Z80
 
         public NECuPD765A FDC => _fdc;
         public TMS9914A GPIB => _tms9914a;
+        public MC3417 Speech => _cvsd;
 
         public abstract Z80SIO SIOA { get; }
         public abstract Z80CTC CTC { get; }
@@ -233,6 +235,7 @@ namespace PERQemu.IO.Z80
             _stopAsyncThread = (s.State != RunState.Running);
         }
 
+        // Debugging
         public void ShowThreadStatus()
         {
             if (_asyncThread != null)
@@ -242,6 +245,7 @@ namespace PERQemu.IO.Z80
                                   _asyncThread.ThreadState);
             }
         }
+
 
         // FIXME: should move this to PERQsystem or DebugCommands?
         // FIXME: this massively expensive routine has to be rewritten...
@@ -260,7 +264,7 @@ namespace PERQemu.IO.Z80
             ushort offset = 0;
             var symbol = _z80Debugger.GetSymbolForAddress(regs.PC, out offset);
             var source = _z80Debugger.GetSourceLineForAddress(regs.PC);
-            
+
             Console.WriteLine("Z80 {0}\n    {1}+{2}: {3}", state, symbol, offset, source);
         }
 
@@ -289,6 +293,8 @@ namespace PERQemu.IO.Z80
 
         protected NECuPD765A _fdc;
         protected TMS9914A _tms9914a;
+        protected MC3417 _cvsd;
+        protected SerialMux _speechMux;
 
         protected Z80Debugger _z80Debugger;
         protected Scheduler _scheduler;

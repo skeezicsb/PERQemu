@@ -1,4 +1,4 @@
-﻿//
+//
 // ConfigCommands.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
@@ -760,9 +760,9 @@ namespace PERQemu.UI
             {
                 case 'a':
                 case 'A':
-                    if (PERQemu.Config.Current.RSAEnable != flag)
+                    if (PERQemu.Config.Current.RSAEnabled != flag)
                     {
-                        PERQemu.Config.Current.RSAEnable = flag;
+                        PERQemu.Config.Current.RSAEnabled = flag;
                         PERQemu.Config.Changed = true;
                         return true;
                     }
@@ -773,9 +773,9 @@ namespace PERQemu.UI
                     if (PERQemu.Config.Current.IOBoard == IOBoardType.EIO ||
                         PERQemu.Config.Current.IOBoard == IOBoardType.NIO)
                     {
-                        if (PERQemu.Config.Current.RSBEnable != flag)
+                        if (PERQemu.Config.Current.RSBEnabled != flag)
                         {
-                            PERQemu.Config.Current.RSBEnable = flag;
+                            PERQemu.Config.Current.RSBEnabled = flag;
                             PERQemu.Config.Changed = true;
                             return true;
                         }

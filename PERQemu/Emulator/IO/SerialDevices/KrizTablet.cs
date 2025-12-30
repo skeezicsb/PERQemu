@@ -74,11 +74,10 @@ namespace PERQemu.IO.SerialDevices
 
         public void Transmit(byte value)
         {
-            // Should never receive data... but it does!?  PERQdebugger (aka
-            // PERQman :-) in the POS G demo sends data to the tablet for some
-            // unknown reason.  Ignore it to avoid halting the emulator, for
-            // now; maybe figure out if it's supposed to be handled?  It might
-            // actually be audio, which uses the transmit side of the SIO channel?!
+            // Should never receive data; the speech device is multiplexed onto
+            // the transmit side of the shared SIO channel.  To avoid halting the
+            // emulator, log and ignore these -- but with the SerialMux and CVSD
+            // chip implemented, it should never happen!
             Log.Debug(Category.Tablet, "Kriz received byte 0x{0:x2} (ignored)", value);
         }
 
@@ -149,6 +148,11 @@ namespace PERQemu.IO.SerialDevices
         ; with SIO internal operation on Sync recognition when it is programmed 
         ; back into Hunt mode below.
 
+    Evidently nobody read the Z80 SIO datasheet, because in sync mode the chip
+    is transmitting two CRC bytes -- but since our SIO implementation doesn't
+    insert them at the end of the message (how do it know!??) we just send two
+    extra NULs here.  Problem solved! :-)
+
     That comment is out of date; the format changed from 4 (v8.6) to 5 (v8.7)
     characters.  The SIO B receive routine counts from 0..6, so seven total bytes
     make up a complete tablet message.
@@ -169,7 +173,7 @@ namespace PERQemu.IO.SerialDevices
     
     The Z80 then reformats that into a different format to send to the PERQ.
     This is corroborated by Pointer.{CIO,EIO} from the new Z80 sources.
-    
+
     Also from v87.v80:
     
         ; Note: Tablet data is active low.

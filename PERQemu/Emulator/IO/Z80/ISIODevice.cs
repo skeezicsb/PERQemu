@@ -41,7 +41,7 @@ namespace PERQemu.IO.Z80
         void RegisterReceiveDelegate(ReceiveDelegate rxDelegate);
 
         /// <summary>
-        /// Writes a byte to the SIO device
+        /// Writes a byte to the SIO device.
         /// </summary>
         void Transmit(byte value);
 

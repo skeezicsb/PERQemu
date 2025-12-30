@@ -45,20 +45,18 @@ namespace PERQemu.IO.Z80
             // Set up the EIO peripherals
             _tms9914a = new TMS9914A(0, 0x7b, 0x7c);
             _fdc = new NECuPD765A(0x20, _scheduler);
-            _z80sioA = new Z80SIO(0x10, this, "A");
-            _z80sioB = new Z80SIO(0x40, this, "B");
-            _timerA = new i8254PIT(0x50, "A");
-            _timerB = new i8254PIT(0x54, "B");
+            _z80sioA = new Z80SIO(0x10, _scheduler, 'A', 0x79);
+            _z80sioB = new Z80SIO(0x40, _scheduler, 'B');
+            _timerA = new i8254PIT(0x50, 'A');
+            _timerB = new i8254PIT(0x54, 'B');
             _rtc = new Oki5832RTC(0x76);
 
             // Create our serial devices
+            _cvsd = new MC3417();
             _keyboard = new SerialKeyboard();
-            // _speech = new Speech(...)
+            _speechMux = new SerialMux();
 
-            // Same Z80 code for EIO/NIO
-            // Todo: verify for all variants?  8"/5.25", 24-bit?  The real fun
-            // begins when we load a ZBoot file and start executing dynamically
-            // loaded code from RAM.  Hmmm.
+            // Same Z80 PROM code for EIO/NIO
             _z80Debugger = new Z80Debugger("eioz80.lst");
 
             DeviceInit();
@@ -89,14 +87,22 @@ namespace PERQemu.IO.Z80
 
             if (_system.Config.Tablet.HasFlag(TabletType.Kriz))
             {
-                _z80sioA.AttachDevice(1, new KrizTablet(_scheduler, _system));
+                _speechMux.AttachRxDevice(new KrizTablet(_scheduler, _system));
             }
 
-            // Attach the keyboard
+            // If enabled, attach the CVSD chip
+            if (_system.Config.SpeechEnabled)
+            {
+                _speechMux.AttachTxDevice(_cvsd);
+                _timerA.AttachDevice(1, _cvsd);
+            }
+
+            // Attach the fixed devices (audio/tablet & keyboard)
+            _z80sioA.AttachDevice(1, _speechMux);
             _z80sioB.AttachDevice(1, _keyboard);
 
             // If enabled and configured, attach device to RS232 port A
-            if (_system.Config.RSAEnable && Settings.RSADevice != string.Empty)
+            if (_system.Config.RSAEnabled && Settings.RSADevice != string.Empty)
             {
                 if (Settings.RSADevice == "RSX:")
                 {
@@ -118,20 +124,11 @@ namespace PERQemu.IO.Z80
             }
 
             // Now do RS232 port B
-            if (_system.Config.RSBEnable && Settings.RSBDevice != string.Empty)
+            if (_system.Config.RSBEnabled && Settings.RSBDevice != string.Empty)
             {
-                if (Settings.RSBDevice == "RSX:")
-                {
-                    var rsx = new RSXFilePort(this);
-                    _z80sioB.AttachPortDevice(0, rsx);
-                    _timerB.AttachDevice(0, rsx);
-                }
-                else
-                {
-                    var rsb = new PhysicalPort(this, Settings.RSBDevice, Settings.RSBSettings, "B");
-                    _z80sioB.AttachPortDevice(0, rsb);
-                    _timerB.AttachDevice(0, rsb);
-                }
+                var rsb = new PhysicalPort(this, Settings.RSBDevice, Settings.RSBSettings, "B");
+                _z80sioB.AttachPortDevice(0, rsb);
+                _timerB.AttachDevice(0, rsb);
             }
             else
             {
@@ -166,7 +163,7 @@ namespace PERQemu.IO.Z80
             // Assign DMA devices to their channel
             _dmac.AttachChannelDevice(0, _fdc, 0x21);
             _dmac.AttachChannelDevice(1, _tms9914a, 0x07);
-            _dmac.AttachChannelDevice(2, _z80sioA, 0x10);   // Todo: speech
+            _dmac.AttachChannelDevice(2, _z80sioA, 0x10);
             _dmac.AttachChannelDevice(3, _pdma, 0x75);
         }
 
@@ -419,12 +416,12 @@ namespace PERQemu.IO.Z80
         // EIO/NIO boards
         //
         Am9519 _irqControl;
-        Z80SIO _z80sioA, _z80sioB;
-        i8254PIT _timerA, _timerB;
-        i8237DMA _dmac;
         PERQDMA _pdma;
-        Oki5832RTC _rtc;
+        i8237DMA _dmac;
+        i8254PIT _timerA, _timerB;
+        Z80SIO _z80sioA, _z80sioB;
         SerialKeyboard _keyboard;
+        Oki5832RTC _rtc;
         PERQToZ80FIFO _perqToZ80Fifo;
         Z80ToPERQFIFO _z80ToPerqFifo;
 
@@ -461,7 +458,7 @@ namespace PERQemu.IO.Z80
     SIOA    SEL SIO A L         20:37 (0x10)    Z80SIO (4 used)
     SIOB    SEL SIO B L         100:137 (0x40)  Z80SIO (4 used)
 
-    SIO?    SPEECH SEL L        171 (0x79)      <tbd>
+    SIOA    SPEECH SEL L        171 (0x79)      Speech=0, RSA=1
 
     CTCA    SEL CTC A L         120:127 (0x50)  i8254PIT (4 used?)
     CTCB    SEL CTC B L         130:137 (0x54)  i8254PIT (4 used?)

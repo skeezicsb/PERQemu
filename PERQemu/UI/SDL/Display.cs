@@ -50,12 +50,13 @@ namespace PERQemu.UI
         {
             _system = system;
 
-            _customEventType = 0;
             _fpsTimerId = -1;
             _screenIndex = -1;
 
-            _last = 0;
             _frames = 0;
+            _totalFrames = 0;
+            _totalCount = 0;
+            _lastFPSUpdate = 0;
             _prevClock = 0;
             _prevZ80Clock = 0;
             _floppyActive = false;
@@ -80,6 +81,8 @@ namespace PERQemu.UI
 
         public int TopY => _visibleRect.y;
         public int Screen => _screenIndex;
+
+        public double AverageFPS => _totalCount > 0 ? (_totalFrames / _totalCount) : 0.0;
 
         /// <summary>
         /// Set up our SDL window and the rendering machinery.
@@ -215,27 +218,16 @@ namespace PERQemu.UI
             _printerRect.x = _streamerRect.x - 36;
             _printerRect.y = _streamerRect.y;
 
-            // Set up our custom SDL render event, if not already done
-            if (_customEventType == 0)
-            {
-                // Take two, they're small
-                _customEventType = (SDL.SDL_EventType)SDL.SDL_RegisterEvents(2);
+            // Allocate our custom SDL events
+            _renderEvent = new SDL.SDL_Event();
+            PERQemu.GUI.Events.AssignEventID(ref _renderEvent, CustomEventType.RenderPERQDisplay);
 
-                _renderEvent = new SDL.SDL_Event();
-                _renderEvent.type = _customEventType;
-                _renderEvent.user.code = RENDER_FRAME;
-
-                _fpsUpdateEvent = new SDL.SDL_Event();
-                _fpsUpdateEvent.type = _customEventType + 1;
-                _fpsUpdateEvent.user.code = UPDATE_FPS;
-
-                Log.Debug(Category.Display, "Registered SDL events {0} and {1}",
-                          _renderEvent.type, _fpsUpdateEvent.type);
-            }
+            _fpsUpdateEvent = new SDL.SDL_Event();
+            PERQemu.GUI.Events.AssignEventID(ref _renderEvent, CustomEventType.UpdateFPSDisplay);
 
             // Register callbacks for our render events
-            PERQemu.GUI.RegisterDelegate(_renderEvent.type, RenderDisplay);
-            PERQemu.GUI.RegisterDelegate(_fpsUpdateEvent.type, UpdateFPS);
+            PERQemu.GUI.Events.Register(_renderEvent.type, RenderDisplay);
+            PERQemu.GUI.Events.Register(_fpsUpdateEvent.type, UpdateFPS);
 
             _system.FloppyActivity += OnFloppyActivity;
             _system.StreamerActivity += OnStreamerActivity;
@@ -247,7 +239,7 @@ namespace PERQemu.UI
             // Register a timer and callback to update the FPS display
             if (_fpsTimerId < 0)
             {
-                _fpsTimerId = HighResolutionTimer.Register(2000d, RefreshFPS, "FPS");
+                _fpsTimerId = HighResolutionTimer.Register(UpdateRate * 1000d, RefreshFPS, "FPS");
                 HighResolutionTimer.Enable(_fpsTimerId, true);
             }
 
@@ -390,7 +382,8 @@ namespace PERQemu.UI
                 {
                     SDL.SDL_SetWindowSize(_sdlWindow, _displayWidth, _visibleHeight);
 
-                    // Todo: if the machine is paused, do a refresh or the window turns black?
+                    // If the machine is paused, do a refresh or the window turns black?
+                    Refresh(_enabled);
                 }
             }
         }
@@ -509,45 +502,53 @@ namespace PERQemu.UI
         /// debugging.  It should be improved...
         /// </summary>
         /// <remarks>
-        /// For now(?) this is in the title bar, but it could be made optional
-        /// (or only in DEBUG mode?) or moved to a footer area where other status
-        /// info, like caps lock or mouse capture status is displayed...
+        /// For now this is in the title bar, but it could be moved to a footer
+        /// area where other status info, like caps lock or mouse capture status,
+        /// is displayed.
         /// </remarks>
         void UpdateFPS(SDL.SDL_Event e)
         {
-            // Snapshot our data points
-            var now = HighResolutionTimer.ElapsedHiRes();
-            var elapsed = now - _last;
-
+            // Snapshot the run state
             var state = _system.State;
 
-            var inst = _system.CPU.Clocks;
-            var z80inst = _system.IOB.Z80System.Clocks;
+            string title;
 
-            // Compute our instruction timing and frame rate
-            double ns = (elapsed * Conversion.MsecToNsec) / (inst - _prevClock);
-            double zns = (elapsed * Conversion.MsecToNsec) / (z80inst - _prevZ80Clock);
-            double fps = _frames / (elapsed * Conversion.MsecToSec);
-
-            // Save for next time
-            _prevClock = inst;
-            _prevZ80Clock = z80inst;
-            _last = now;
-            _frames = 0;    // not safe.  don't even care anymore.
-
-            // Update the title bar
-            if (state == RunState.Running)
+            if (state != RunState.Running)
             {
-                SDL.SDL_SetWindowTitle(_sdlWindow, $"PERQ - {fps:N2} fps, CPU {ns:N2}ns, Z80 {zns:N2}ns");
+                title = string.Format("PERQ is {0}",
+                                      ((state == RunState.RunInst) ||
+                                       (state == RunState.RunZ80Inst) ||
+                                       (state == RunState.SingleStep)) ?
+                                        "single stepping" : state.ToString());
             }
             else
             {
-                SDL.SDL_SetWindowTitle(_sdlWindow,
-                    string.Format("PERQ is {0}", ((state == RunState.RunInst) ||
-                                                  (state == RunState.RunZ80Inst) ||
-                                                  (state == RunState.SingleStep)) ?
-                                                  "single stepping" : state.ToString()));
+                // Snapshot our data points
+                var now = HighResolutionTimer.ElapsedHiRes();
+                var elapsed = now - _lastFPSUpdate;
+
+                var inst = _system.CPU.Clocks;
+                var z80inst = _system.IOB.Z80System.Clocks;
+
+                // Compute our instruction timing and frame rate
+                double ns = (elapsed * Conversion.MsecToNsec) / (inst - _prevClock);
+                double zns = (elapsed * Conversion.MsecToNsec) / (z80inst - _prevZ80Clock);
+                double fps = _frames / (elapsed * Conversion.MsecToSec);
+
+                title = $"PERQ - {fps:N2} fps, CPU {ns:N2}ns, Z80 {zns:N2}ns";
+
+                // Update rolling average
+                _totalFrames += _frames;
+                _totalCount += UpdateRate;
+
+                // Save for next time
+                _prevClock = inst;
+                _prevZ80Clock = z80inst;
+                _lastFPSUpdate = now;
+                _frames = 0;
             }
+
+            SDL.SDL_SetWindowTitle(_sdlWindow, title);
         }
 
         /// <summary>
@@ -589,12 +590,9 @@ namespace PERQemu.UI
                 _fpsTimerId = -1;
             }
 
-            // Clear out both of our custom events
-            SDL.SDL_FlushEvents(_customEventType, _customEventType + 1);
-
-            // Unregister our delegates
-            PERQemu.GUI.ReleaseDelegate(_renderEvent.type);
-            PERQemu.GUI.ReleaseDelegate(_fpsUpdateEvent.type);
+            // Unregister our delegates (flushes pending events)
+            PERQemu.GUI.Events.Release(_renderEvent.type);
+            PERQemu.GUI.Events.Release(_fpsUpdateEvent.type);
 
             _system.FloppyActivity -= OnFloppyActivity;
             _system.StreamerActivity -= OnStreamerActivity;
@@ -697,13 +695,16 @@ namespace PERQemu.UI
 
             Console.WriteLine("Frames={0}, warmedUp={1}, fader={2}, enabled={3}, freeY={4}",
                               _frames, _warmedUp, _fader, _enabled, _freeY);
+            Console.WriteLine("Average FPS={0:N3} (total frames {1}, samples {2})",
+                              AverageFPS, _totalFrames, _totalCount);
 
             var flags = SDL.SDL_GetWindowFlags(_sdlWindow);
             Console.WriteLine("Flags={0}", (SDL.SDL_WindowFlags)flags);
 
-            // debug - to be removed
+#if DEBUG
             if (SDL.SDL_RenderTargetSupported(_sdlRenderer) != SDL.SDL_bool.SDL_TRUE)
                 Console.WriteLine("RENDER TARGET NOT SUPPORTED");
+#endif
         }
 
         /// <summary>
@@ -812,10 +813,14 @@ namespace PERQemu.UI
         double _fader;
 
         // Frame count
-        long _frames;
+        ulong _frames;
+        ulong _totalFrames;
+        ulong _totalCount;
         ulong _prevClock;
         ulong _prevZ80Clock;
-        double _last;
+        double _lastFPSUpdate;
+
+        const ulong UpdateRate = 2;
 
         //
         // SDL
@@ -831,12 +836,8 @@ namespace PERQemu.UI
         SDL.SDL_Rect _visibleRect;
 
         // Events and stuff
-        SDL.SDL_EventType _customEventType;
         SDL.SDL_Event _renderEvent;
         SDL.SDL_Event _fpsUpdateEvent;
-
-        const int RENDER_FRAME = 1;
-        const int UPDATE_FPS = 2;
 
         int _fpsTimerId;
 

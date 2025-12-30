@@ -41,14 +41,17 @@ namespace PERQemu.IO.Z80
             _seekControl = new HardDiskSeekControl(_system);
             _perqToZ80Fifo = new PERQToZ80Latch(_system);
             _z80ToPerqFifo = new Z80ToPERQLatch(_system);
+            _dmaRouter = new DMARouter(this);
 
-            _fdc = new NECuPD765A(0xa8, _scheduler);
             _tms9914a = new TMS9914A(0xb8);
+            _fdc = new NECuPD765A(0xa8, _scheduler);
             _z80dma = new Z80DMA(0x98, _memory, _bus);
             _z80ctc = new Z80CTC(0x90, _scheduler);
-            _z80sio = new Z80SIO(0xb0, this);
-            _dmaRouter = new DMARouter(this);
+            _z80sio = new Z80SIO(0xb0, _scheduler);
+
+            _cvsd = new MC3417();
             _keyboard = new Keyboard();
+            _speechMux = new SerialMux();
 
             _ioReg3 = new IOReg3(_perqToZ80Fifo, _keyboard, _fdc, _dmaRouter);
 
@@ -89,11 +92,18 @@ namespace PERQemu.IO.Z80
 
             if (_system.Config.Tablet.HasFlag(TabletType.Kriz))
             {
-                _z80sio.AttachDevice(1, new KrizTablet(_scheduler, _system));
+                _speechMux.AttachRxDevice(new KrizTablet(_scheduler, _system));
+            }
+
+            // If enabled, attach the CVSD chip
+            if (_system.Config.SpeechEnabled)
+            {
+                _speechMux.AttachTxDevice(_cvsd);
+                _z80ctc.AttachDevice(1, _cvsd);
             }
 
             // If enabled and configured, attach device to RS232
-            if (_system.Config.RSAEnable && Settings.RSADevice != string.Empty)
+            if (_system.Config.RSAEnabled && Settings.RSADevice != string.Empty)
             {
                 if (Settings.RSADevice == "RSX:")
                 {
@@ -113,6 +123,9 @@ namespace PERQemu.IO.Z80
                 // Otherwise direct it to the bit bucket
                 _z80sio.AttachPortDevice(0, new NullPort(this));
             }
+
+            // Attach the mux device to SIO channel B
+            _z80sio.AttachDevice(1, _speechMux);
 
             // Everybody get on the bus!
             _bus.RegisterDevice(_fdc);
@@ -370,8 +383,8 @@ namespace PERQemu.IO.Z80
         Z80CTC _z80ctc;
         Z80DMA _z80dma;
         IOReg3 _ioReg3;
-        DMARouter _dmaRouter;
         Keyboard _keyboard;
+        DMARouter _dmaRouter;
         PERQToZ80Latch _perqToZ80Fifo;
         Z80ToPERQLatch _z80ToPerqFifo;
         HardDiskSeekControl _seekControl;

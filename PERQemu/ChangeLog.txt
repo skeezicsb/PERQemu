@@ -7,6 +7,32 @@ Previous notes moved to ChangeLog-Old.txt.
 
 December, 2025:
 
+    7. Clarify/correct the Settings/Configurator to discourage assigning RSX: to
+    serial port B on PERQ-2 configurations.  POS only acknowledges "RSX:" on
+    port A (all models).  Correct a silly bug on shutdown where sometimes the
+    display window would linger after power off.
+
+    6. Fix an off-by-one error in the i8237 DMA controller that wasn't causing
+    problems with the floppy, but did introduce audio glitches; can now test and
+    verify "high volume" RS-232 and GPIB DMA ops as well.
+
+    5. Oh yeah, speech/audio output works now.  (But it'll take a lot more work
+    to get the code into shape to release it.)
+
+    4. Implement a serial mux so that Speech and Kriz can share one SIO channel,
+    and add Sync/hunt mode checking on the Tx side.  For EIO, add the DMA select
+    register to the Z80SIO itself, as that seems to be the only sensible place
+    to do it.  (Neither DMAC knows or cares about the details; on IOB/CIO, the
+    Z80 DMA chip talks to the SIO B channel directly?)
+
+    3. Able to test v0.8.5 on virgin macOS Monterey and Linux Mint (Cinnamon)
+    installations.  Hiccup on macOS 12 due to the different behavior of the
+    dynamic linker, which deprecates the use of DYLD_LIBRARY_PATH but also does
+    NOT seem to include /usr/local/lib in its search path (or fallback path) as
+    the man page still hints that it should.  That aside, it runs just fine and
+    now I can do macOS, Linux and Windows testing at 60fps, hooray.  Development
+    of the CVSD decoder and plumbing for speech output begins!
+
     2. Some small tweaks and cleanups plus more cursory testing of the keyboard
     mapping stuff.  Updates to the Configurator and more tuning and fussing.
     Seems to work okay (no major regressions); will push v0.8.5 for release and
@@ -371,4 +397,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Thu Dec 11 13:28:22 PST 2025
+Last update: skeezics    Tue Dec 30 15:05:04 PST 2025

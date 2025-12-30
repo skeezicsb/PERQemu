@@ -24,38 +24,58 @@ using PERQemu.IO.SerialDevices;
 namespace PERQemu.IO.Z80
 {
     /// <summary>
-    /// An evolving implementation of the Z80 SIO serial controller, providing
-    /// the operational modes that the PERQ IOB makes use of.  Each channel may
-    /// have a basic ISIODevice attached (for pseudo devices not backed by a
-    /// physical port) or an ISerialDevice (a superset that provides hooks for
-    /// mapping register configuration to real hardware on the host).  Still a
-    /// work in progress.
+    /// Implements the Z80 SIO serial controller, with some PERQ peculiarities
+    /// built-in.  It provides the operational modes that the PERQ I/O boards
+    /// make use of for talking to RS-232 ports, the Speech output device, and
+    /// (optionally) the Kriz tablet.  On EIO, the serial keyboard is connected
+    /// to an SIO.  Handles async and (simple) sync modes.
     /// </summary>
     /// <remarks>
-    /// TODO: For EIO, take the opportunity to revisit and refactor the SIO to
-    /// do _all_ of the timing delays based on the PERQ's baud rate setting --
-    /// the client devices shouldn't have to mess with any of that.  RealPort
-    /// devices have the system's deep buffers; fake devices (RSX:) don't read
-    /// or write any faster than the SIO provides or accepts the data.  Having
-    /// the event scheduling in one place should make things cleaner.
+    /// Each channel may have a basic ISIODevice attached (for pseudo devices
+    /// not backed by a physical port) or an ISerialDevice (a superset that has
+    /// hooks for mapping register configuration to real hardware on the host).
+    /// On both board types (IOB and EIO, regardless of variant or firmware) one
+    /// SIO is DMA capable; the RS-232 port "A" can do "HiVol" reads or writes,
+    /// while the Speech device using port "B" can do DMA writes only.  On both
+    /// board types, the Kriz tablet uses the port "B" receive side and shares
+    /// a clock with speech.
     /// </remarks>
     public partial class Z80SIO : IZ80Device, IDMADevice
     {
-        public Z80SIO(byte baseAddress, Z80System sys, string unit = "A")
+        public Z80SIO(byte baseAddress, Scheduler scheduler, char unit, byte selAddress)
+            : this(baseAddress, scheduler, 5)
         {
-            _sys = sys;
             _unit = unit;
+            _isEIO = true;
+            _ports[4] = _dmaSelPortAddress = selAddress;
+
+            Log.Info(Category.SIO, "EIO unit A initialized.");
+        }
+
+        public Z80SIO(byte baseAddress, Scheduler scheduler, char unit = 'A')
+            : this(baseAddress, scheduler, 4)
+        {
+            _unit = unit;
+            _isEIO = (_unit == 'B');
+
+            Log.Info(Category.SIO, "{0} unit {1} initialized.", _isEIO ? "EIO" : "IOB/CIO", _unit);
+        }
+
+        protected Z80SIO(byte baseAddress, Scheduler scheduler, int portCount)
+        {
             _baseAddress = baseAddress;
-            _ports = new byte[] {
-                                    baseAddress,
-                                    (byte)(baseAddress + 1),
-                                    (byte)(baseAddress + 2),
-                                    (byte)(baseAddress + 3)
-                                };
+            _scheduler = scheduler;
+
+            _ports = new byte[portCount];
+
+            for (var i = 0; i < portCount; i++)
+            {
+                _ports[i] = (byte)(baseAddress + i);
+            }
 
             _channels = new Channel[2];
-            _channels[0] = new Channel(0, _sys.Scheduler);
-            _channels[1] = new Channel(1, _sys.Scheduler);
+            _channels[0] = new Channel(0, _scheduler);
+            _channels[1] = new Channel(1, _scheduler);
         }
 
         public void Reset()
@@ -63,11 +83,14 @@ namespace PERQemu.IO.Z80
             _channels[0].Reset();
             _channels[1].Reset();
 
+            _dmaChanSelect = SpeechSel;
+            _dmaAcknowledged = false;
+
             Log.Debug(Category.SIO, "Unit {0} reset", _unit);
         }
 
+        public char Unit => _unit;
         public string Name => $"Z80 SIO {_unit}";
-        public string Unit => _unit;
         public byte[] Ports => _ports;
 
         public bool IntLineIsActive
@@ -116,14 +139,50 @@ namespace PERQemu.IO.Z80
         //
         // IDMADevice implementation
         //
-        public bool ReadDataReady => true;
-        public bool WriteDataReady => true;
+
+        public bool ReadDataReady
+        {
+            get
+            {
+                if (_unit == 'B') return false;                         // Not wired for DMA
+
+                if (_isEIO && _dmaChanSelect == SpeechSel) return false;// No reads from Speech
+
+                return _channels[0].CanRead;                            // Check RSA
+            }
+        }
+
+        public bool WriteDataReady
+        {
+            get
+            {
+                if (_unit == 'B') return false;                         // Not wired for DMA
+
+                if (_isEIO) return _channels[_dmaChanSelect].CanWrite;  // EIO: Check selected
+
+                return _channels[0].CanWrite || _channels[1].CanWrite;  // Not EIO: check both (WRONG)
+            }
+        }
+
+        public AcknowledgeDelegate DMAAcknowledge => DMAReadWriteAck;
 
         public void DMATerminate()
         {
-            // This will likely be relevant for Speech?
+            Log.Info(Category.SIO, "DMATerminate called (chan {0}, ack {1})",
+                                   _dmaChanSelect, _dmaAcknowledged);
+
+            _dmaAcknowledged = false;
         }
 
+        public void DMAReadWriteAck(byte portAddress)
+        {
+            // Set the SIO_ACK_L equivalent flag to discern "normal" low-volume
+            // reads/writes from HiVol DMA ops; tells the unswizzler to apply
+            // the _dmaChanSelect remapping, or not.  This is just kinda gross.
+            _dmaAcknowledged = true;
+
+            Log.Info(Category.SIO, "DMA ACK on port 0x{0:x2}", portAddress);
+        }
 
         public void AttachDevice(int channel, ISIODevice device)
         {
@@ -153,19 +212,17 @@ namespace PERQemu.IO.Z80
         /// </summary>
         public byte Read(byte portAddress)
         {
-            switch (portAddress - _baseAddress)
+            switch (UnSwizzle(portAddress))
             {
                 case 0:
+                    _dmaAcknowledged = false;
                     return _channels[0].ReadData();
 
                 case 1:
-                    if (_sys.IsEIO) return _channels[1].ReadData();
-
                     return _channels[0].ReadRegister();
 
                 case 2:
-                    if (_sys.IsEIO) return _channels[0].ReadRegister();
-
+                    _dmaAcknowledged = false;
                     return _channels[1].ReadData();
 
                 case 3:
@@ -181,25 +238,31 @@ namespace PERQemu.IO.Z80
         /// </summary>
         public void Write(byte portAddress, byte value)
         {
+            // Check for the extra EIO address first
+            if (portAddress == _dmaSelPortAddress)
+            {
+                // This is programmed as 0 = speech, 1 = RS-232, but they
+                // assigned the A & B halves of the device in the opposite way:
+                // RS-232 (A is active LOW and Speech (B) is active HIGH. <smdh>
+                _dmaChanSelect = ~value & 0x1;
+                Log.Info(Category.SIO, "EIO Speech Select now {0} (0x{1:x})", _dmaChanSelect, value);
+                return;
+            }
 
-            switch (portAddress - _baseAddress)
+            switch (UnSwizzle(portAddress))
             {
                 case 0:
+                    _dmaAcknowledged = false;
                     _channels[0].WriteData(value);
                     break;
 
                 case 1:
-                    if (_sys.IsEIO)
-                        _channels[1].WriteData(value);
-                    else
-                        _channels[0].WriteRegister(value);
+                    _channels[0].WriteRegister(value);
                     break;
 
                 case 2:
-                    if (_sys.IsEIO)
-                        _channels[0].WriteRegister(value);
-                    else
-                        _channels[1].WriteData(value);
+                    _dmaAcknowledged = false;
+                    _channels[1].WriteData(value);
                     break;
 
                 case 3:
@@ -211,18 +274,76 @@ namespace PERQemu.IO.Z80
             }
         }
 
+        /// <summary>
+        /// Rewrite the port address to deal with the EIO hardware swap of the
+        /// two low address bits AND account for the SPEECH_SEL_L latch.  Oy vey.
+        /// </summary>
+        /// <remarks>
+        ///     IOB/CIO             EIO (SIOA)      (SIOB)
+        /// RSAData 260     -->     RSAData 020     RSBData 100
+        /// RSACtrl 261     -->     RSACtrl 022     RSBCtrl 102
+        /// SPData  262     -->     SPData  021     KBData  101
+        /// SPCtrl  263     -->     SPCtrl  023     KBCtrl  103
+        /// 
+        /// The SPEECH_SEL_L signal forces the B/A select based on A<0> and the
+        /// state of the SIO_ACK_L from the DMAC -- which we now half-assedly
+        /// simulate using the DMAAcknowledged delegate to warn of an incoming
+        /// DMA read/write.  (It also prioritizes the DMA RQST line based on
+        /// whether the RSA or SP port(s) are both requesting service at the
+        /// same time, but that's not implemented.)  It's a complicated mess.
+        /// </remarks>
+        int UnSwizzle(byte portAddress)
+        {
+            var offset = portAddress - _baseAddress;
+
+            if (!_isEIO) return offset;     // on IOB/CIO, no change
+
+            switch (offset)
+            {
+                case 0:
+                    // RSBData?  As you were
+                    if (_unit != 'A') return 0;
+
+                    // RSAData, unless DMA active and Speech selected
+                    return (_dmaAcknowledged && _dmaChanSelect == SpeechSel) ? 2 : 0;
+
+                case 1:
+                    // KBData?  Right-o, on your way
+                    if (_unit != 'A') return 2;
+
+                    // SPData, unless DMA active and RS232 selected
+                    return (_dmaAcknowledged && _dmaChanSelect == RSASel) ? 0 : 2;
+
+                case 2:
+                    return 1;   // RSACtrl or RSBCtrl
+
+                case 3:
+                    return 3;   // SPCtrl or KBCtrl
+            }
+
+            return -1;          // Fail
+        }
+
+
         public void DumpPortStatus(int chan)
         {
             _channels[chan].Port?.Status();
         }
 
+        // Extra EIO bits
+        const int RSASel = 0;
+        const int SpeechSel = 1;
 
-        Channel[] _channels;
+        int _dmaChanSelect;
+        byte _dmaSelPortAddress;
+        bool _dmaAcknowledged;
 
         byte _baseAddress;
         byte[] _ports;
-        string _unit;
+        bool _isEIO;
+        char _unit;
 
-        Z80System _sys;
+        Scheduler _scheduler;
+        Channel[] _channels;
     }
 }

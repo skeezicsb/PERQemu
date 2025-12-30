@@ -31,11 +31,10 @@ namespace PERQemu.IO.SerialDevices
         public SerialKeyboard()
         {
             // This keyboard doesn't latch data or interrupt the Z80 the way the
-            // PERQ-1 parallel unit does; it lets the SIO interrupt as data is
-            // received.  I believe the hardware is set to a fixed 300 baud, but
-            // it's probably not set up for flow control -- so we'll have to see
-            // if the virtual host ends up sending at too high a rate and limit
-            // the input stream somehow.  ::shrug?::
+            // PERQ-1 parallel unit does; it lets the SIO interrupt as keystrokes
+            // are received.  The hardware is set to a fixed 300 baud, 8/N/1, and
+            // normal SIO and circular buffer processing by the Z80 code deals
+            // with possible overruns.  So we don't sweat any of that here. :-)
         }
 
         public void RegisterReceiveDelegate(ReceiveDelegate rxDelegate)

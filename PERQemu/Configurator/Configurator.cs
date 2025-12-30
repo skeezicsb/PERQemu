@@ -364,8 +364,8 @@ namespace PERQemu.Config
                     }
 
                     // Save serial ports, if enabled
-                    if (_current.RSAEnable) sw.WriteLine("enable rs232 a");
-                    if (_current.RSBEnable) sw.WriteLine("enable rs232 b");
+                    if (_current.RSAEnabled) sw.WriteLine("enable rs232 a");
+                    if (_current.RSBEnabled) sw.WriteLine("enable rs232 b");
 
                     sw.WriteLine("option board " + _current.IOOptionBoard);
 
@@ -607,9 +607,9 @@ namespace PERQemu.Config
             }
 
             // Make sure the serial ports exist; IOB/CIO only has one
-            if ((conf.IOBoard == IOBoardType.IOB || conf.IOBoard == IOBoardType.CIO) && conf.RSBEnable)
+            if ((conf.IOBoard == IOBoardType.IOB || conf.IOBoard == IOBoardType.CIO) && conf.RSBEnabled)
             {
-                conf.RSBEnable = false;
+                conf.RSBEnabled = false;
             }
 
             // A few little sanity checks

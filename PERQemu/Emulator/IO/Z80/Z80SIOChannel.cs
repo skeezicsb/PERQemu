@@ -63,6 +63,7 @@ namespace PERQemu.IO.Z80
                 _txFifo.Clear();
 
                 _selectedRegister = 0;
+                _txRate = 19200;                // fixme
                 _huntMode = true;               // re-entered after Reset
 
                 _extInterruptLatched = false;
@@ -75,8 +76,11 @@ namespace PERQemu.IO.Z80
 
                 UpdateFlags();
 
-                Log.Debug(Category.SIO, "Channel {0} reset", _channelNumber);
+                Log.Info(Category.SIO, "Channel {0} reset", _channelNumber);
             }
+
+            public bool CanRead => _rxFifo.Count > 0;
+            public bool CanWrite => _txFifo.Count < 16;     // Season to taste
 
             public bool InterruptLatched => _rxInterruptLatched || _txInterruptLatched || _extInterruptLatched;
             public bool StatusAffectsVector => (_writeRegs[1] & (byte)WReg1.StatusAffectsVector) != 0;
@@ -159,9 +163,10 @@ namespace PERQemu.IO.Z80
 
                 if (_rxFifo.Count == 0)
                 {
-                    // The bloody tablet driver does this on purpose, apparently?
-                    // Or we're off by one somewhere?  Enabling the Kriz tablet
-                    // causes a lot of spurious log spewage, so turn this down for now
+                    // In synchronous mode, the SIO chip is supposed to transmit
+                    // two CRC bytes, which is why the Kriz tablet does "extra"
+                    // reads on each update.  But this causes a lot of spurious
+                    // log spewage, so turn this down for now. :-/
                     Log.Debug(Category.SIO, "Channel {0} read from empty FIFO", _channelNumber);
                     return data;
                 }
@@ -182,7 +187,7 @@ namespace PERQemu.IO.Z80
 
             public void WriteRegister(byte value)
             {
-                Log.Detail(Category.SIO, "Channel {0} write 0x{1:x2} to register {2}",
+                Log.Info(Category.SIO, "Channel {0} write 0x{1:x2} to register {2}",
                                          _channelNumber, value, _selectedRegister);
 
                 _writeRegs[_selectedRegister] = value;
@@ -192,12 +197,11 @@ namespace PERQemu.IO.Z80
                     //
                     // Write to WR0
                     //
-                    // TODO: handle CRC resets
 
                     // Execute command:
                     var cmd = (WReg0Cmd)((value & 0x38) >> 3);
 
-                    Log.Detail(Category.SIO, "Channel {0} command is {1}", _channelNumber, cmd);
+                    Log.Info(Category.SIO, "Channel {0} command is {1}", _channelNumber, cmd);
 
                     switch (cmd)
                     {
@@ -264,7 +268,7 @@ namespace PERQemu.IO.Z80
                             {
                                 // Re-enter HUNT mode
                                 _huntMode = true;
-                                Log.Detail(Category.SIO, "Entering hunt mode");
+                                Log.Detail(Category.SIO, "Channel {0} Entering hunt mode", _channelNumber);
                             }
 
                             UpdateBitsPerChar((_writeRegs[3] & (byte)WReg3.RxBitsPerChar) >> 6);
@@ -288,14 +292,50 @@ namespace PERQemu.IO.Z80
                             }
                             Log.Detail(Category.SIO, "Channel {0} WR5 now {1}", _channelNumber, (WReg5)_writeRegs[5]);
                             break;
+
+                        case 6:
+                        case 7:
+                            // Debugging
+                            Log.Info(Category.SIO, "Channel {0} WR{1} sync now 0x{2:x2}",
+                                     _channelNumber, _selectedRegister, value);
+                            break;
                     }
                     // Write to other register, next access is to reg 0
                     _selectedRegister = 0;
 
-                    Log.Detail(Category.SIO, "Channel {0} status: rxEnabled {1}, txEnabled {2}, syncMode {3}, hunting {4}",
+                    Log.Detail(Category.SIO, "Channel {0} status: rxEnb {1}, txEnb {2}, syncMode {3}, hunting {4}",
                                              _channelNumber, RxEnabled, TxEnabled, SyncMode, _huntMode);
                 }
             }
+
+
+            /// <summary>
+            /// Return true if programmed for sync mode and the sync byte/word
+            /// has not yet been seen.  Return false otherwise.  The matched
+            /// sync bytes are not passed through!
+            /// </summary>
+            /// <remarks>
+            /// Only one 8-bit sync byte is matched; the 16-bit mode is not
+            /// implemented; maaaaybe the PERQ 3270 comm package uses it?  But
+            /// I don't have any IBM equipment to test that against anyway.
+            /// </remarks>
+            bool Hunting(byte data, byte match)
+            {
+                if (_huntMode)              // Looking for sync byte(s)
+                {
+                    if (data == match)      // 8-bit sync value
+                    {
+                        _huntMode = false;  // Exit hunt mode
+                        Log.Info(Category.SIO, "Channel {0} sync word matched", _channelNumber);
+                    }
+
+                    return true;            // Consume the sync byte
+                }
+
+                // Sync byte was matched, so we're in data mode
+                return false;
+            }
+
 
             /// <summary>
             /// Accept a byte from the SIO and schedule it for transmission.
@@ -304,16 +344,20 @@ namespace PERQemu.IO.Z80
             {
                 if (TxEnabled)
                 {
+                    // If we're hunting for the sync char, bail out
+                    // NB: Speech sets this, THEN NEVER SENDS THE EFFING SYNC BYTE #$)*FJ WTF
+                    // if (SyncMode && Hunting(data, _writeRegs[6])) return;
+
                     _txFifo.Enqueue(data);
                     _txInterruptLatched = false;
 
                     UpdateFlags();
 
-                    // fixme: proper baud rate delay here!
-                    _scheduler.Schedule(Conversion.BaudRateToNsec(9600), SendData, null);
+                    // Apply output pacing and send it
+                    _scheduler.Schedule(Conversion.BaudRateToNsec(_txRate), SendData, null);
                 }
 
-                Log.Debug(Category.SIO, "Channel {0} write data 0x{1:x2}, {2} pending",
+                Log.Info(Category.SIO, "Channel {0} write data 0x{1:x2}, {2} pending",
                                         _channelNumber, data, _txFifo.Count);
             }
 
@@ -346,21 +390,8 @@ namespace PERQemu.IO.Z80
             {
                 if (RxEnabled)
                 {
-                    if (SyncMode)
-                    {
-                        if (_huntMode)          // Looking for sync byte(s)
-                        {
-                            if (data == _writeRegs[7])  // 8-bit sync value
-                            {
-                                Log.Detail(Category.SIO, "Channel {0} sync word matched", _channelNumber);
-                                _huntMode = false;      // Exit hunt mode
-                            }
-
-                            return;
-                        }
-
-                        // Sync byte was received, so we're in data mode; fall through...
-                    }
+                    // Still in hunt mode?
+                    if (SyncMode && Hunting(data, _writeRegs[7])) return;
 
                     // Async receive, or Sync mode (not in hunt mode)
                     _rxFifo.Enqueue(data);
@@ -452,7 +483,7 @@ namespace PERQemu.IO.Z80
                     {
                         // On our first (lazy) access, may get an "inappropriate ioctl for device"
                         // error from the host, so at this point just punt and assign a NullPort
-                        // todo: add a CLI option to close/reset/reopen the port at runtime without
+                        // Todo: add a CLI option to close/reset/reopen the port at runtime without
                         // having to power off -- USB gizmos can be unreliable and transient serial
                         // port issues should require a restart if we can avoid it!
                         Log.Error(Category.RS232, "Exception thrown in UpdateFlags: {0}", e.Message);
@@ -514,7 +545,7 @@ namespace PERQemu.IO.Z80
                         _interruptOffset = 3;
                     }
 
-                    // todo: rx overrun if rxfifo len > 3?  or just let it grow...
+                    // Todo: rx overrun if rxfifo len > 3?  or just let it grow...
                     // end of frame/sdlc checking happens here, of course, if that is ever used?
                     // framing errors would come from the serial port, but crc errors generated here
                 }
@@ -527,10 +558,10 @@ namespace PERQemu.IO.Z80
 
                 Log.Detail(Category.SIO, "Channel {0} RR0 = {1}", _channelNumber, (RReg0)_readRegs[0]);
                 Log.Detail(Category.SIO, "Channel {0} RR1 = {1}", _channelNumber, (RReg1)_readRegs[1]);
-                Log.Detail(Category.SIO, "Channel {0} IRQ status: Tx {1}/{2}, Rx {3}/{4}, Ext {5}/{6}, Vec {7}",
-                          _channelNumber, _txInterruptLatched, TxInterruptEnabled,
-                                          _rxInterruptLatched, RxInterruptEnabled,
-                                          _extInterruptLatched, ExtInterruptEnabled, _interruptOffset);
+                Log.Detail(Category.SIO, "Channel {0} IRQ enable: Rx {1}, Tx {2}, Ext {3}",
+                           _channelNumber, RxInterruptEnabled, TxInterruptEnabled, ExtInterruptEnabled);
+                Log.Detail(Category.SIO, "Channel {0} IRQ status: Rx {1}, Tx {2}, Ext {3}, Vec {4}",
+                          _channelNumber, _rxInterruptLatched, _txInterruptLatched, _extInterruptLatched, _interruptOffset);
             }
 
             /// <summary>
@@ -645,6 +676,7 @@ namespace PERQemu.IO.Z80
             bool _extInterruptLatched;
 
             int _interruptOffset;
+            int _txRate;
 
             bool _huntMode;
             bool _breakDetected;

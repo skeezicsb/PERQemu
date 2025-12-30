@@ -51,6 +51,11 @@ namespace PERQemu.IO.Z80
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
 
+        public byte? AckNull
+        {
+            get { _z80IntRaised = false; return null; }
+        }
+
         //
         // Z80 DMA Interface
         //
@@ -58,10 +63,7 @@ namespace PERQemu.IO.Z80
         public bool ReadDataReady => _readReady;
         public bool WriteDataReady => _writeReady;
 
-        public byte? AckNull
-        {
-            get { _z80IntRaised = false; return null; }
-        }
+        public AcknowledgeDelegate DMAAcknowledge => null;
 
         public void DMATerminate()
         {

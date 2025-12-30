@@ -315,6 +315,44 @@ namespace PERQemu
             eio.RTC.DumpRTC();
         }
 
+        [Command("debug z80 audio play")]
+        void PlayAudio()
+        {
+            PERQemu.GUI.Audio.Resume();
+        }
+
+        [Command("debug z80 audio pause")]
+        void PauseAudio()
+        {
+            PERQemu.GUI.Audio.Pause();
+        }
+
+        [Command("debug z80 audio flush")]
+        void FlushAudio()
+        {
+            PERQemu.GUI.Audio.Flush();
+        }
+
+        [Command("debug z80 audio tune")]
+        void TuneAudio(AudioKnobs knob, int val)
+        {
+            PERQemu.Sys.IOB.Z80System.Speech.SetTunable(knob, val);
+        }
+
+        [Command("debug z80 audio record")]
+        void SaveAudioStart(string file)
+        {
+            var pathname = Paths.BuildOutputPath(file);
+
+            PERQemu.GUI.Audio.StartRecording(pathname);
+        }
+
+        [Command("debug z80 audio save")]
+        void SaveAudioFinish()
+        {
+            PERQemu.GUI.Audio.StopRecording();
+        }
+
 #if DEBUG
         [Command("debug z80 dump cpi histogram")]
         void CPIHistogram()

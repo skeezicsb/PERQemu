@@ -19,6 +19,12 @@
 
 namespace PERQemu.IO.Z80
 {
+
+    public delegate void AcknowledgeDelegate(byte portAddress);
+
+    /// <summary>
+    /// Interface for Z80 devices that do DMA using the Z80DMA or i8237 DMACs.
+    /// </summary>
     public interface IDMADevice
     {
         /// <summary>
@@ -30,6 +36,11 @@ namespace PERQemu.IO.Z80
         /// Indicates that the device is ready for data to be written.
         /// </summary>
         bool WriteDataReady { get; }
+
+        /// <summary>
+        /// Get an optional delegate to fire prior to any data read or write.
+        /// </summary>
+        AcknowledgeDelegate DMAAcknowledge { get; }
 
         /// <summary>
         /// Terminates the current transfer (equivalent to setting TC).

@@ -85,7 +85,9 @@ PERQemu v0.7.5 wraps up all the work since v0.5.0 along with a batch of new
 bundled hard disk images with new software to play with.  It is a release to
 "skeezicsb/main" and a candidate to sync up with the master branch.
 
-Version 0.8.5 
+Version 0.8.5 adds keyboard remapping and support for resizing the display when
+moving between screens, with vertical scrolling on short/laptop screens.
+
 Please check back often for updates!
 
 
@@ -360,15 +362,14 @@ The following hardware has been implemented in the emulator:
     - Runs asynchronously on its own thread to improve performance;
     - Allows different ROMs to be loaded to support CIO and EIO boards;
     - New register-level interface written to support Z80 DMA, CTC, SIO, PIT,
-      FDC and GPIB controller chips;
+      CVSD, FDC and GPIB controller chips;
     - Z80 Debugger support includes single stepping and source code display
       (for the current v8.7 ROMs; v100.017 source disassembly for EIO is now
       complete, CIO in progress).  Limited breakpoint support is available.
 
   Keyboard:
     - Now uses the SDL2 interface so no more horrible hacks required for MacOS;
-    - Support for the VT100-style PERQ-2 keyboard is now included and is working
-      (but is not fully tested and has some limitations);
+    - Supports the PERQ-1 (parallel) and VT100-style PERQ-2 (serial) keyboards;
     - Keyboard re-mapping is now fully supported so you can customize PERQemu
       for your host/preferences (See UserGuide.pdf for details!);
     - Currently caps lock is problematic and can get out of sync with the host.
@@ -422,17 +423,16 @@ Docs/ directory for way, way more information than you need.  Way more.
  
 - Ethernet.  In development! [See above]
 
-- Option boards:  3Mbit Ethernet.  On the list.
+- Sound.  [In progress!]
 
 - Z80 disassembly/source debugging when running from RAM (PERQ-2/EIO).
+
+- Option boards:  3Mbit Ethernet.  On the list.
+
+- Multibus option and SMD disk/9-track tape support.  Dream on!
  
 - PERQLink.  Unimplemented other than a stub that tells the microcode that
   there's nothing connected to it.
- 
-- Sound.  Yet to be rewritten to work with the new Z80/SIO and hooked up to
-  any sort of host output device.
-
-- Multibus option and SMD disk/9-track tape support.  Dream on!
 
 - A proper GUI.  Sigh.
 
@@ -527,13 +527,12 @@ v1.0 - TBD
   Sometime before the heat death of the universe:
   - Feature complete, with a nice GUI, full screen mode, VR, scratch 'n sniff
   - Massive software library organized, catalogued, available for use and study
+  - Full-featured Ethernet with encapsulation options/no root requirement
   - See if CIO Micropolis has any real software support?
   - Remaining items from the "What's Not" list above
 
-v0.9 - TBD
-  Fill in the final pieces:
-  - Full-featured Ethernet with encapsulation options/no root requirement
-  - Working audio output :-)
+v0.8.8 - Experiments branch
+  - Speech output proof-of-concept is now working!
 
 v0.8.5 - Main branch
   - Minor updates to Nuget package dependencies (now tested/verified against
@@ -707,6 +706,7 @@ v0.1 - First public release
 
 Update history:
 
+12/30/2025 - skeezicsb - v0.8.8 (experiments)
 12/12/2025 - skeezicsb - v0.8.5 (main)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)

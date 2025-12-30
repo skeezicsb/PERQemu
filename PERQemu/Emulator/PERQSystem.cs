@@ -243,6 +243,7 @@ namespace PERQemu
             PERQemu.Controller.RunStateChanged -= OnRunStateChange;
 
             // Now go away or I shall taunt you some more
+            PERQemu.GUI.Audio.Shutdown();
             _inputs.Shutdown();
             _display.Shutdown();
             _ioBus.Shutdown();
@@ -306,6 +307,7 @@ namespace PERQemu
                 case RunState.WarmingUp:
                     _display.Initialize();
                     _inputs.Initialize();
+                    if (_conf.SpeechEnabled) PERQemu.GUI.Audio.Initialize();
                     break;
 
                 case RunState.Running:

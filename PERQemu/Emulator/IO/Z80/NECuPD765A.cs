@@ -145,6 +145,8 @@ namespace PERQemu.IO.Z80
         bool IDMADevice.ReadDataReady => _readDataReady;
         bool IDMADevice.WriteDataReady => _writeDataReady;
 
+        public AcknowledgeDelegate DMAAcknowledge => null;
+
         void IDMADevice.DMATerminate()
         {
             _transfer.Aborted = true;

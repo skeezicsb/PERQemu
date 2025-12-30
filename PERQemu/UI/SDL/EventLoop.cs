@@ -20,7 +20,6 @@
 using SDL2;
 
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace PERQemu.UI
@@ -35,16 +34,19 @@ namespace PERQemu.UI
             _sdlRunning = false;
             _displayWindow = IntPtr.Zero;
             _timerHandle = -1;
-            _uiEventDispatch = new Dictionary<SDL.SDL_EventType, SDLMessageHandlerDelegate>();
-
             _winFlags = 0;
             _winStateChanged = false;
             _resumeOnRestore = false;
+
+            // Created once at startup
+            _uiEventDispatch = new EventList();
+            _audioDevice = new Speaker();
         }
 
-        public delegate void SDLMessageHandlerDelegate(SDL.SDL_Event e);
-
         public IntPtr DisplayWindow => _displayWindow;
+
+        public Speaker Audio => _audioDevice;
+        public EventList Events => _uiEventDispatch;
 
         /// <summary>
         /// Initialize the SDL2 library.  Must be called from the main thread.
@@ -64,7 +66,11 @@ namespace PERQemu.UI
             SDL.SDL_SetHint("SDL_WINDOWS_DISABLE_THREAD_NAMING", "1");
 
             // Get SDL humming
-            if ((retVal = SDL.SDL_Init(SDL.SDL_INIT_EVERYTHING)) < 0)
+            retVal = SDL.SDL_Init(SDL.SDL_INIT_AUDIO |
+                                  SDL.SDL_INIT_VIDEO |
+                                  SDL.SDL_INIT_TIMER |
+                                  SDL.SDL_INIT_EVENTS);
+            if (retVal < 0)
             {
                 throw new InvalidOperationException($"SDL_Init failed.  Error {retVal}");
             }
@@ -96,72 +102,10 @@ namespace PERQemu.UI
 
             // Set up a timer to periodically run the SDL event loop.  To keep
             // overhead low when we start up, coalesce with the CLI timer (50ms)
-            _timerHandle = HighResolutionTimer.Register(50d, PERQemu.GUI.SDLMessageLoop, "MsgLoop");
+            _timerHandle = HighResolutionTimer.Register(48d, PERQemu.GUI.SDLMessageLoop, "MsgLoop");
             HighResolutionTimer.Enable(_timerHandle, true);
 
-            Log.Debug(Category.UI, "Initialized SDL");
-        }
-
-        /// <summary>
-        /// Attach a PERQ Display window.  This kicks the SDL timer into high
-        /// gear and enables our window event processing for cursor preference,
-        /// pausing the emulator on minimize/restore, etc.
-        /// </summary>
-        public void AttachDisplay(IntPtr window)
-        {
-            if (_displayWindow != IntPtr.Zero)
-            {
-                throw new InvalidOperationException("AttachDisplay when already assigned");
-            }
-
-            Log.Debug(Category.UI, "Attaching the display");
-            _displayWindow = window;
-            _winFlags = SDL.SDL_GetWindowFlags(_displayWindow);
-            _winStateChanged = true;
-
-            // Adjust the timer for running the message loop.  It should be no
-            // longer than 16.667ms if we're to maintain 60fps on the Display
-            HighResolutionTimer.Adjust(_timerHandle, 15d);
-        }
-
-        /// <summary>
-        /// Detach the display and downshift the timer.  The PERQ has gone away.
-        /// </summary>
-        public void DetachDisplay()
-        {
-            Log.Debug(Category.UI, "Detaching the display");
-            _displayWindow = IntPtr.Zero;
-            _winFlags = 0;
-            _winStateChanged = false;
-
-            // Pump the brakes
-            HighResolutionTimer.Adjust(_timerHandle, 50d);
-        }
-
-        /// <summary>
-        /// Attach a delegate for an SDL event.
-        /// </summary>
-        public void RegisterDelegate(SDL.SDL_EventType e, SDLMessageHandlerDelegate d)
-        {
-            if (d == null)
-                throw new InvalidOperationException("Can't register null delegate");
-
-            if (_uiEventDispatch.ContainsKey(e))
-                throw new InvalidOperationException($"Delegate already registered for event type {e}");
-
-            _uiEventDispatch.Add(e, d);
-            Log.Detail(Category.UI, "Attached delegate for SDL event type {0}", e);
-        }
-
-        /// <summary>
-        /// Release a delegate for an SDL event.
-        /// </summary>
-        public void ReleaseDelegate(SDL.SDL_EventType e)
-        {
-            if (_uiEventDispatch.Remove(e))
-            {
-                Log.Detail(Category.UI, "Released delegate for SDL event type {0}", e);
-            }
+            Log.Info(Category.UI, "Initialized SDL");
         }
 
         /// <summary>
@@ -181,10 +125,8 @@ namespace PERQemu.UI
                     SDLMessageHandler(e);
                 }
 
-                if (_winStateChanged)
-                {
-                    UpdateWindowState();
-                }
+                if (_winStateChanged) UpdateWindowState();
+                if (_audioDevice.Busy) _audioDevice.CheckIdle();
             }
         }
 
@@ -194,14 +136,13 @@ namespace PERQemu.UI
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void SDLMessageHandler(SDL.SDL_Event e)
         {
-            // If a delegate is registered, pass it the event
-            if (_uiEventDispatch.ContainsKey(e.type))
+            // If a delegate is registered, handle the event
+            if (_uiEventDispatch.InvokeHandlerFor(e))
             {
-                _uiEventDispatch[e.type].Invoke(e);
-                return;
+                return;     // Done!
             }
 
-            // Dispatch on Window events if a delegate is registered
+            // Dispatch on Window/Cursor events
             if (e.type == SDL.SDL_EventType.SDL_WINDOWEVENT && _displayWindow != IntPtr.Zero)
             {
                 // If we ever have more than one window, ship event as a param
@@ -246,8 +187,8 @@ namespace PERQemu.UI
                 // Stop the virtual machine
                 PERQemu.Controller.PowerOff();
 
-                // todo: so if we have more than one window, does SDL fire a
-                // quit message when any of them closes or only the last one?
+                // Flush the event queue (makes sure the window actually goes away)
+                ShutdownSDL();
             }
 #if DEBUG
             else if (e.type != SDL.SDL_EventType.SDL_TEXTINPUT)
@@ -260,6 +201,48 @@ namespace PERQemu.UI
 #endif
         }
 
+        #region Display operations
+
+        /// <summary>
+        /// Attach a PERQ Display window.  This kicks the SDL timer into high
+        /// gear and enables our window event processing for cursor preference,
+        /// pausing the emulator on minimize/restore, etc.
+        /// </summary>
+        public void AttachDisplay(IntPtr window)
+        {
+            if (_displayWindow != IntPtr.Zero)
+            {
+                throw new InvalidOperationException("AttachDisplay when already assigned");
+            }
+
+            Log.Debug(Category.UI, "Attaching the display");
+            _displayWindow = window;
+            _winFlags = (SDL.SDL_WindowFlags)SDL.SDL_GetWindowFlags(_displayWindow);
+            _winStateChanged = true;
+
+            // Adjust the timer for running the message loop.  It should be no
+            // longer than 16.667ms if we're to maintain 60fps on the Display
+            HighResolutionTimer.Adjust(_timerHandle, 16d);
+        }
+
+        /// <summary>
+        /// Detach the display and downshift the timer.  The PERQ has gone away.
+        /// </summary>
+        public void DetachDisplay()
+        {
+            Log.Debug(Category.UI, "Detaching the display");
+            _displayWindow = IntPtr.Zero;
+            _winFlags = 0;
+            _winStateChanged = false;
+
+            // Pump the brakes
+            HighResolutionTimer.Adjust(_timerHandle, 48d);
+        }
+
+        #endregion
+
+        #region Window operations
+
         /// <summary>
         /// Updates the state of the window based on the current flags.  Used to
         /// coalesce multiple updates when the events come in a flurry; resets the
@@ -267,18 +250,20 @@ namespace PERQemu.UI
         /// </summary>
         void UpdateWindowState()
         {
-            var flags = SDL.SDL_GetWindowFlags(_displayWindow);
+            if (_displayWindow == IntPtr.Zero) return;
+
+            var flags = (SDL.SDL_WindowFlags)SDL.SDL_GetWindowFlags(_displayWindow);
             Log.Info(Category.UI, "Update: Window flags {0}", flags);
 
             if (flags != _winFlags)
             {
-                if (((SDL.SDL_WindowFlags)flags & SDL.SDL_WindowFlags.SDL_WINDOW_SHOWN) == 0)
+                if ((flags & SDL.SDL_WindowFlags.SDL_WINDOW_SHOWN) == 0)
                 {
-                    HideOrMinimize((SDL.SDL_WindowFlags)flags);
+                    HideOrMinimize(flags);
                 }
                 else
                 {
-                    UnhideOrRestore((SDL.SDL_WindowFlags)flags);
+                    UnhideOrRestore(flags);
                 }
 
                 _winFlags = flags;
@@ -313,8 +298,8 @@ namespace PERQemu.UI
             // because THAT makes sense... if the "auto hide task bar" Windows setting
             // is enabled, the window will not restore unless you force it with CTRL-
             // SHIFT-right click.  Just shoot me now.  This hack may or may not help:
-            if (((SDL.SDL_WindowFlags)_winFlags & SDL.SDL_WindowFlags.SDL_WINDOW_MINIMIZED) != 0 &&
-                (flags & SDL.SDL_WindowFlags.SDL_WINDOW_MINIMIZED) == 0)
+            if ((_winFlags & SDL.SDL_WindowFlags.SDL_WINDOW_MINIMIZED) != 0 &&
+                    (flags & SDL.SDL_WindowFlags.SDL_WINDOW_MINIMIZED) == 0)
             {
                 SDL.SDL_RestoreWindow(_displayWindow);
             }
@@ -347,11 +332,17 @@ namespace PERQemu.UI
             }
         }
 
+        #endregion
+
+        #region Cursor operations
+
         /// <summary>
         /// Set our preferred cursor on window focus.
         /// </summary>
         void FocusCursor()
         {
+            // Todo: sync the console CapsLock with the Keyboard?!
+
             if (Settings.CursorPreference == Cursor.Hidden)
             {
                 SDL.SDL_ShowCursor(SDL.SDL_DISABLE);
@@ -374,13 +365,15 @@ namespace PERQemu.UI
             SDL.SDL_ShowCursor(SDL.SDL_ENABLE);
         }
 
+        #endregion
+
         /// <summary>
         /// Close down the timer and free SDL resources when the
         /// emulator is powering off.
         /// </summary>
-        public void ShutdownSDL()
+        void ShutdownSDL()
         {
-            Log.Debug(Category.UI, "SDL Shutdown requested");
+            Log.Info(Category.UI, "SDL Shutdown requested");
 
             if (_sdlRunning)
             {
@@ -398,9 +391,11 @@ namespace PERQemu.UI
                 SDL.SDL_FreeCursor(_defaultCursor);
                 SDL.SDL_FreeCursor(_crossHairs);
 
-                // Clear out our custom events.  No, Artoo, shut them all down!
-                SDL.SDL_FlushEvents(SDL.SDL_EventType.SDL_USEREVENT, SDL.SDL_EventType.SDL_LASTEVENT);
+                // Clear out any remaining custom events
+                _audioDevice.Shutdown();
+                _uiEventDispatch.Shutdown();
 
+                // Close up shop
                 SDL_image.IMG_Quit();
                 SDL.SDL_Quit();
 
@@ -445,15 +440,16 @@ namespace PERQemu.UI
         bool _sdlRunning;
         bool _resumeOnRestore;
         bool _winStateChanged;
-        uint _winFlags;
 
         IntPtr _displayWindow;
         IntPtr _defaultCursor;
         IntPtr _crossHairs;
 
-        SDL.SDL_version _sdlVers;
+        Speaker _audioDevice;
+        EventList _uiEventDispatch;
 
-        Dictionary<SDL.SDL_EventType, SDLMessageHandlerDelegate> _uiEventDispatch;
+        SDL.SDL_WindowFlags _winFlags;
+        SDL.SDL_version _sdlVers;
     }
 }
 
@@ -485,9 +481,7 @@ namespace PERQemu.UI
             SHOWN and focus flags (+ event 15)
 
     Todo:
-        Put back mouse wheel or PGUP/DN support for scrolling the display on
-            short screens (or when obscured by the dock/taskbar)
-        Test on high-DPI screens, multiple monitors
+        Test on high-DPI screens
         Would be nice to allow full-screen/maximize option (full GUI so that DDS,
             floppy, pause/play/reset controls, etc could be integrated on screen)
 */

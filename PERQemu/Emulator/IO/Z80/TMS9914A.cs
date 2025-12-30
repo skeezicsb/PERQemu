@@ -179,6 +179,8 @@ namespace PERQemu.IO.Z80
         public bool ReadDataReady => _dmaReadReady;
         public bool WriteDataReady => _dmaWriteReady;
 
+        public AcknowledgeDelegate DMAAcknowledge => null;
+
         public void DMATerminate()
         {
             // If we do single byte xfers, this is probably extraneous

@@ -97,7 +97,6 @@ namespace PERQemu.UI
                               $"{Settings.RSADevice} {Settings.RSASettings}");
             Console.Write("Host serial port B device:  ");
             Console.WriteLine(Settings.RSBDevice == string.Empty ? "<unassigned>" :
-                              Settings.RSBDevice == "RSX:" ? "RSX:" :
                               $"{Settings.RSBDevice} {Settings.RSBSettings}");
             Console.Write("Host Ethernet device:       ");
             Console.WriteLine(Settings.EtherDevice == string.Empty ? "<unassigned>" :
@@ -345,6 +344,12 @@ namespace PERQemu.UI
                     }
                     else
                     {
+                        if (curDev == "RSX:")
+                        {
+                            QuietWrite("RSX: only works on port A.");
+                            return;
+                        }
+
                         Settings.RSBDevice = dev;
                         Settings.RSBSettings = devSettings;
                     }

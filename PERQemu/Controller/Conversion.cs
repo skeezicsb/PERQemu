@@ -22,29 +22,24 @@ namespace PERQemu
     public static class Conversion
     {
         /// <summary>
-        /// Conversion from millseconds to nanoseconds
-        /// </summary>
-        public static readonly ulong MsecToNsec = 1000000;
-
-        /// <summary>
         /// Conversion from nanoseconds to milliseconds
         /// </summary>
         public static readonly double NsecToMsec = 0.000001;
 
         /// <summary>
+        /// Conversion from milliseconds to seconds
+        /// </summary>
+        public static readonly double MsecToSec = 0.001;
+
+        /// <summary>
+        /// Conversion from millseconds to nanoseconds
+        /// </summary>
+        public static readonly ulong MsecToNsec = 1000000;
+
+        /// <summary>
         /// Conversion from microseconds to nanoseconds
         /// </summary>
         public static readonly ulong UsecToNsec = 1000;
-
-        /// <summary>
-        /// Conversion from microseconds to seconds
-        /// </summary>
-        public static readonly double UsecToSec = 0.000001;
-
-        /// <summary>
-        /// Conversion from seconds to milliseconds
-        /// </summary>
-        public static readonly double MsecToSec = 0.001;
 
         /// <summary>
         /// Convert disk revolutions to nanoseconds for scheduling index pulses.
@@ -110,6 +105,18 @@ namespace PERQemu
                 case 87:        // CTC
                 case 2273:      // PIT
                     baud = 110;
+                    break;
+
+                // Deep end here. See if we're setting the 16KHz speech rate
+                case 9:
+                case 250:
+                    baud = 16000;
+                    break;
+
+                // Or back to the 32KHz Kriz tablet rate
+                case 5:
+                case 125:
+                    baud = 32000;
                     break;
 
                 default:
