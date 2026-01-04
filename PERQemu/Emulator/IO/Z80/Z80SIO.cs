@@ -160,7 +160,7 @@ namespace PERQemu.IO.Z80
 
                 if (_isEIO) return _channels[_dmaChanSelect].CanWrite;  // EIO: Check selected
 
-                return _channels[0].CanWrite || _channels[1].CanWrite;  // Not EIO: check both (WRONG)
+                return _channels[0].CanWrite || _channels[1].CanWrite;  // Not EIO: check both
             }
         }
 

@@ -231,7 +231,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\packages\SDL2-CS.dll.2.0.0.0\lib\net48\SDL2-CS.dll.config">
-      <Link>SDL2-CS.dll.config</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="SDL2.dll">
@@ -373,14 +372,13 @@
     <None Include="Resources\qictape.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="Docs\ChangeLog-Oldest.txt" />
+    <None Include="Docs\ChangeLog-Older.txt" />
   </ItemGroup>
   <!-- Content items not included in build output -->
   <ItemGroup>
     <None Include="app.config" />
     <None Include="Readme-source.txt" />
-    <None Include="ChangeLog-Old.txt" />
-    <None Include="ChangeLog-Older.txt" />
-    <!-- Reference ROM images -->
     <None Include="PROM\rds00.rom" />
     <None Include="PROM\rsc03.rom" />
     <None Include="PROM\rsh00.rom" />

@@ -422,9 +422,9 @@ namespace PERQemu.UI
                 else
                 {
                     SDL.SDL_GetVersion(out _sdlVers);
-                    vers = $"[Linked with SDL {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}, ";
+                    vers = $"\tSDL version {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}\n";
                     _sdlVers = SDL_image.IMG_Linked_Version();
-                    vers += $" SDL_image {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}]";
+                    vers += $"\tSDL_image version {_sdlVers.major}.{_sdlVers.minor}.{_sdlVers.patch}";
                 }
             }
             catch
@@ -458,7 +458,6 @@ namespace PERQemu.UI
         EXPOSED events are ignored; because we update at (ideally) 60fps, the entire
         screen is refreshed often enough to ignore partial redraws (and these can come
         fast and furious in some situations).
-        MOVED events are irrelevant and are ignored.
         Newer versions (Linux) also send "event 15" (window focus?) that are ignored.
         
     On MacOS X:

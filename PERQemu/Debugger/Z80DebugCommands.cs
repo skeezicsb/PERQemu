@@ -298,6 +298,7 @@ namespace PERQemu
             if (CheckSys()) PERQemu.Sys.IOB.Z80System.Scheduler.DumpEvents("Z80");
         }
 
+        //[Conditional("DEBUG")]
         [Command("debug z80 dump rtc")]
         void DumpRTC()
         {
@@ -337,20 +338,6 @@ namespace PERQemu
         void TuneAudio(AudioKnobs knob, int val)
         {
             PERQemu.Sys.IOB.Z80System.Speech.SetTunable(knob, val);
-        }
-
-        [Command("debug z80 audio record")]
-        void SaveAudioStart(string file)
-        {
-            var pathname = Paths.BuildOutputPath(file);
-
-            PERQemu.GUI.Audio.StartRecording(pathname);
-        }
-
-        [Command("debug z80 audio save")]
-        void SaveAudioFinish()
-        {
-            PERQemu.GUI.Audio.StopRecording();
         }
 
 #if DEBUG

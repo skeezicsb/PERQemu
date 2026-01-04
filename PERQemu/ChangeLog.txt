@@ -10,7 +10,9 @@ December, 2025:
     7. Clarify/correct the Settings/Configurator to discourage assigning RSX: to
     serial port B on PERQ-2 configurations.  POS only acknowledges "RSX:" on
     port A (all models).  Correct a silly bug on shutdown where sometimes the
-    display window would linger after power off.
+    display window would linger after power off.  Rotate the old change logs to
+    declutter and make way for the new year.  Remove the unused "gui" command
+    and add an "about libraries" command to aid in debugging.  More small fixes.
 
     6. Fix an off-by-one error in the i8237 DMA controller that wasn't causing
     problems with the floppy, but did introduce audio glitches; can now test and
@@ -397,4 +399,4 @@ January, 2025:
 
 
 ---
-Last update: skeezics    Tue Dec 30 15:05:04 PST 2025
+Last update: skeezics    Tue Dec 31 16:08:04 PST 2025

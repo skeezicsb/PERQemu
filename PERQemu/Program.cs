@@ -159,15 +159,27 @@ namespace PERQemu
             Console.WriteLine($"[Host {Environment.MachineName} is configured for {Environment.ProcessorCount} processor(s)]");
             Console.WriteLine($"[Console buffer is {Console.BufferWidth}x{Console.BufferHeight}]");
             Console.WriteLine($"[Console window is {Console.WindowWidth}x{Console.WindowHeight}]");
-            Console.WriteLine(_gui.GetSDLVersion(true));
-            Console.WriteLine(_gui.GetSDLVersion(false));
+            Console.WriteLine(_gui.GetSDLVersion(true));    // build version
 #endif
 #if TRACING_ENABLED
             Console.WriteLine("[Tracing is available]");
 #endif
         }
 
-        public static string Copyright = "Copyright (c) 2006-2025, J. Dersch (derschjo@gmail.com)\n" +
+        public static void PrintVersions()
+        {
+            Console.WriteLine();
+            Console.WriteLine("Loaded libraries:");
+            Console.WriteLine(_gui.GetSDLVersion(false));   // linked version
+
+            foreach (AssemblyName an in Assembly.GetEntryAssembly().GetReferencedAssemblies())
+            {
+                if (an.Name == "SharpPcap" || an.Name == "Z80dotNet" || an.Name == "PacketDotNet")
+                    Console.WriteLine($"\t{an.Name} version {an.Version}");
+            }
+        }
+
+        public static string Copyright = "Copyright (c) 2006-2026, J. Dersch (derschjo@gmail.com)\n" +
                                          "With contributions from S. Boondoggle (skeezicsb@gmail.com)";
 
         public static string Version => _version;

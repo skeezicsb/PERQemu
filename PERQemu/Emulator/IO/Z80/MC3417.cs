@@ -63,15 +63,9 @@ namespace PERQemu.IO.Z80
 
         public void ResetFilter(int frequency)
         {
-            if (frequency != _frequency)
-            {
-                // Resize for sample doubling, if nessary
-                //var size = frequency == 16000 ? 16 : 8;
-                _samples = new short[8];
-                _frequency = frequency;
-            }
+            _frequency = frequency;
 
-            // Compute once
+            // Recompute
             _charge = Math.Pow(Math.Exp(-1.0), 1.0 / (FilterChargeTC * _frequency));
             _decay = Math.Pow(Math.Exp(-1.0), 1.0 / (FilterDecayTC * _frequency));
             _leak = Math.Pow(Math.Exp(-1.0), 1.0 / (IntegratorLeakTC * _frequency));
@@ -99,7 +93,7 @@ namespace PERQemu.IO.Z80
 
             if (frequency == 0)
             {
-                Log.Write(Category.Speech, "Bad baud rate request ignored: {0}", newRate);
+                Log.Warn(Category.Speech, "Bad baud rate request ignored: {0}", newRate);
                 return;
             }
 
@@ -224,10 +218,10 @@ namespace PERQemu.IO.Z80
         // debug: turn these to private, const when set
         public double FilterMax = 1.500;                 // 1.0954
         public double FilterMin = 0.020;                 // 0.416
-        public double FilterDecayTC = 0.003;             // 0.004
-        public double FilterChargeTC = 0.005;            // 0.004
+        public double FilterDecayTC = 0.005;             // 0.004
+        public double FilterChargeTC = 0.003;            // 0.004
         public double IntegratorLeakTC = 0.001;          // 0.001
-        public double SampleGain = (10000.0 / 32768.0);   // 10000
+        public double SampleGain = (10000.0 / 32768.0);  // 10000
 
 
         // Working set

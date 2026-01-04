@@ -344,6 +344,12 @@ namespace PERQemu
             PERQemu.PrintBanner();
         }
 
+        [Command("about libraries", "Show versions of loaded libraries")]
+        void AboutLibs()
+        {
+            PERQemu.PrintVersions();
+        }
+
         [Command("commands", "Show console commands and their descriptions")]
         public void ShowCommands()
         {
@@ -369,13 +375,6 @@ namespace PERQemu
 
             // build path OutputDir/cmdhistory.txt
             // open output stream and dump it
-        }
-
-        [Command("gui", "Start the graphical interface")]
-        void LaunchGUI()
-        {
-            // Sigh.  Maybe by v2.0?
-            Console.WriteLine("Nope.  No cross-platform GUI available yet.");
         }
 
         [Command("done", Discreet = true)]

@@ -25,9 +25,9 @@ using System.IO;
 namespace PERQemu.UI
 {
     /// <summary>
-    /// Provide the interface to the SDL2 Audio subsystem for the PERQ's "speech"
-    /// device.  Speaker buffers PCM output from the MC3417 and plays it on the
-    /// host's default audio device.  First draft!
+    /// Provides the interface to the SDL2 Audio subsystem for the PERQ's
+    /// "speech" device.  Speaker buffers PCM output from the MC3417 and plays
+    /// it on the host's default audio device.
     /// </summary>
     /// <remarks>
     /// We manage the actual playback by tracking deltas (in real time) between
@@ -55,7 +55,6 @@ namespace PERQemu.UI
             _buffer = new short[_bufSize];
 
             _paused = true;
-            _recording = false;
         }
 
         public bool HaveAudio => _devId > 0;
@@ -103,7 +102,6 @@ namespace PERQemu.UI
                 desired.callback = null;            // No callback function
                 desired.userdata = IntPtr.Zero;     // User data passed to the callback
 
-
                 _devId = SDL.SDL_OpenAudioDevice(IntPtr.Zero, 0, ref desired, out _spec,
                                                 (int)SDL.SDL_AUDIO_ALLOW_ANY_CHANGE);
 
@@ -118,11 +116,10 @@ namespace PERQemu.UI
                     return;
                 }
 
-                Log.Write("Requested: format {0}, freq {1}, chan {2}, samples {3}",
-                          desired.format, desired.freq, desired.channels, desired.samples);
-                Log.Write("Obtained:  format {0}, freq {1}, chan {2}, samples {3}",
-                          _spec.format, _spec.freq, _spec.channels, _spec.samples);
-
+                Log.Debug(Category.Speech, "Requested: format {0}, freq {1}, chan {2}, samples {3}",
+                                            desired.format, desired.freq, desired.channels, desired.samples);
+                Log.Debug(Category.Speech, "Obtained:  format {0}, freq {1}, chan {2}, samples {3}",
+                                           _spec.format, _spec.freq, _spec.channels, _spec.samples);
 
                 // Todo: would be nice to see if we can enumerate and name the host
                 // devices, like Ethernet, and actually let the user assign one in
@@ -177,11 +174,11 @@ namespace PERQemu.UI
                 SDL.SDL_PauseAudioDevice(_devId, 1);
                 _paused = true;
 
-                Log.Write("Audio PAUSED");  // debug
+                Log.Info(Category.Speech, "Audio PAUSED");  // debug
 
                 // If playback was running and a change request came in,
-                // deal with it now -- assuming we don't have new data shit. SHIT.
-                // have to do proper flow control.  FUCK.
+                // deal with it now.  This is a terrible hack and will be
+                // refactored?
                 if (_freqChangeRequested && !Buffering)
                 {
                     Shutdown();
@@ -200,7 +197,7 @@ namespace PERQemu.UI
                 SDL.SDL_PauseAudioDevice(_devId, 0);
                 _paused = false;
 
-                Log.Write("Audio RESUMED");  // debug
+                Log.Info(Category.Speech, "Audio RESUMED");  // debug
             }
         }
 
@@ -246,23 +243,12 @@ namespace PERQemu.UI
             // Anything to do?
             if (!HaveAudio || _count == 0) return 0;
 
-            var tid = System.Threading.Thread.CurrentThread.ManagedThreadId;
-
             // This is going to hurt me more than it hurts you
             unsafe
             {
                 fixed (short* p = _buffer)
                 {
                     IntPtr ptr = (IntPtr)p;
-                    
-                    if (_recording)
-                    {
-                        for (int i = 0; i < _count; i++)
-                        {
-                            _outputStream.WriteLine($"{_sampleCount},{_buffer[i]}");
-                            _sampleCount++;
-                        }
-                    }
 
                     SDL.SDL_QueueAudio(_devId, ptr, (uint)(_count * 2));
                 }
@@ -273,7 +259,7 @@ namespace PERQemu.UI
             Clear();
 
             // Let the caller know how much we flushed
-            Log.Debug(Category.Speech, "Flushed {0} samples [on {1}]", residual, tid);
+            Log.Debug(Category.Speech, "Flushed {0} samples", residual);
             return residual;
         }
 
@@ -360,30 +346,6 @@ namespace PERQemu.UI
             }
         }
 
-        // Open a file to record samples
-        public void StartRecording(string path)
-        {
-            if (_recording) return;
-
-            _outputFile = path;
-            _outputStream = new StreamWriter(_outputFile, false);
-            _recording = true;
-            _sampleCount = 0;
-
-            Console.WriteLine($"Saving audio waveform in CSV to '{_outputFile}'.");
-        }
-
-        public void StopRecording()
-        {
-            if (!_recording) return;
-
-            _outputStream.Close();
-            _outputStream.Dispose();
-            _recording = false;
-
-            Console.WriteLine($"Output file closed, saved {_sampleCount} samples.");
-        }
-
         // Debugging
         public void Status()
         {
@@ -406,9 +368,6 @@ namespace PERQemu.UI
                               PERQemu.Sys.IOB.Z80System.Speech.FilterChargeTC,
                               PERQemu.Sys.IOB.Z80System.Speech.IntegratorLeakTC,
                               PERQemu.Sys.IOB.Z80System.Speech.SampleGain);
-
-            if (_recording)
-                Console.WriteLine($"[Recording to '{_outputFile}']");
         }
 
 
@@ -425,12 +384,6 @@ namespace PERQemu.UI
 
         // For pacing and statistics
         double _lastSampleRcvd;
-
-        // Record samples (debugging)
-        bool _recording;
-        int _sampleCount;
-        string _outputFile;
-        StreamWriter _outputStream;
 
         SDL.SDL_AudioSpec _spec;
     }
