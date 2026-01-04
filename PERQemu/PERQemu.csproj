@@ -372,13 +372,12 @@
     <None Include="Resources\qictape.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="Docs\ChangeLog-Oldest.txt" />
-    <None Include="Docs\ChangeLog-Older.txt" />
   </ItemGroup>
   <!-- Content items not included in build output -->
   <ItemGroup>
     <None Include="app.config" />
     <None Include="Readme-source.txt" />
+    <None Include="ChangeLog-Old.txt" />
     <None Include="PROM\rds00.rom" />
     <None Include="PROM\rsc03.rom" />
     <None Include="PROM\rsh00.rom" />
@@ -396,6 +395,8 @@
   </ItemGroup>
   <!-- Documentation -->
   <ItemGroup>
+    <None Include="Docs\ChangeLog-Oldest.txt" />
+    <None Include="Docs\ChangeLog-Older.txt" />
     <None Include="Docs\Configuration.txt" />
     <None Include="Docs\Configurator.png" />
     <None Include="Docs\Controller.txt" />
@@ -804,3 +805,4 @@
     </MonoDevelop>
   </ProjectExtensions>
 </Project>
+

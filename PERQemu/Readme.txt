@@ -86,7 +86,9 @@ bundled hard disk images with new software to play with.  It is a release to
 "skeezicsb/main" and a candidate to sync up with the master branch.
 
 Version 0.8.5 adds keyboard remapping and support for resizing the display when
-moving between screens, with vertical scrolling on short/laptop screens.
+moving between screens, with vertical scrolling on short/laptop screens.  The
+current experiments branch is adding audio/speech output and other improvements
+with the goal of a v1.0 release Real Soon Now.
 
 Please check back often for updates!
 
@@ -706,7 +708,7 @@ v0.1 - First public release
 
 Update history:
 
-12/30/2025 - skeezicsb - v0.8.8 (experiments)
+1/4/2026 - skeezicsb - v0.8.8 (experiments)
 12/12/2025 - skeezicsb - v0.8.5 (main)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)

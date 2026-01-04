@@ -1,0 +1,402 @@
+﻿PERQemu "experiments" branch ChangeBlog
+
+
+Summary of changes on the development branch since the v0.6.5 interim release.
+Previous notes moved to Docs/ChangeLog-Older.txt.
+
+
+December, 2025:
+
+    7. Clarify/correct the Settings/Configurator to discourage assigning RSX: to
+    serial port B on PERQ-2 configurations.  POS only acknowledges "RSX:" on
+    port A (all models).  Correct a silly bug on shutdown where sometimes the
+    display window would linger after power off.  Rotate the old change logs to
+    declutter and make way for the new year.  Remove the unused "gui" command
+    and add an "about libraries" command to aid in debugging.  More small fixes.
+
+    6. Fix an off-by-one error in the i8237 DMA controller that wasn't causing
+    problems with the floppy, but did introduce audio glitches; can now test and
+    verify "high volume" RS-232 and GPIB DMA ops as well.
+
+    5. Oh yeah, speech/audio output works now.  (But it'll take a lot more work
+    to get the code into shape to release it.)
+
+    4. Implement a serial mux so that Speech and Kriz can share one SIO channel,
+    and add Sync/hunt mode checking on the Tx side.  For EIO, add the DMA select
+    register to the Z80SIO itself, as that seems to be the only sensible place
+    to do it.  (Neither DMAC knows or cares about the details; on IOB/CIO, the
+    Z80 DMA chip talks to the SIO B channel directly?)
+
+    3. Able to test v0.8.5 on virgin macOS Monterey and Linux Mint (Cinnamon)
+    installations.  Hiccup on macOS 12 due to the different behavior of the
+    dynamic linker, which deprecates the use of DYLD_LIBRARY_PATH but also does
+    NOT seem to include /usr/local/lib in its search path (or fallback path) as
+    the man page still hints that it should.  That aside, it runs just fine and
+    now I can do macOS, Linux and Windows testing at 60fps, hooray.  Development
+    of the CVSD decoder and plumbing for speech output begins!
+
+    2. Some small tweaks and cleanups plus more cursory testing of the keyboard
+    mapping stuff.  Updates to the Configurator and more tuning and fussing.
+    Seems to work okay (no major regressions); will push v0.8.5 for release and
+    focus on in-depth testing with the next one.  Kick that can down the road.
+
+    1. Anything worth killing is worth OVERKILLING.  Remapping keyboards isn't
+    just a matter of dropping a hand wrought text file in the Conf directory,
+    no sirree.  A WHOLE NEW CLI SUBSYSTEM.  Settings and Configuration commands.
+    Dynamic updates while the VM is running.  An entire new appendix in the User
+    Guide.  This is so stupidly over the top -- but by now you expect nothing
+    less, amirite?  Bump to v0.8.4 for platform testing.  After some testing and
+    further fussing over it, a v0.8.5 release will probably be it for this year?
+    Would still love to get audio hooked up and push out a v1.0 before the 31st,
+    though.
+
+
+November, 2025:
+
+    4. Cleaned up the Storage subsystem a bit, and add an alias feature so that
+    device types can be referenced by a colloquial name or model number, since
+    my initial choices were, um, not always intuitive.  This is a PERQemu-only
+    hack, for now, since I didn't want to introduce a change to the PERQmedia
+    library to support aliases directly - yet.  Type "storage commands" to see
+    the updated commands; UserGuide updates coming shortly.
+
+    NOTE: changes to the StorageDevices.db file for v0.8.x will not be backward
+    compatible with older versions, but aside from "Invalid command" warnings at
+    startup should still load.  Not that you'd ever do that, surely.
+
+    3. Refactored the SDL keyboard handling.  For consistency between layouts,
+    the PERQ-1 HELP, OOPS and LF keys (F1..F3) are now remapped to F5..F7 by
+    default, and are now the same on the PERQ-2 "VT-100" layout.  The PERQ-2
+    function keys PF1..PF4 are mapped to F1..F4 on the host.  F8 remains the
+    "pause" key to stop execution without switching back to the console first.
+    Updated the UserGuide to explain this and how to set up custom mappings.
+
+    2. Began plumbing to make the keyboard reconfigurable.  Bump to 0.8.1 for
+    platform testing.
+
+    1. For laptops or other small screens that can't handle the PERQ's 1024-
+    line display plus all the host OS/window manager ornamentation, PERQemu will
+    now shrink the window to fit and allow the scroll wheel (or HOME/END keys)
+    to pan up and down (like the old WinForms PERQemu did it).  If you have
+    multiple screens and drag the display window between them, it will enlarge
+    to full size or shrink to fit accordingly.  [Experimental; tested on MacOSX
+    with multiple machines, only lightly on Windows/Linux so far.]
+
+
+October, 2025:
+
+    4. Was LoadOp ever intended to work with Fetch4R?  ICL thought so, since
+    they wrote a test for it in the SYSB microcode shipped with PNX 5.  So now
+    the emulator reloads the op file, in the order the hardware does it, when a
+    Fetch4R is issued before a LoadOp.  The test microcode still sails right
+    through and there's no change in behavior -- because upon closer inspection
+    it seems the half-assed test never actually checks the op bytes after the
+    reversed reload, AND it seems that the kernel doesn't rely on the "feature"
+    that extra test didn't really test anyway.  <poke_fork_in_eye>repeatedly</>
+
+    3. Networking changes to correct/improve Ethernet reliability after the
+    PacketDotNet version bump.  Still pretty rickety but it's coming along.
+    Will require a major architectural overhaul soon, but at least you can do
+    basic FTP between hosts and use most of the Accent features; FLEX network
+    installs exchange greetings but never actually transfer filestore data?  No
+    idea if the PNX-version-which-must-not-be-named Ethernet works at all.
+
+    2. Bump the version of SDL2-CS and PacketDotNet.  To maintain compatibility
+    with the current .NET Framework build environment, specific versions are
+    used (far from the latest).  Probably nobody else on the planet cares about
+    running this on platforms this old, using Mono... so here's fair warning
+    that very likely, come 2026, the minimum system requirements will finally
+    shift toward something slightly more up-to-date.  Somehow.  Maybe.
+
+    1. If PERQemu detects that you are attempting to run PNX 5, it will delete
+    itself from your hard drive and report you to the FBI.  PNX 5 is a fake OS,
+    a hoax, it doesn't exist, we have always been at war with Eastasia.
+
+    The patches/mods here roll up some of the latest attempts to address the
+    numerous bugs and outright bizarre behavior exhibited by the PNX 5 kernel.
+    Despite improving the near-cycle-accurate behavior of the emulator by making
+    it more faithful to the hardware, PNX 5 remains stubbornly, stupidly broken.
+    Without source code or a shred of documentation, further effort is pointless
+    so I'm setting it aside for now.
+
+    Pushing an interim update to clear the decks and shifting focus to pressing
+    UI matters (screen size and keyboard mapping).  Bump to v0.8.0.
+
+
+September, 2025:
+
+    2. More Ethernet testing and tuning; POS TestEther, FTP, Accent services
+    are working with better reliability.  That is to say, as well as can be
+    expected given how fragile and bare bones a lot of that original software
+    is, but it's exciting to see Accent living up to its billing as a network
+    OS and distributed computing environment.  Many ideas cooking for how to
+    help manage/integrate VMs with any existing host network infrastructure.
+
+    1. Debugging.  Refactoring the Ether10MbitController because it was getting
+    unwieldy.  Now 50% more wieldy.  Bumped version to v0.7.9 and push for some
+    platform testing.  PNX 5 is still intransigent.
+
+
+August, 2025:
+
+    3. Pushed v0.7.8 to main for pre-release.  Dug into the PDMA/FIFO stuff yet
+    again for PNX but it's failing before any of that.  Has to be a memory state
+    machine issue (they abuse the living hell out of the overlapped fetch/store
+    rules) but still haven't nailed it down.
+
+    2. Small victory: FLEX now runs, thanks to an RTC clock fix.  New settings/
+    configurator commands to save an RTC offset so the virtual machine can party
+    like it's still 1989.  PERQ-2 VT100-style keyboard mappings need fixin'.
+    Updates to the UserGuide for recent changes.  Push for testing prior to 
+    v0.7.8 pre-release.
+
+    1. Video updates.  Memory state updates.  Fixing "bugs" that improve the
+    accuracy and completeness of the emulator without actually affecting the
+    behavior of any of the software it runs: are they really bugs after all?
+    Update to push out custom build to support additional FLEX media recovery.
+
+
+July, 2025:
+
+    4. Memory state table corrections to enhance accuracy of two-word fetch and
+    store operations, add missing indirect/overlapped Fetch2 state.  Force clear
+    the two least significant bits for DMA transfers, since PNX 5 apparently 
+    violates the quad-alignment requirement there too (expecting the hardware to
+    do it) but that doesn't make a damn bit of difference either.  Additional
+    debugging and logging tweaks.  PNX 5 still f&*$)ing broken.  This has become
+    absolutely infuriating.  Interim push for platform testing.
+
+    3. Pushed udpates for Accent S6 + Lisp M3 to the PERQmedia archive.  Added
+    a reconstruction of the PNX C-Codes from PNX 5 based on scrounging through
+    binary dumps of the assembler, verified by manually reconstructing ~ 2000
+    lines of the microcode interpreter.
+
+    2. Oooh.  Accent S7 booted in 24-bit mode with 4MB of memory!  Fixed bug in
+    Upper() on the 24-bit CPU and restored address wraparound on the 4MB memory
+    board (despite what Accent kernel comments in the sizing loop say, it DOES
+    wrap, otherwise VFY fails -- there's no 24-bit VFY microcode to be found.)
+
+    1. More debugging. More Ethernet tweaks. No success with PNX 5 or FLEX yet.
+    Discovered the cause and removed the hack for the Z80 DMA issue manifested
+    by FLEX thinking the Z80 load was timing out.  Discovered that telling the
+    Z80 to execute the version number bytes when jumping to the (wrong) start
+    address in RAM is perfectly fine, apparently.  Slight update to the debug
+    logging so I can crank the verbosity to Proustian levels.  Added NAT table
+    entry aging, but forget why.  How can we hack when the world is burning?
+
+
+June, 2025:
+
+    7. Add the FLEX opcodes to the debugger.  Use "debug load qcodes flex" to
+    load them.  Chose some made-up mnemonics for debugging; see QCodes.cs and
+    the RSRE documentation for more info.  Additional small Ethernet fix.
+
+    6. Let's qualify that last update for a very narrow definition of "fixes."
+    Of all the definitions of that versatile word, I think I managed to avoid
+    "to mend or repair" entirely.  Thank you, thank you, it's a talent.  Let's
+    try this again.  Bump to build v0.7.7.7 'cuz I'm feelin' lucky!  This patch
+    lets POS FTP, TestEther and Accent play a little nicer.
+
+    5. Many Ethernet fixes and a weird bug discovered: SharpPcap/PacketDotNet
+    don't consistently preserve OR strip the FCS bytes during raw Ethernet
+    captures -- so depending on the quirk of your controller chip (on MacOSX,
+    anyway) you'll get different receive lengths.  This is annoying.  Pushing
+    the debug/temporary changes to verify on Linux/Windows and developing the
+    workaround.  The FLEX network installer uses Ethernet multicast!  Totally
+    vindicated for the tens of minutes of my life devoted to writing that code
+    that I never thought would be used, ever.  Cool!  [Bump to v0.7.7.5]
+
+    4. New storage subsystem commands "safe" and "unsafe" set a flag for create
+    or export operations that might overwrite files.  Importing and exporting
+    5.25" hard drive images for use with the MFM emulator now included in the
+    Release build with some preliminary updates to the UserGuide to explain how
+    they work.  Pushing this interim build as v0.7.7 to sync up test platforms
+    and continue debugging PNX 5 issues.
+    
+    3. Okay, so I've lost my mind.  This update is out of control.  My walls are
+    metaphorically covered in spaghetti.  Changes to the Z80 DMA cycle timing,
+    addition of a custom floppy format and a new FSHint code for FLEX, and tons
+    of debugging tweaks to support the FLEX/PNX debugging efforts.  Consistency
+    update for handling Scheduler event cancellation (nitpicky stuff mostly) and
+    many little tweaks/corrections made as the deep dive into the mysterious /
+    infuriating by-hand-reassembly of the PNX 5 kernel microcode uncovered some
+    seriously picayune little "bugs."  As in, code that works with 6 or 7 other
+    OSes but deviated sliiiiightly from the hardware schematics was "fixed",
+    even though it didn't affect anything or solve the PNX issue.  Hmmm.  :-|
+
+    Version bumped for a custom test build.  Debugging continues.
+
+    2. FLEX IS BOOTING!  Thanks to the efforts of several folks in the UK, an
+    archive of a full floppy set has been successfully converted for use with
+    PERQemu, and it boots!  Several changes needed to accommodate the custom
+    floppy format (15 x 256 byte sectors, single density) but these weren't too
+    egregious.  Bumped the version number to identify the custom build used for
+    testing.  PNX 5 problem still eludes.
+
+    1. PNX 5 is insane.  That is all.
+
+
+May, 2025:
+
+    4. Updated mfm_util and reimported the PNX 5 hard disk images but STILL no
+    joy booting them; both hard disk and floppy still drop into the PNX kernel
+    debugger after printing the banner.  Combing the disassembled microcode and
+    it's s-l-o-w going.  Former PNX kernel hacks with illicit stashed copies of
+    the source code, feel free to chime in any time now!
+
+    3. Debugging check in, reset, try to get back up to speed after a week in
+    hell, shivering under the covers.  Attempting to reverse the PNX 5 SysB code
+    to figure out why the emulator won't boot, even from a known working hard
+    disk image.  Update the microcode disassembler to output the H field (Hold
+    bit) and format the UState register correctly for 20- and 24-bit CPUs.
+
+
+    2. COVID. EFFING. SUCKS.  :-(
+
+
+    1. Thanks to some live hard drive images dumped using the Gesswein MFM disk
+    emulator, made some headway into figuring out why PNX 5 is crashing.  Added
+    some experimental commands (available in Debug mode) to import ".img" files
+    into a .prqm image, and additional debugging support for interrogating hard
+    disk blocks directly.  Shout out to Tom Stepleton for the PNX 5.02 and 5.03 
+    images to work with!
+
+
+April, 2025:
+
+    7. It's away!  Version 0.7.5 bumped to be the default on the Gitub Releases
+    page.  After a brief pause, the experiments branch will move forward with
+    short term fixes (PNX 5 crashing, 24-bit debugging) and additional new media
+    (Accent S6 with more Spice Lisp stuff!) while the longer term projects take
+    shape (enhancements to PERQdisk, port of Stut, more UI enhancements, etc).
+    Included with this push are a few small 24-bit CPU changes (uState register
+    corrections based on recently found documentation).
+
+    6. Oh bloody hell.  Missed one small fix to the MFM/Microp disk controllers.
+    The BOOT ROM tells the disk controller to ship the normal two quad words for
+    the logical header but sets the high address bits so the buffer will always
+    end up in high memory regardless of what size board is installed -- and then
+    ignores the header bytes anyway.  Ugh.  The disk hardware/state machine must
+    rely on always sending those two quads even though the DMA hardware could be
+    programmed to skip it by changing ONE CONSTANT in the microcode, but ANYWAY
+    it means we take out the range check and just let our Memory implementation
+    wrap the address, like the hardware do.  Gotta love it, warts and all.
+
+    5. Small Ethernet bug fix when fetching the machine's MAC address.  Update
+    the UserGuide for the pending release.  Update some of the older disk images
+    (re-enable network servers in Accent S4, e.g.) and some final fiddling about
+    before pushing this thing out of the nest.  Bump to v.0.7.5!
+
+    4. Updated and added more disk images.  MOAR! DISK! IMAGES!  These are a
+    bit thrown together and there's still a bazillion floppies and tapes to go
+    through to assemble new apps/games/demos/sources/etc, but at least now I've
+    bundled some PERQ-2/8" Microp and PERQ-2/Tx 5.25"/MFM images to start with.
+    See the ReadMe/UserGuide for additional info.
+
+    Also, more fiddling with RasterOp, resulting (on my ancient creaky Mac) in
+    a blistering .5fps average increase in refresh rate.  Worth it. :-P
+
+    3. Some corrections to the MFM and Micropolis hard disk controllers to fix
+    a regression and clarify some strange boot-time behavior.  Correct a small
+    Configurator bug that was preventing saved configurations from loading at
+    startup.  Bump to v0.7.0, push for platform testing before finally bundling
+    this up for release.
+
+    2. Finally put together a decent POS G.6 image, which was surprisingly hard
+    to do given the strange state of the archived media.  All the pieces are
+    there, scattered about, but with some maddening little gaps that make "bare
+    metal" installs far more convoluted than they should be.  New bundled images
+    for PERQ-2 and PERQ-2/T2 coming soon to the Disks/ directory, with updated
+    UserGuide and Readmes.  Accent S6 next!
+
+    1. Fix bug where switching from EIO to CIO/IOB configurations left the
+    Shugart disk controller confused (boot failures at DDS 014).  Other small
+    cleanups in preparation for v0.7.5 release.
+
+
+March, 2025:
+
+    3. Cleanup and snapshot of the RasterOp fix.  Push for platform testing.
+    Bump to v0.6.9 because yeah, you only grow old once but you can be immature
+    forever.
+
+    2. Single-step countless RasterOps through the simulation, rewrite the code
+    n ways, check and double check the PROM dumps and schematics, stare bleary
+    eyed and mystified at nonsensical results and wonder about my life choices.
+
+    Three days later:  Oh.  The test program was calculating the x coordinate
+    incorrectly for the only test that consistently failed.  I fixed the actual
+    RasterOp bug a week ago. <facepalm/>
+
+    1. Completed a mortgage refinance that probably took 10 years off my life.
+    Wells Fargo is a criminal organization and I am finally well clear of them.
+    Trying to actually breathe again and pick up where I left off:  RasterOp
+    rewrite and testing. 
+
+
+February, 2025:
+
+    3. Wrote an entire RasterOp simulator and worked out the deep mysteries of
+    the RTI, RSC and RDS PROMs.  Having finally unraveled this, I suspect a
+    Vogon constructor fleet is gathering in orbit.
+    
+    2. Work sidetracked by another plunge down the rabbit hole into the murky
+    depths of the RasterOp machine.  PNX visual glitches unearthed an obscure
+    bug that, rather than patching through a PROM update, motivated me to look
+    again at the implementation... which I hadn't messed with for 7 YEARS!?
+    Refactored the RasterOp pipeline and bumped RSC03 to RSC04, rewrote the
+    edge table to correct the glitches, and updated the Perl hacks used to
+    build it.  Bumped PERQemu to v0.6.7 to reflect the changes.
+
+    1. Reworked and updated DMA register address frobbing (simplified for EIO).
+    Implemented Q-code breakpoints added a MachineStateChanged event to properly
+    pause execution through the ExecutionController (fixing the earlier buggy,
+    rushed implementation).
+
+
+January, 2025:
+
+    4. Finally revisited the CPU Victim register implementation, and after more
+    careful study of the schematics corrected the emulation to be more faithful
+    to the actual hardware.  This has eliminated the need for the PNX "DDS 142"
+    boot bug (although their 16K VFY test code is still janky as hell and may
+    not actually test what they think it does).  The microcode patch that was
+    slapped together for earlier PNX versions has been removed.  PNX 5, however,
+    has some sort of video or RasterOp problem, where characters are randomly
+    painted incorrectly and the kernel drops into the debugger shortly after
+    boot.  This may be a bad boot floppy?  Investigation underway.  A couple of
+    small bug fixes to correct the previous commit (something that compiled on
+    Xamarin Studio threw an error on VS2022, first time that's happened).  This
+    should build correctly.
+
+    3. Updated the video display handling so that the floppy activity icon is
+    now visible during slow floppy boots.  It's pretty subtle so you might not
+    notice it.
+
+    Also:  POS G.85 booted from floppy.  Don't have full installation media or
+    any sources (dang) but may have a tape image to load.  This one is super
+    rare.  PNX 3 installation dead in the water, as most of the floppies
+    are missing cylinder zero.  This is typical for POS floppies, but PNX DOES
+    actually use that track -- so we won't get a PNX 3 image until the original
+    diskettes are re-scanned.  Bummer.  It has demos?  Working on PNX 5 boot
+    issues (bad VFY test).  Plus, made some progress on 24-bit support just
+    because I was in the mood to fool around a little.  Got way farther than
+    expected!  Actually was able to run an Accent S6 image (20 bit) on the 24-
+    bit CPU with working DMA (but a video glitch that needs investigation).
+    All of this is definitely NOT procrastination, no way, not at all.  Nope.
+
+    2. Fixed the floppy DMA handling that was causing grief with the EIO Z80.
+    This is a testing snapshot to try out some other small fixes (24-bit) and
+    incorporate some PERQmedia tweaks that help with loading dodgy POS floppies.
+    Bumped the UserGuide.pdf as well.  Still working toward building a couple
+    of Micropolis and MFM disk images with demos and games and goodies as well
+    as other fixes for a v0.7.x release.  Real Soon Now.  Really.
+
+    1. Bumped the copyright notices and version number to v0.6.6 to snapshot at
+    the start of the new year.  Reassessed and reviewed the state of the world
+    (sheer horror) and the code base (looking up) and am resolved to get to v1.0
+    before the year is out, or die trying.
+
+
+---
+Last update: skeezics    Sun Jan  4 13:01:02 PST 2026
