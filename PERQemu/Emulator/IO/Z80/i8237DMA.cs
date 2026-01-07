@@ -101,10 +101,8 @@ namespace PERQemu.IO.Z80
             _channels[chan].DataPort = port;
             _channels[chan].AckRequested = dev.DMAAcknowledge;
 
-            if (_channels[chan].AckRequested != null)
-                Console.WriteLine($"Channel {chan} wants DMA acks");
-
-            Log.Debug(Category.Z80DMA, "Channel {0} assigned to {1} (port 0x{2:x2})", chan, dev, port);
+            Log.Debug(Category.Z80DMA, "Channel {0} assigned to {1} (port 0x{2:x2}) {3}", chan, dev, port,
+                                        (_channels[chan].AckRequested != null) ? "[ACK requested]" : "");
         }
 
         /// <summary>

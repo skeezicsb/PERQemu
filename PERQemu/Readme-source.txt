@@ -441,7 +441,7 @@ these into the Emulator/IO/SerialDevices folder.
       MC3417.cs converts the PERQ CVSD bytestream to 16-bit PCM samples, which
       are fed to UI/SDL/Speaker.cs for output to the host's default audio output
       device.  The SDL2 library handles any upsampling necessary to match the
-      16KHz (or 32KHz) PERQ output to the host's expected rate.
+      16kHz (or 32kHz) PERQ output to the host's expected rate.
 
             
 2.3.3  GPIB

@@ -680,13 +680,27 @@ namespace PERQemu.IO.Network
         }
 
         /// <summary>
-        /// Find the adapter that matches the interface name.  The C# runtime
-        /// gives back completely different names than the list SharpPcap (or
-        /// its underlying LibPcap/WinPcap/AirPcap library) gives back, so this
-        /// is going to require further consideration and way more testing! :-/
+        /// Find the adapter that matches the interface name.
         /// </summary>
+        /// <remarks>
+        /// The C# runtime gives back completely different names than the list
+        /// SharpPcap (or its underlying LibPcap/WinPcap/AirPcap library) gives
+        /// back, so here we map names based on platform type.
+        /// 
+        /// On Windows:
+        ///     adapter.Id ~= dev.Name, without the rpcap:\\blah
+        ///     adapter.Name can be assigned, is typ "Ethernet", "Ethernet 2", etc.
+        ///     dev.Description has extra crap added by SharpPcap
+        /// On Linux, Mac:
+        ///     adapter.Id == dev.Name == adapter.Name == adapter.Description
+        ///     dev.Description is blank; SharpPcap can't/doesn't get that info
+        /// 
+        /// To reconcile the two lists, we do OS-specific matching.  It's not
+        /// pretty, but better than before.
+        /// </remarks>
         public static ICaptureDevice GetAdapter(string name)
         {
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
             var devices = CaptureDeviceList.Instance;
 
             // Run through the list and try to match exactly...
@@ -694,8 +708,23 @@ namespace PERQemu.IO.Network
             {
                 foreach (var dev in devices)
                 {
-                    if (dev.Name.ToLowerInvariant() == name.ToLowerInvariant())
-                        return dev;
+                    if (PERQemu.HostIsUnix)
+                    {
+                        // The runtime name should match the SharpPcap name exactly
+                        if (dev.Name.ToLowerInvariant() == name.ToLowerInvariant())
+                            return dev;
+                    }
+                    else
+                    {
+                        foreach (var intf in interfaces)
+                        {
+                            // Use the runtime name find the interface, then loosely
+                            // match the Ids
+                            if (intf.Name.ToLowerInvariant() == name.ToLowerInvariant() &&
+                                dev.Name.EndsWith(intf.Id, StringComparison.Ordinal))
+                                return dev;
+                        }
+                    }
                 }
             }
 
@@ -704,53 +733,32 @@ namespace PERQemu.IO.Network
         }
 
         /// <summary>
-        /// Display the available host interfaces.  The SharpPcap view differs
-        /// from the MS/Mono runtime system's list, which is damned annoying,
-        /// but it's what we have to use to correctly bind the interface at
-        /// startup.
+        /// Display the available host Ethernet interfaces.
         /// </summary>
         public static void ShowInterfaceSummary()
         {
-            // Show the C# runtime's view
-            //var interfaces = NetworkInterface.GetAllNetworkInterfaces();
-            //
-            //foreach (NetworkInterface adapter in interfaces)
-            //{
-            //    if (!IsEthernet(adapter.NetworkInterfaceType)) continue;
-            //
-            //    Console.WriteLine("ID: {0}  Name: {1}", adapter.Id, adapter.Name);
-            //    Console.WriteLine(adapter.Description);
-            //    Console.WriteLine(string.Empty.PadLeft(adapter.Description.Length, '='));
-            //    Console.WriteLine("  Interface type ......... : {0}", adapter.NetworkInterfaceType);
-            //    Console.WriteLine("  Operational status ..... : {0}", adapter.OperationalStatus);
-            //    Console.WriteLine("  Hardware address ....... : {0}", adapter.GetPhysicalAddress());
-            //    Console.WriteLine();
-            //}
-            //Console.WriteLine();
+            // Get the C# runtime's interface list
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
 
-            // Let's see what Pcap gives us...
-            var ver = SharpPcap.Version.VersionString;
-            Console.WriteLine("SharpPcap {0} devices:", ver);
-
-            // Retrieve the device list
-            var devices = CaptureDeviceList.Instance;
-
-            // If no devices were found print an error
-            if (devices.Count < 1)
+            foreach (NetworkInterface adapter in interfaces)
             {
-                Console.WriteLine("No host Ethernet adapters were found (or no privileges)");
-                return;
-            }
+                if (!IsEthernet(adapter.NetworkInterfaceType)) continue;
 
-            int i = 0;
+                Console.WriteLine($"ID: {adapter.Id}  Name: {adapter.Name}");
+                if (adapter.Description != adapter.Name)
+                    Console.WriteLine(adapter.Description);
+                Console.WriteLine(string.Empty.PadLeft(adapter.Description.Length, '='));
+                Console.WriteLine($"  Interface type:     {adapter.NetworkInterfaceType}");
+                Console.WriteLine($"  Operational status: {adapter.OperationalStatus}");
+                Console.WriteLine($"  Hardware address:   {adapter.GetPhysicalAddress()}");
 
-            // Print out the devices
-            foreach (var dev in devices)
-            {
-                Console.WriteLine("{0}) {1} - {2}", i, dev.Name, dev.Description);
-                i++;
+                // Find and print the matching SharpPcap device
+                var dev = GetAdapter(adapter.Name);
+                Console.WriteLine("  SharpPcap device:   {0}", dev != null ? dev.Name : "[Not found!]");
+                Console.WriteLine();
             }
         }
+
 
         // Debugging
         public void DumpStatus()

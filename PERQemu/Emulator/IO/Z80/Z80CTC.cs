@@ -374,10 +374,10 @@ namespace PERQemu.IO.Z80
                 //
                 // For the IOB:  CLK is Z_CLK (2.4576Mhz) or ~407ns
                 //      ZC/TO0 is the RS-232 baud rate clock (defaults to 4800?) ~13us
-                //      ZC/TO1 is the 32KHz speech clock (schem says 16KHz, sigh) ~32us
-                //      ZC/TO2 feeds a series of flipflops that combine with a 500KHz
-                //              clock to form the disk stepper pulses (96KHz)
-                //      CLK3 is TAB STAT, also derived from the 500KHz clock and
+                //      ZC/TO1 is the 32kHz speech clock (schem says 16kHz, sigh) ~32us
+                //      ZC/TO2 feeds a series of flipflops that combine with a 500kHz
+                //              clock to form the disk stepper pulses (96kHz)
+                //      CLK3 is TAB STAT, also derived from the 500kHz clock and
                 //              possibly unused?  (Old touch tablet interface)
                 // Thus, the min/max timer values at 2.4576Mhz are ~6.5uS to 26.6ms.
                 // At 9600 baud, the CTC runs at its maximum rate to produce the SIO/0

@@ -91,7 +91,7 @@ namespace PERQemu.IO.Z80
             }
         }
 
-        // The hardware runs on a 500KHz fixed clock source
+        // The hardware runs on a 500kHz fixed clock source
         readonly ulong StepTime = 500 * Conversion.UsecToNsec;
 
         // DiskStep wired to CTC channel 2

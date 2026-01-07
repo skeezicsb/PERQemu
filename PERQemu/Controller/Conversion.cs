@@ -107,13 +107,13 @@ namespace PERQemu
                     baud = 110;
                     break;
 
-                // Deep end here. See if we're setting the 16KHz speech rate
+                // Deep end here. See if we're setting the 16kHz speech rate
                 case 9:
                 case 250:
                     baud = 16000;
                     break;
 
-                // Or back to the 32KHz Kriz tablet rate
+                // Or back to the 32kHz Kriz tablet rate
                 case 5:
                 case 125:
                     baud = 32000;

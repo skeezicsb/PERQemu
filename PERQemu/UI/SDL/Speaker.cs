@@ -1,4 +1,4 @@
-﻿//
+//
 // Speaker.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
@@ -82,7 +82,7 @@ namespace PERQemu.UI
 
         /// <summary>
         /// Open the default audio device, pause playback, and clear the sample
-        /// buffer.  Uses the fixed PERQ default 16KHz sample rate, mono.
+        /// buffer.  Uses the fixed PERQ default 16kHz sample rate, mono.
         /// </summary>
         public void Initialize()
         {
@@ -359,7 +359,7 @@ namespace PERQemu.UI
             var bytes = SDL.SDL_GetQueuedAudioSize(_devId);
             Console.WriteLine("Audio device ID: {0}  Status: {1}  Queued: {2} samples",
                               _devId, stat, (bytes / 2));
-            Console.WriteLine("Nominal rate: {0:N2}ms ({1}KHz)  Buffer: {2}  Count: {3}",
+            Console.WriteLine("Nominal rate: {0:N2}ms ({1}kHz)  Buffer: {2}  Count: {3}",
                               NominalRateInMsec, _frequency / 1000, BufferSize, _count);
             Console.WriteLine("Filter: Min/Max {0:N4}/{1:N4}, Decay {2:N4}, Charge {3:N4}, Leak {4:N4}, Gain {5:N4}",
                               PERQemu.Sys.IOB.Z80System.Speech.FilterMin,

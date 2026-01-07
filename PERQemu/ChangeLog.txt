@@ -7,6 +7,11 @@ Previous notes moved to ChangeLog-Old.txt.
 
 January, 2026:
 
+    2. Small update: make Windows Ethernet device selection a bit less annoying.
+    Tiny bug fix in PERQmedia to make sure version # byte is set when writing to
+    IMD images; in some cases it was left at zero when converting a floppy from
+    another format to IMD.
+
     1. Didn't quite get to v1.0 by the end of 2025, but came pretty darn close.
     Audio refactoring (and Z80 SIO/DMA rework) and other improvements on track
     for a v0.9.x release in the coming weeks?  Revising the to-do lists and
@@ -15,4 +20,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Sun Jan  4 13:20:05 PST 2026
+Last update: skeezics    Wed Jan  7 10:35:52 PST 2026
