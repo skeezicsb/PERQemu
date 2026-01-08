@@ -41,6 +41,9 @@ namespace PERQemu.IO.SerialDevices
             _dataInterval = (ulong)(16.666667 * Conversion.MsecToNsec);
         }
 
+        public ulong TransmitRate => 0;
+        public ulong ReceiveRate => Conversion.BaudRateToNsec(9600);    // Not 32kHz :)
+
         public void Reset()
         {
             // CIO and EIO use different sync characters (since one inverts and the
@@ -58,12 +61,6 @@ namespace PERQemu.IO.SerialDevices
         public void RegisterReceiveDelegate(ReceiveDelegate rxDelegate)
         {
             _rxDelegate = rxDelegate;
-        }
-
-        public void TransmitAbort()
-        {
-            // Should never happen
-            throw new NotImplementedException("TransmitAbort on Kriz");
         }
 
         public void TransmitBreak()

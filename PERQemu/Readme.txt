@@ -533,8 +533,11 @@ v1.0 - TBD
   - See if CIO Micropolis has any real software support?
   - Remaining items from the "What's Not" list above
 
-v0.8.8 - Experiments branch
+v0.8.9 - Experiments branch
   - Speech output proof-of-concept is now working!
+  - Rework of the serial port implementation for improved RS-232 reliability
+    on Mac/Linux hosts.
+  - Minor bug fixes and UI improvements.
 
 v0.8.5 - Main branch
   - Minor updates to Nuget package dependencies (now tested/verified against
@@ -708,7 +711,7 @@ v0.1 - First public release
 
 Update history:
 
-1/4/2026 - skeezicsb - v0.8.8 (experiments)
+1/7/2026 - skeezicsb - v0.8.9 (experiments)
 12/12/2025 - skeezicsb - v0.8.5 (main)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)

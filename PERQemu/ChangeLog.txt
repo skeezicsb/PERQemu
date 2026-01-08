@@ -7,6 +7,15 @@ Previous notes moved to ChangeLog-Old.txt.
 
 January, 2026:
 
+    3. RS-232 update: refactored ISIODevice interface, added separate Tx/Rx baud
+    rate support on EIO (only affects pacing for the PERQ side, not the host),
+    and implement polling on Unix for the receiver since the C#/Mono SerialPort
+    class never actually fires the damn DataReceived event.  Some limited tests
+    with Chatter, Kermit and Putty/TeraTerm show that PERQ<->PERQ transfers are
+    already much more reliable, but much work remains to work out a flow control
+    strategy to prevent overruns when a fast host dumps a crap ton of data on
+    the PERQ.  Bump to v0.8.9 for platform testing.
+
     2. Small update: make Windows Ethernet device selection a bit less annoying.
     Tiny bug fix in PERQmedia to make sure version # byte is set when writing to
     IMD images; in some cases it was left at zero when converting a floppy from
@@ -20,4 +29,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Wed Jan  7 10:35:52 PST 2026
+Last update: skeezics    Thu Jan  8 00:55:18 PST 2026

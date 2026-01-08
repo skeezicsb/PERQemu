@@ -31,17 +31,10 @@ namespace PERQemu.IO.SerialDevices
     /// buffering to smooth data transmission with the PERQ.
     /// </summary>
     /// <remarks>
-    /// Currently implemented for RS232 "A" only, assuming an IOB/CIO with a Z80
-    /// CTC chip providing timing.  Figures out the baud rate setting to schedule
-    /// queueing of incoming bytes so the PERQ sees realistic timing of an (up to)
-    /// 9600 baud data stream.
-    /// 
     /// NB:  To work around limitations of the SerialPort implementation, all of
     /// the configurable port settings are shadowed in local variables.  Many of
     /// the settings can only be applied prior to calling Open(), and will either
-    /// be ignored or throw exceptions otherwise.  Extensive testing needs to be
-    /// done to see if System.IO.Ports.SerialPort is as horrible as reported and
-    /// if so, find adequate workarounds...
+    /// be ignored or throw exceptions otherwise.
     /// </remarks>
     public class PhysicalPort : SerialDevice
     {
@@ -50,14 +43,21 @@ namespace PERQemu.IO.SerialDevices
             _name = id;                     // Distinguish RS232 "A" and "B"
             _host = portSet;                // The user's host-side configuration
             _perq = new SerialSettings();   // The PERQ's view (mostly ignored)
-            _port = new SerialPort();
-            _sendEvent = null;
+            _port = new SerialPort();       // The host's actual port
+
+            // Tune some things that should only need setting once?
+            _port.WriteBufferSize = 1024;
+            _port.ReadBufferSize = 1024;
         }
 
         public override void Reset()
         {
-            _system.Scheduler.Cancel(_sendEvent);
-            _sendEvent = null;
+            if (PERQemu.HostIsUnix)
+            {
+                _system.Scheduler.Cancel(_recvPoll);
+                _recvPoll = null;
+                _polling = false;
+            }
 
             if (IsOpen)
             {
@@ -75,8 +75,8 @@ namespace PERQemu.IO.SerialDevices
             _rts = true;
             _portChanged = false;
 
-            // Adjust the pacing rate for scheduling characters to the PERQ
-            _charRateInNsec = Conversion.BaudRateToNsec(_perq.BaudRate);
+            // Adjust the pacing rates for scheduling characters to the PERQ
+            _txRate = _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
 
             Log.Info(Category.RS232, "Port {0} physical device reset", _name);
         }
@@ -129,6 +129,9 @@ namespace PERQemu.IO.SerialDevices
 
         public override void Close()
         {
+            _system.Scheduler.Cancel(_recvPoll);
+            _recvPoll = null;
+
             // So apparently it's quite common to catch exceptions when trying
             // to close the port; catch (and ignore) 'em just in case
             try
@@ -202,23 +205,29 @@ namespace PERQemu.IO.SerialDevices
         {
             var prescale = _system.IsEIO ? 1 : 16;
 
-            // Since we don't (yet? ever?) support the split baud rate ability
-            // of the EIO, just ignore the Tx rate (timer chn 0) and only set
-            // the effective baud rate to the Rx speed (which is far more critical
-            // to performance).
-            if (_system.IsEIO && chan == 2)
-            {
-                Log.Debug(Category.RS232, "Port {0} transmit clock rate change ignored", _name);
-                return;
-            }
-
             // Make sure it's valid, and assume in range for the port (9600 on
             // PERQ-1, 19200 max on PERQ-2).  External clocking isn't supported.
             if ((_perq.BaudRate = Conversion.TimerCountToBaudRate(newRate, prescale)) > 0)
             {
-                _charRateInNsec = Conversion.BaudRateToNsec(_perq.BaudRate);
+                // On EIO, ports A & B support separate Tx/Rx baud rates
+                if (_system.IsEIO)
+                {
+                    if (chan == 0)
+                        _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
+                    else if (chan == 2)
+                        _txRate = Conversion.BaudRateToNsec(_perq.BaudRate);
+                    else
+                        throw new InvalidOperationException($"RS232 baud rate change from CTC chan {chan}?");
 
-                Log.Info(Category.RS232, "Port {0} baud rate (emulated) changed to {1}", _name, _perq.BaudRate);
+                    Log.Info(Category.RS232, "Port {0} {1} baud rate changed to {2}", _name,
+                                             (chan == 0) ? "receive" : "transmit", _perq.BaudRate);
+                    return;
+                }
+
+                // On IOB/CIO, no split rates
+                _txRate = _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
+
+                Log.Info(Category.RS232, "Port {0} baud rate changed to {1}", _name, _perq.BaudRate);
                 return;
             }
 
@@ -227,7 +236,7 @@ namespace PERQemu.IO.SerialDevices
         }
 
         /// <summary>
-        /// Start (or continue) data transmission from the port TO the PERQ.  The
+        /// Start (or continue) data transmission FROM the port TO the PERQ.  The
         /// system provides a huge buffer (4K by default!?) so we don't bother to
         /// copy the data again; just transmit the first character and schedule a
         /// callback to continue sending bytes at the proper pace until the buffer
@@ -235,14 +244,31 @@ namespace PERQemu.IO.SerialDevices
         /// </summary>
         void OnDataReceived(object sender, SerialDataReceivedEventArgs e)
         {
-            // If a _sendEvent is not already in progress, kick one off.  I'm
-            // sure this is just one giant nasty race condition but lalalalala
-            if (_sendEvent == null)
-            {
-                ReceiveByte(0, null);
-            }
+            ReceiveByte(0, null);
         }
 
+        public override void PollReceiver(bool enabled)
+        {
+            if (enabled)
+            {
+                _polling = true;
+                ReceiveByte(0, null);       // Kick off the receiver loop
+            }
+            else
+            {
+                _system.Scheduler.Cancel(_recvPoll);
+                _recvPoll = null;
+                _polling = false;
+            }
+
+            Log.Info(Category.RS232, "Receive polling on {0} is {1}", _name, _polling);
+        }
+
+        /// <summary>
+        /// If a byte is available from the host, send it to the PERQ.  On Windows
+        /// this is invoked by the DataReceived event, but on Unix we have to fake
+        /// it because that's not implemented (or is just broken) in Mono.  Sigh.
+        /// </summary>
         void ReceiveByte(ulong skewNsec, object context)
         {
             if (ByteCount > 0)
@@ -253,14 +279,13 @@ namespace PERQemu.IO.SerialDevices
                 // ...and send it to the PERQ
                 _rxDelegate((byte)data);
 
-                Log.Info(Category.RS232, "Read byte {0:x2} ({1} in input queue)", data, ByteCount);
-
-                // Schedule the next byte according to current baud rate
-                _sendEvent = _system.Scheduler.Schedule(_charRateInNsec, ReceiveByte, null);
+                Log.Debug(Category.RS232, "Read byte {0:x2} ({1} in input queue)", data, ByteCount);
             }
-            else
+
+            // If we're polling, schedule the next byte
+            if (PERQemu.HostIsUnix && _polling)
             {
-                _sendEvent = null;
+                _recvPoll = _system.Scheduler.Schedule(ReceiveRate - skewNsec, ReceiveByte, null);
             }
         }
 
@@ -290,22 +315,28 @@ namespace PERQemu.IO.SerialDevices
         /// </remarks>
         public override void Transmit(byte value)
         {
-            if (_isOpen)
-            {
-                _port.Write(new byte[] { value }, 0, 1);
-                Log.Info(Category.RS232, "Wrote byte {0:x2} ({1} in output queue)", value, _port.BytesToWrite);
-
-                // Poke the receiver.  This is a gross HACK, but less gross than
-                // dedicating yet another thread to polling the $)#$&! serial port
-                if (_sendEvent == null) ReceiveByte(0, null);
-            }
-            else
+            if (!_isOpen)
             {
                 Log.Warn(Category.RS232, "Port {0} write ({1:x2}) failed, device not open!", _name, value);
+                return;
             }
+
+            _port.Write(new byte[] { value }, 0, 1);
+            Log.Debug(Category.RS232, "Wrote byte {0:x2} ({1} in output queue)", value, _port.BytesToWrite);
         }
 
-        // todo:  if the PERQ actually wants to send Breaks, add an override for TransmitBreak()
+        /// <summary>
+        /// Transmit a break.
+        /// </summary>
+        public override void TransmitBreak()
+        {
+            if (!_isOpen) return;
+
+            // Cheeky.  Let the delay of the Log() call be the delay?  No idea if this works.
+            _port.BreakState = true;
+            Log.Info(Category.RS232, "Port {0} sending BREAK...", _name);
+            _port.BreakState = false;
+        }
 
         // Debugging
         public override void Status()
@@ -316,8 +347,9 @@ namespace PERQemu.IO.SerialDevices
 
             Console.WriteLine($"Handshake: {_port.Handshake}  Break state: {_port.BreakState}");
             Console.WriteLine($"Rx buffer: {ByteCount}/{_port.ReadBufferSize}  " +
-                              $"Tx buffer: {_port.BytesToWrite}/{_port.WriteBufferSize}, " +
-                              $"pacing {_charRateInNsec * Conversion.NsecToMsec}ms");
+                              $"pacing {_rxRate * Conversion.NsecToMsec}ms");
+            Console.WriteLine($"Tx buffer: {_port.BytesToWrite}/{_port.WriteBufferSize}, " +
+                              $"pacing {_txRate * Conversion.NsecToMsec}ms");
             Console.WriteLine($"Pins:  DCD={DCD} DTR={DTR} DSR={DSR} RTS={RTS} CTS={CTS}");
         }
 
@@ -328,12 +360,14 @@ namespace PERQemu.IO.SerialDevices
 
         // PERQ side
         SerialSettings _perq;
+
         bool _dtr;
         bool _rts;
-
-        SchedulerEvent _sendEvent;
-        ulong _charRateInNsec;
         bool _portChanged;
+        bool _polling;
+
+        // Polling event on Unix hosts
+        SchedulerEvent _recvPoll;
     }
 }
 
@@ -374,29 +408,3 @@ namespace PERQemu.IO.SerialDevices
     split the clock timing, but the physical port runs at the fixed rate
     from the host Settings.  I've given this more thought than it needs.
  */
-
-/*
-    The "right way" to avoid the worst of the system SerialPort bugs is to
-    have yet another thread running to receive characters?  Oof.
-
-    byte[] buffer = new byte[blockLimit];
-    Action kickoffRead = null;
-    kickoffRead = delegate {
-        port.BaseStream.BeginRead(buffer, 0, buffer.Length, delegate (IAsyncResult ar) {
-            try {
-                int actualLength = port.BaseStream.EndRead(ar);
-                byte[] received = new byte[actualLength];
-                Buffer.BlockCopy(buffer, 0, received, 0, actualLength);
-
-                raiseAppSerialDataEvent(received);
-            }
-            catch (IOException exc) {
-                handleAppSerialError(exc);
-            }
-
-            kickoffRead();
-        }, null);
-    };
-    kickoffRead();
-
-*/

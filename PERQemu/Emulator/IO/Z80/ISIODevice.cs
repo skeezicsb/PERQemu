@@ -51,8 +51,10 @@ namespace PERQemu.IO.Z80
         void TransmitBreak();
 
         /// <summary>
-        /// Sends an SDLC Abort to the device.
+        /// Return the current pacing values (in nsec) for transmit and
+        /// receive pacing.
         /// </summary>
-        void TransmitAbort();
+        ulong TransmitRate { get; }
+        ulong ReceiveRate { get; }
     }
 }

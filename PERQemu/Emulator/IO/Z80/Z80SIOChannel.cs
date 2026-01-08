@@ -63,7 +63,6 @@ namespace PERQemu.IO.Z80
                 _txFifo.Clear();
 
                 _selectedRegister = 0;
-                _txRate = 19200;                // fixme
                 _huntMode = true;               // re-entered after Reset
 
                 _extInterruptLatched = false;
@@ -80,7 +79,7 @@ namespace PERQemu.IO.Z80
             }
 
             public bool CanRead => _rxFifo.Count > 0;
-            public bool CanWrite => _txFifo.Count < 16;     // Season to taste
+            public bool CanWrite => _txFifo.Count < 8;      // Season to taste
 
             public bool InterruptLatched => _rxInterruptLatched || _txInterruptLatched || _extInterruptLatched;
             public bool StatusAffectsVector => (_writeRegs[1] & (byte)WReg1.StatusAffectsVector) != 0;
@@ -116,7 +115,6 @@ namespace PERQemu.IO.Z80
             public void DetachDevice()
             {
                 ClosePort();
-                _port = null;
                 _device = null;
             }
 
@@ -129,6 +127,7 @@ namespace PERQemu.IO.Z80
             public void ClosePort()
             {
                 _port?.Close();
+                _port = null;
             }
 
             void DisablePort()
@@ -273,6 +272,9 @@ namespace PERQemu.IO.Z80
 
                             UpdateBitsPerChar((_writeRegs[3] & (byte)WReg3.RxBitsPerChar) >> 6);
                             Log.Detail(Category.SIO, "Channel {0} WR3 now {1}", _channelNumber, (WReg3)_writeRegs[3]);
+
+                            // If applicable enable or disable polling the physical port
+							PollReceiver(RxEnabled);
                             break;
 
                         case 4:
@@ -354,11 +356,13 @@ namespace PERQemu.IO.Z80
                     UpdateFlags();
 
                     // Apply output pacing and send it
-                    _scheduler.Schedule(Conversion.BaudRateToNsec(_txRate), SendData, null);
+                    _scheduler.Schedule(_device.TransmitRate, SendData, null);
+
+                    Log.Info(Category.SIO, "Channel {0} write data 0x{1:x2}, {2} pending",
+                                            _channelNumber, data, _txFifo.Count);
                 }
 
-                Log.Info(Category.SIO, "Channel {0} write data 0x{1:x2}, {2} pending",
-                                        _channelNumber, data, _txFifo.Count);
+                // If not enabled, gripe about dropped characters?
             }
 
             /// <summary>
@@ -449,11 +453,9 @@ namespace PERQemu.IO.Z80
                 }
                 else
                 {
-                    // Just update RR0
-                    UpdateFlags();
+                    UpdateFlags();      // Just update RR0
                 }
             }
-
 
             /// <summary>
             /// Update the read registers and interrupt status.
@@ -666,7 +668,18 @@ namespace PERQemu.IO.Z80
                 }
             }
 
-
+            /// <summary>
+            /// On Unix hosts, poke the receiver since the event-based API of the
+            /// broken SerialPort class never actually fires.  Yay.
+            /// </summary>
+            void PollReceiver(bool enabled)
+            {
+                if (PERQemu.HostIsUnix && _port != null)
+                {
+                    _port.PollReceiver(enabled);
+                }
+            }
+            
             int _channelNumber;
             int _selectedRegister;
 
@@ -676,7 +689,6 @@ namespace PERQemu.IO.Z80
             bool _extInterruptLatched;
 
             int _interruptOffset;
-            int _txRate;
 
             bool _huntMode;
             bool _breakDetected;
@@ -819,6 +831,5 @@ namespace PERQemu.IO.Z80
             TxBitsPerChar = 0x60,
             DTR = 0x80
         }
-
     }
 }

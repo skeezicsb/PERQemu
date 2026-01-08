@@ -96,6 +96,9 @@ namespace PERQemu.IO.SerialDevices
         public virtual int ByteCount => 0;
         public virtual int BaudRate => 9600;
 
+        public virtual ulong TransmitRate => _txRate;
+        public virtual ulong ReceiveRate => _rxRate;
+
         public virtual int DataBits
         {
             get { return 8; }
@@ -154,14 +157,14 @@ namespace PERQemu.IO.SerialDevices
             _errDelegate = rxDelegate;
         }
 
+        public virtual void PollReceiver(bool enabled)
+        {
+            Log.Info(Category.RS232, "Receiver polling {0} on {1} ignored", enabled, Name);
+        }
+
         public virtual void Transmit(byte value)
         {
             Log.Detail(Category.RS232, "Transmit byte 0x{0:x2} on {1} ignored", value, Name);
-        }
-
-        public virtual void TransmitAbort()
-        {
-            throw new NotImplementedException($"TransmitAbort on {Name}");
         }
 
         public virtual void TransmitBreak()
@@ -182,5 +185,8 @@ namespace PERQemu.IO.SerialDevices
         protected bool _isOpen;
         protected string _name;
         protected string _portName;
+
+        protected ulong _txRate;
+        protected ulong _rxRate;
     }
 }

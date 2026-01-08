@@ -115,6 +115,7 @@ namespace PERQemu.IO.Z80
                     var rsa = new PhysicalPort(this, Settings.RSADevice, Settings.RSASettings, "A");
                     _z80sioA.AttachPortDevice(0, rsa);
                     _timerA.AttachDevice(0, rsa);
+                    _timerA.AttachDevice(2, rsa);
                 }
             }
             else
@@ -129,6 +130,7 @@ namespace PERQemu.IO.Z80
                 var rsb = new PhysicalPort(this, Settings.RSBDevice, Settings.RSBSettings, "B");
                 _z80sioB.AttachPortDevice(0, rsb);
                 _timerB.AttachDevice(0, rsb);
+                _timerB.AttachDevice(2, rsb);
             }
             else
             {

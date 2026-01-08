@@ -37,6 +37,9 @@ namespace PERQemu.IO.SerialDevices
             // with possible overruns.  So we don't sweat any of that here. :-)
         }
 
+        public ulong TransmitRate => 0;
+        public ulong ReceiveRate => Conversion.BaudRateToNsec(300);
+
         public void RegisterReceiveDelegate(ReceiveDelegate rxDelegate)
         {
             _rxDelegate = rxDelegate;
@@ -56,12 +59,7 @@ namespace PERQemu.IO.SerialDevices
 
         public void Transmit(byte value)
         {
-            throw new NotImplementedException();
-        }
-
-        public void TransmitAbort()
-        {
-            throw new NotImplementedException();
+            throw new NotImplementedException("Transmit on SerialKeyboard");
         }
 
         public void TransmitBreak()

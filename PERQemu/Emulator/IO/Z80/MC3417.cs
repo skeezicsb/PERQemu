@@ -63,12 +63,24 @@ namespace PERQemu.IO.Z80
 
         public void ResetFilter(int frequency)
         {
+            // Set the new audio frequency
             _frequency = frequency;
 
             // Recompute
             _charge = Math.Pow(Math.Exp(-1.0), 1.0 / (FilterChargeTC * _frequency));
             _decay = Math.Pow(Math.Exp(-1.0), 1.0 / (FilterDecayTC * _frequency));
             _leak = Math.Pow(Math.Exp(-1.0), 1.0 / (IntegratorLeakTC * _frequency));
+
+            // Now cheat the transfer rate based on our emulation speed :-)
+            _txRate = Conversion.BaudRateToNsec(_frequency);
+
+            if (PERQemu.Sys.Display.AverageFPS < 60)
+            {
+                // Too slow?
+                var offset = PERQemu.Sys.Display.AverageFPS / 60;
+                _txRate = (ulong)(_txRate * offset);
+                Log.Info(Category.Speech, "Adjusting tx pacing by {0:N4}", offset);
+            }
 
             // Prime for playback
             _sylFilter = _intFilter = 0.0;
@@ -101,6 +113,37 @@ namespace PERQemu.IO.Z80
             _speaker.RateChange(frequency);
             ResetFilter(frequency);
         }
+
+        //
+        // ISIODevice implementation
+        //
+
+        public ulong TransmitRate => _txRate;
+        public ulong ReceiveRate => 0;
+
+        /// <summary>
+        /// "Transmit" a byte from the SIO to the CVSD chip.
+        /// </summary>
+        public void Transmit(byte value)
+        {
+            // If speech output is disabled, don't bother
+            if (!_speaker.HaveAudio) return;
+
+            Log.Verbose(Category.Speech, "CVSD input byte 0x{0:x2}", value);
+            ConvertCVSDtoPCM(value);
+        }
+
+        // Mux doesn't pass these through
+        public void TransmitBreak()
+        {
+            throw new NotImplementedException("TransmitBreak on Speech");
+        }
+
+        public void RegisterReceiveDelegate(ReceiveDelegate rxDelegate)
+        {
+            throw new NotImplementedException("RegisterReceive on Speech");
+        }
+
 
         /// <summary>
         /// Convert a byte of an incoming CVSD bitstream into 8 PCM samples and
@@ -147,34 +190,6 @@ namespace PERQemu.IO.Z80
 
             // Send the samples to the Speaker device
             _speaker.QueueSamples(ref _samples, 8);
-        }
-
-        /// <summary>
-        /// "Transmit" a byte from the SIO to the CVSD chip.
-        /// </summary>
-        public void Transmit(byte value)
-        {
-            // If speech output is disabled, don't bother
-            if (!_speaker.HaveAudio) return;
-
-            Log.Verbose(Category.Speech, "CVSD input byte 0x{0:x2}", value);
-            ConvertCVSDtoPCM(value);
-        }
-
-        // Mux doesn't pass these through
-        public void TransmitAbort()
-        {
-            throw new NotImplementedException();
-        }
-
-        public void TransmitBreak()
-        {
-            throw new NotImplementedException();
-        }
-
-        public void RegisterReceiveDelegate(ReceiveDelegate rxDelegate)
-        {
-            throw new NotImplementedException();
         }
 
         public void SetTunable(AudioKnobs knob, int val)
@@ -229,6 +244,8 @@ namespace PERQemu.IO.Z80
 
         int _shiftReg;
         int _frequency;
+
+        ulong _txRate;
 
         double _leak;
         double _decay;

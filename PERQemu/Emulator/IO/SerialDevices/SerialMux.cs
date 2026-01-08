@@ -75,16 +75,13 @@ namespace PERQemu.IO.SerialDevices
         }
 
         // Not used by Speech device
-        public void TransmitAbort()
-        {
-            _txDevice?.TransmitAbort();
-        }
-
-        // Not used by Speech device
         public void TransmitBreak()
         {
             _txDevice?.TransmitBreak();
         }
+
+        public ulong TransmitRate => _txDevice?.TransmitRate ?? 0;
+        public ulong ReceiveRate => _rxDevice?.ReceiveRate ?? 0;
 
         ISIODevice _txDevice;       // MC3417 for audio output
         ISIODevice _rxDevice;       // KrizTablet for mouse input
