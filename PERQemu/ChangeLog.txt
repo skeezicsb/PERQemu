@@ -7,6 +7,14 @@ Previous notes moved to ChangeLog-Old.txt.
 
 January, 2026:
 
+    4. Ethernet fix: sort of.  On a "quiet" dedicated network, don't pass any
+    traffic to the PERQ until the FCS probe has been completed, or it'll blow
+    up POS's fragile network stack.  Someday I plan to update PERQ Kermit, the
+    FTP client, Accent Speak/Listen, and MUCH more of the original software to
+    be way, way more robust on a modern network.  Alas.  The crude fix here may
+    cause POS some delays but Accent is more resilient and shouldn't be affected
+    as much.  (Will revisit when speech/audio is working.)
+    
     3. RS-232 update: refactored ISIODevice interface, added separate Tx/Rx baud
     rate support on EIO (only affects pacing for the PERQ side, not the host),
     and implement polling on Unix for the receiver since the C#/Mono SerialPort
@@ -29,4 +37,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Thu Jan  8 00:55:18 PST 2026
+Last update: skeezics    Thu Jan  8 16:24:34 PST 2026

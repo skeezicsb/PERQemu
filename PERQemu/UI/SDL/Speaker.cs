@@ -138,7 +138,7 @@ namespace PERQemu.UI
         /// </summary>
         public void RateChange(int newFreq)
         {
-            Log.Write("Rate change request: {0}, current {1}", newFreq, _spec.freq);
+            Log.Info(Category.Speech, "Rate change request: {0}, current {1}", newFreq, _spec.freq);
 
             if (newFreq != _spec.freq)
             {

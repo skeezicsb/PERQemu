@@ -61,7 +61,8 @@ namespace PERQemu.IO.Network
 
             // Initialize statistics
             _probed = _hasFCS = false;
-            _pktsSent = _pktsRecvd = _pktsIgnored = _pktsQueued = _pktsDropped = 0;
+            _pktsSent = _pktsRecvd = _pktsLocal = 0;
+            _pktsIgnored = _pktsQueued = _pktsDropped = 0;
 
             Log.Info(Category.NetAdapter, "Device opened [Host MAC: {0}]", _adapter.MacAddress);
         }
@@ -321,6 +322,7 @@ namespace PERQemu.IO.Network
                 raw = (EthernetPacket)Packet.ParsePacket(e.Packet.LinkLayerType, e.Packet.Data);
                 if (raw == null)
                 {
+                    _pktsIgnored++;
                     Log.Warn(Category.NetAdapter, "Failed to parse packet: {0}", e.Packet);
                     return;
                 }
@@ -334,8 +336,11 @@ namespace PERQemu.IO.Network
                 // multicasts every 2 seconds... there's MUCH more we could add
                 // but it might be simpler to just set a filter for what we can
                 // safely accept?
-                if (raw.Type == EthernetType.IPv6) return;
-                if ((ushort)raw.Type == 0x0026) return;
+                if (raw.Type == EthernetType.IPv6 || (ushort)raw.Type == 0x0026)
+                {
+                    _pktsIgnored++;
+                    return;
+                }
 
                 // Log it
                 Log.Debug(Category.NetAdapter, "Received from {0} to {1} (type 0x{2:x}) [{3}]",
@@ -387,11 +392,13 @@ namespace PERQemu.IO.Network
             }
             catch (PcapException ex)
             {
+                _pktsIgnored++;
                 Log.Warn(Category.NetAdapter, "(Pcap) Failed to receive packet: {0}", ex.Message);
                 return;
             }
             catch (Exception ex)
             {
+                _pktsIgnored++;
                 Log.Warn(Category.Network, "Failed to receive packet: {0}", ex.Message);
                 return;
             }
@@ -448,6 +455,7 @@ namespace PERQemu.IO.Network
                         // do RARP (even under Accent).  HOWEVER, Accent's "new"
                         // message server (in S6+) will do actual IP ARPs, so we
                         // don't want to get in the way of those.
+                        _pktsLocal++;
                         Log.Debug(Category.Network, "Local RARP handling complete");
                         return;
                     }
@@ -457,13 +465,13 @@ namespace PERQemu.IO.Network
             catch (PcapException ex)
             {
                 Log.Debug(Category.Network, "Failed to parse RARP packet: {0}", ex.Message);
-                // No biggie, just continue?
+                // No biggie, just continue
             }
 
             //
             // Does the PERQ want this packet?
             //
-            if (!_controller.WantReceive(raw.DestinationHardwareAddress))
+            if (!_probed || !_controller.WantReceive(raw.DestinationHardwareAddress))
             {
                 _pktsIgnored++;
                 return;
@@ -775,8 +783,8 @@ namespace PERQemu.IO.Network
             Console.WriteLine($"  Address: {Address}\tRunning: {Running}\tPending: {_pending.Count}");
 
             Console.WriteLine("\nInterface statistics:");
-            Console.WriteLine($"  Total sent: {_pktsSent}\tReceived: {_pktsRecvd}\tIgnored: {_pktsIgnored}");
-            Console.WriteLine($"  Deferred:   {_pktsQueued}\tDropped: {_pktsDropped}");
+            Console.WriteLine($"  Total sent: {_pktsSent}\tReceived: {_pktsRecvd}\tLocal: {_pktsLocal}");
+            Console.WriteLine($"  Ignored: {_pktsIgnored}\tDeferred: {_pktsQueued}\tDropped: {_pktsDropped}");
 
             _nat.DumpTable();
         }
@@ -807,7 +815,7 @@ namespace PERQemu.IO.Network
 
         ulong _pktsRecvd, _pktsSent;                // Some basic statistics,
         ulong _pktsQueued, _pktsDropped;            // for debugging/curiosity
-        ulong _pktsIgnored;
+        ulong _pktsIgnored, _pktsLocal;
     }
 }
 
