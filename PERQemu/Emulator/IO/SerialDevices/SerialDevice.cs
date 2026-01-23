@@ -25,15 +25,15 @@ using PERQemu.IO.Z80;
 namespace PERQemu.IO.SerialDevices
 {
     [Flags]
-    public enum CharStatus : byte
+    public enum PortStatus : byte
     {
         None = 0x0,
         InvalidChar = 0x1,
         PinChange = 0x2,
         ParityError = 0x4,
         FramingError = 0x8,
-        Overrun = 0x10,
-        Underrun = 0x20,
+        RxOverrun = 0x10,
+        TxOverrun = 0x20,
         BreakDetected = 0x40,
         DeviceError = 0x80
     }
@@ -42,7 +42,7 @@ namespace PERQemu.IO.SerialDevices
     /// For "real" devices, this extended delegate allows hardware status changes
     /// to be sent to the SIO with a recieved character, or asynchronously.
     /// </summary>
-    public delegate void ReceiveStatusDelegate(byte rxValue, CharStatus rxStatus);
+    public delegate void ReceiveStatusDelegate(PortStatus rxStatus);
 
 
     /// <summary>
@@ -67,7 +67,7 @@ namespace PERQemu.IO.SerialDevices
 
         public virtual void Reset()
         {
-            Log.Debug(Category.RS232, "Device reset");
+            Log.Debug(Category.RS232, "{0} reset", _name);
         }
 
         public virtual void Open()

@@ -19,6 +19,7 @@
 
 using System;
 using System.IO.Ports;
+using System.Diagnostics;
 using System.Collections.Generic;
 
 using PERQemu.IO.SerialDevices;
@@ -79,7 +80,7 @@ namespace PERQemu.IO.Z80
             }
 
             public bool CanRead => _rxFifo.Count > 0;
-            public bool CanWrite => _txFifo.Count < 8;      // Season to taste
+            public bool CanWrite => _txFifo.Count < 4;      // Season to taste
 
             public bool InterruptLatched => _rxInterruptLatched || _txInterruptLatched || _extInterruptLatched;
             public bool StatusAffectsVector => (_writeRegs[1] & (byte)WReg1.StatusAffectsVector) != 0;
@@ -186,8 +187,8 @@ namespace PERQemu.IO.Z80
 
             public void WriteRegister(byte value)
             {
-                Log.Info(Category.SIO, "Channel {0} write 0x{1:x2} to register {2}",
-                                         _channelNumber, value, _selectedRegister);
+                Log.Debug(Category.SIO, "Channel {0} write 0x{1:x2} to register {2}",
+                                        _channelNumber, value, _selectedRegister);
 
                 _writeRegs[_selectedRegister] = value;
 
@@ -200,7 +201,7 @@ namespace PERQemu.IO.Z80
                     // Execute command:
                     var cmd = (WReg0Cmd)((value & 0x38) >> 3);
 
-                    Log.Info(Category.SIO, "Channel {0} command is {1}", _channelNumber, cmd);
+                    Log.Debug(Category.SIO, "Channel {0} command is {1}", _channelNumber, cmd);
 
                     switch (cmd)
                     {
@@ -274,7 +275,7 @@ namespace PERQemu.IO.Z80
                             Log.Detail(Category.SIO, "Channel {0} WR3 now {1}", _channelNumber, (WReg3)_writeRegs[3]);
 
                             // If applicable enable or disable polling the physical port
-							PollReceiver(RxEnabled);
+                            PollReceiver(RxEnabled);
                             break;
 
                         case 4:
@@ -298,8 +299,8 @@ namespace PERQemu.IO.Z80
                         case 6:
                         case 7:
                             // Debugging
-                            Log.Info(Category.SIO, "Channel {0} WR{1} sync now 0x{2:x2}",
-                                     _channelNumber, _selectedRegister, value);
+                            Log.Detail(Category.SIO, "Channel {0} WR{1} sync now 0x{2:x2}",
+                                      _channelNumber, _selectedRegister, value);
                             break;
                     }
                     // Write to other register, next access is to reg 0
@@ -328,7 +329,7 @@ namespace PERQemu.IO.Z80
                     if (data == match)      // 8-bit sync value
                     {
                         _huntMode = false;  // Exit hunt mode
-                        Log.Info(Category.SIO, "Channel {0} sync word matched", _channelNumber);
+                        Log.Debug(Category.SIO, "Channel {0} sync word matched", _channelNumber);
                     }
 
                     return true;            // Consume the sync byte
@@ -355,10 +356,12 @@ namespace PERQemu.IO.Z80
 
                     UpdateFlags();
 
+                    Trace.Assert(_device.TransmitRate > 0, $"TXRATE FOR {_device} IS ZERO");
+
                     // Apply output pacing and send it
                     _scheduler.Schedule(_device.TransmitRate, SendData, null);
 
-                    Log.Info(Category.SIO, "Channel {0} write data 0x{1:x2}, {2} pending",
+                    Log.Debug(Category.SIO, "Channel {0} write data 0x{1:x2}, {2} pending",
                                             _channelNumber, data, _txFifo.Count);
                 }
 
@@ -411,50 +414,47 @@ namespace PERQemu.IO.Z80
             }
 
             /// <summary>
-            /// Invoked by an attached ISerialDevice when it has data and/or extra
-            /// status information to send.  Updates error bits in RR1.
+            /// Invoked by an attached ISerialDevice when it has pin changes or
+            /// error status information to send.  Updates flags in RR1.
             /// </summary>
-            void ReceiveStatusData(byte data, CharStatus status)
+            void ReceiveStatusData(PortStatus status)
             {
+                // Spurious?  Ignore it
+                if (status == PortStatus.None) return;
+
                 // See what happened...
-                if (status != CharStatus.None)
+                if ((status & PortStatus.PinChange) != 0)
                 {
-                    if ((status & CharStatus.PinChange) != 0)
-                    {
-                        // If ext int enable (WR1) then latch it; UpdateFlags
-                        // will update RR0 and trigger the interrupt
-                        _extInterruptLatched = ExtInterruptEnabled;
+                    // If ext int enable (WR1) then latch it; UpdateFlags
+                    // will update RR0 and trigger the interrupt
+                    _extInterruptLatched = ExtInterruptEnabled;
 
-                        Log.Debug(Category.SIO, "Channel {0} pin change received!", _channelNumber);
-                    }
-
-                    // Latch error bits in RR1
-                    if ((status & CharStatus.ParityError) != 0)
-                    {
-                        _readRegs[1] |= (byte)RReg1.ParityError;
-                    }
-
-                    if ((status & CharStatus.FramingError) != 0)
-                    {
-                        _readRegs[1] |= (byte)RReg1.CrcFraming;
-                    }
-
-                    if ((status & CharStatus.BreakDetected) != 0)
-                    {
-                        // "The Break/Abort bit is not used in the Synchronous Receive mode."
-                        _breakDetected = !SyncMode;
-                    }
+                    Log.Debug(Category.SIO, "Channel {0} pin change received!", _channelNumber);
                 }
 
-                // If the character is valid, process it normally
-                if ((status & CharStatus.InvalidChar) != 0)
+                // Latch error bits in RR1
+                if ((status & PortStatus.RxOverrun) != 0)
                 {
-                    ReceiveData(data);
+                    _readRegs[1] |= (byte)RReg1.RxOverrun;
                 }
-                else
+
+                if ((status & PortStatus.ParityError) != 0)
                 {
-                    UpdateFlags();      // Just update RR0
+                    _readRegs[1] |= (byte)RReg1.ParityError;
                 }
+
+                if ((status & PortStatus.FramingError) != 0)
+                {
+                    _readRegs[1] |= (byte)RReg1.CrcFraming;
+                }
+
+                if ((status & PortStatus.BreakDetected) != 0)
+                {
+                    // "The Break/Abort bit is not used in the Synchronous Receive mode."
+                    _breakDetected = !SyncMode;
+                }
+
+                UpdateFlags();      // Update RR0
             }
 
             /// <summary>
@@ -679,7 +679,7 @@ namespace PERQemu.IO.Z80
                     _port.PollReceiver(enabled);
                 }
             }
-            
+
             int _channelNumber;
             int _selectedRegister;
 

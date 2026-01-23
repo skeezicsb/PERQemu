@@ -292,13 +292,67 @@ namespace PERQemu.IO.SerialDevices
         void OnPinChange(object sender, SerialPinChangedEventArgs e)
         {
             Log.Info(Category.RS232, "Pin changed! {0}", e.EventType);
-            // Send it via _errDelegate
+
+            PortStatus stat = PortStatus.None;
+
+            switch (e.EventType)
+            {
+                case SerialPinChange.DsrChanged:
+                    // The Z80 SIO doesn't handle this pin
+                    return;
+
+                case SerialPinChange.CDChanged:
+                case SerialPinChange.CtsChanged:
+                    // We poll 'em both when updating the SIO regs
+                    stat = PortStatus.PinChange;
+                    break;
+
+                case SerialPinChange.Ring:
+                    // This isn't wired up on the PERQ
+                    Console.WriteLine("One ringy dingy...");
+                    return;
+
+                case SerialPinChange.Break:
+                    stat = PortStatus.BreakDetected;
+                    break;
+
+                default:
+                    throw new InvalidOperationException($"Pin update {e.EventType}");
+            }
+
+            _errDelegate(stat);
         }
 
         void OnError(object sender, SerialErrorReceivedEventArgs e)
         {
             Log.Info(Category.RS232, "Serial port error! {0}", e.EventType);
-            // Send it via _errDelegate
+
+            PortStatus stat = PortStatus.None;
+
+            switch (e.EventType)
+            {
+                case SerialError.Frame:
+                    stat = PortStatus.FramingError;
+                    break;
+
+                case SerialError.Overrun:
+                case SerialError.RXOver:
+                    stat = PortStatus.RxOverrun;
+                    break;
+
+                case SerialError.TXFull:
+                    stat = PortStatus.TxOverrun;
+                    break;
+
+                case SerialError.RXParity:
+                    stat = PortStatus.ParityError;
+                    break;
+
+                default:
+                    throw new InvalidOperationException($"Port error {e.EventType}");
+            }
+
+            _errDelegate(stat);
         }
 
         /// <summary>

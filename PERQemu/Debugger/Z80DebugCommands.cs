@@ -328,10 +328,12 @@ namespace PERQemu
             PERQemu.GUI.Audio.Pause();
         }
 
-        [Command("debug z80 audio flush")]
-        void FlushAudio()
+        [Command("debug z80 audio channels")]
+        void SetAudioChannels(byte chan)
         {
-            PERQemu.GUI.Audio.Flush();
+            if (chan < 1 || chan > 2) return;
+
+            PERQemu.GUI.Audio.SetChannels(chan);
         }
 
         [Command("debug z80 audio tune")]

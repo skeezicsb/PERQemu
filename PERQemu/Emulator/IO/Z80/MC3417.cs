@@ -74,13 +74,17 @@ namespace PERQemu.IO.Z80
             // Now cheat the transfer rate based on our emulation speed :-)
             _txRate = Conversion.BaudRateToNsec(_frequency);
 
-            if (PERQemu.Sys.Display.AverageFPS < 60)
+            var offset = PERQemu.Sys.Display.AverageFPS / 60;
+
+            // Too slow?  For now, ignore if too fast :-)
+            if (offset < 0)
             {
-                // Too slow?
-                var offset = PERQemu.Sys.Display.AverageFPS / 60;
                 _txRate = (ulong)(_txRate * offset);
                 Log.Info(Category.Speech, "Adjusting tx pacing by {0:N4}", offset);
             }
+
+            Log.Info(Category.Speech, "Tx pacing at {0:N4}ms/char",
+                                      _txRate * Conversion.NsecToMsec);
 
             // Prime for playback
             _sylFilter = _intFilter = 0.0;

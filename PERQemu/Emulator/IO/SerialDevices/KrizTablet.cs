@@ -46,10 +46,6 @@ namespace PERQemu.IO.SerialDevices
 
         public void Reset()
         {
-            // CIO and EIO use different sync characters (since one inverts and the
-            // other doesn't).  Set this once we know _system is fully initialized
-            _sync = (byte)(_system.IOB.IsEIO ? 0x7e : 0x81);
-
             // Schedule the first data event, which runs once every 1/60th of
             // a second, forever.  But don't re-register it again and again...
             _scheduler.Cancel(_sendEvent);
@@ -65,17 +61,12 @@ namespace PERQemu.IO.SerialDevices
 
         public void TransmitBreak()
         {
-            // Should never happen
             throw new NotImplementedException("TransmitBreak on Kriz");
         }
 
         public void Transmit(byte value)
         {
-            // Should never receive data; the speech device is multiplexed onto
-            // the transmit side of the shared SIO channel.  To avoid halting the
-            // emulator, log and ignore these -- but with the SerialMux and CVSD
-            // chip implemented, it should never happen!
-            Log.Debug(Category.Tablet, "Kriz received byte 0x{0:x2} (ignored)", value);
+            throw new NotImplementedException("Transmit on Kriz");
         }
 
         void SendData(ulong skewNsec, object context)
@@ -100,11 +91,15 @@ namespace PERQemu.IO.SerialDevices
             var tab4 = (byte)(tabY & 0xff);
 
             // Send the data to the SIO - invert (active low data) if NOT EIO
-            _rxDelegate(_sync);
+            _rxDelegate(_system.IOB.IsEIO ? Sync : (byte)~Sync);
             _rxDelegate(_system.IOB.IsEIO ? tab1 : (byte)~tab1);
             _rxDelegate(_system.IOB.IsEIO ? tab2 : (byte)~tab2);
             _rxDelegate(_system.IOB.IsEIO ? tab3 : (byte)~tab3);
             _rxDelegate(_system.IOB.IsEIO ? tab4 : (byte)~tab4);
+
+            // CIO and EIO explicitly do three extra reads to "clear out any junk
+            // "left in the chip" (i.e., the padding/CRC bytes the SIO injected)
+            _rxDelegate(0);
             _rxDelegate(0);
             _rxDelegate(0);
 
@@ -116,9 +111,9 @@ namespace PERQemu.IO.SerialDevices
             _sendEvent = _scheduler.Schedule(_dataInterval, SendData);
         }
 
-
+        // Standard SDLC flag character
+        readonly byte Sync = 0x7e;
         readonly ulong _dataInterval;
-        byte _sync;
 
         ReceiveDelegate _rxDelegate;
         SchedulerEvent _sendEvent;
@@ -134,11 +129,22 @@ namespace PERQemu.IO.SerialDevices
     serial port SIO B.  But the ICL T2 Service guide says 90 updates/sec?
     (Made no difference to PNX, and 60 is plenty smooth for every other OS.)
 
-    The message format is:
-        <sync><data0>..<data4><pad0><pad1>
+    Data format(from the v8.7 ROM), with updates from "kriz.doc":
 
-    The Sync char is 0x81 (for CIO) or 0x7e (EIO).  Two "junk" pad bytes are
-    tacked on because, as the ROM explains:
+        ; Byte0<7:0> = sync char (filtered out by SIO B hardware)
+        ; Byte1<7>   = ValidMsg bit (0)
+		; Byte1<6>   = TabOffTablet (1 -> mouse off tablet)
+	    ; Byte1<5>   = Landscape (1 -> landscape tablet)
+	    ; Byte1<4>   = unused (0)
+        ; Byte1<3:0> = high bits of X
+        ; Byte2<7:0> = low X
+        ; Byte3<7:5> = Switches (right, middle, left)
+        ; Byte3<4>   = unused (0)
+        ; Byte3<3:0> = high bits of Y
+        ; Byte4<7:0> = low Y
+
+    The Sync char transmitted is 0x81 (for CIO, active low) or 0x7e (EIO).  Some
+    "junk" pad bytes are tacked on here because, as the ROM explains:
     
         ; Note: A complete msg is only 4 chars.  But we count 2 extra chars
         ; and just throw them away.  This was done to overcome problem we had
@@ -146,37 +152,22 @@ namespace PERQemu.IO.SerialDevices
         ; back into Hunt mode below.
 
     Evidently nobody read the Z80 SIO datasheet, because in sync mode the chip
-    is transmitting two CRC bytes -- but since our SIO implementation doesn't
-    insert them at the end of the message (how do it know!??) we just send two
-    extra NULs here.  Problem solved! :-)
+    is transmitting two CRC bytes *after* reception of a second flag byte -- but
+    we would have to disassemble the embedded i8748 ROM or snoop an actual Kriz
+    serial bitstream to find out if it's actually sending one.  No matter; since
+    our SIO implementation doesn't (yet?) compute and insert a CRC at the end of
+    the message or flag CRC errors in the status bits, we just send extra NULs
+    here.  Problem solved! :-)
 
-    That comment is out of date; the format changed from 4 (v8.6) to 5 (v8.7)
-    characters.  The SIO B receive routine counts from 0..6, so seven total bytes
-    make up a complete tablet message.
-     
-    Data format (from the v8.7 ROM), with updates from "kriz.doc":
+    The Z80 then reformats the "raw" packets from the Kriz into a 5-byte packet
+    to send to the PERQ; see Pointer.{CIO,EIO} or the old v87.z80 (original IOB)
+    code for more info.
 
-        ;   Byte0<7:0> = sync char (filtered out by SIO B hardware)
-        ;   Byte1<7>   = ValidMsg       (0)
-        ;   Byte1<6>   = TabOffTablet   (1 -> mouse off tablet)
-        ;   Byte1<5>   = Landscape      (1 -> landscape tablet)
-        ;   Byte1<4>   = unused         (0)
-        ;   Byte1<3:0> = high bits of X
-        ;   Byte2<7:0> = low X
-        ;   Byte3<7:5> = the 3 Switches (right, middle, left)
-        ;   Byte3<4>   = unused         (0)
-        ;   Byte3<3:0> = high bits of Y
-        ;   Byte4<7:0> = low Y
-    
-    The Z80 then reformats that into a different format to send to the PERQ.
-    This is corroborated by Pointer.{CIO,EIO} from the new Z80 sources.
-
-    Also from v87.v80:
+    Also from v87.z80:
     
         ; Note: Tablet data is active low.
 
-    This is useful information as it turns out, although it is NOT the case for
-    EIO!
+    This is useful information as it turns out, although it is NOT the case for EIO!
 
     The "fudge factors" for applying cursor offsets (io_private.pas):
 

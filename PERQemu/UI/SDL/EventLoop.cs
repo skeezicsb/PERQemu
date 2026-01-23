@@ -63,7 +63,12 @@ namespace PERQemu.UI
 
             // Necessary?  Helpful?
             SDL.SDL_SetMainReady();
-            SDL.SDL_SetHint("SDL_WINDOWS_DISABLE_THREAD_NAMING", "1");
+
+            if (!PERQemu.HostIsUnix)
+            {
+                SDL.SDL_SetHint("SDL_WINDOWS_DISABLE_THREAD_NAMING", "1");
+                SDL.SDL_SetHint("SDL_AUDIODRIVER", "dsound");
+            }
 
             // Get SDL humming
             retVal = SDL.SDL_Init(SDL.SDL_INIT_AUDIO |

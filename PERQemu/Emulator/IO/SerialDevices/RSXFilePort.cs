@@ -86,6 +86,7 @@ namespace PERQemu.IO.SerialDevices
         public RSXFilePort(Z80System sys) : base(sys)
         {
             _system = sys;
+            _name = "RSX port";
             _inputQueue = new Queue<byte>(128);
             _fileStream = null;
             _sendEvent = null;
@@ -119,8 +120,6 @@ namespace PERQemu.IO.SerialDevices
         //
         // ISerialDevice implementation
         //
-
-        public override string Name => "RSX port";
 
         public override int BaudRate => _system.IsEIO ? 19200 : 9600;
 

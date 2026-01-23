@@ -74,7 +74,7 @@ namespace PERQemu.IO.SerialDevices
             _txDevice?.Transmit(value);
         }
 
-        // Not used by Speech device
+        // Not used by Speech device, but pass it anyway.
         public void TransmitBreak()
         {
             _txDevice?.TransmitBreak();

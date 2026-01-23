@@ -7,6 +7,31 @@ Previous notes moved to ChangeLog-Old.txt.
 
 January, 2026:
 
+    8. Push to capture audio changes that I'm about to undo.  Third time's a
+    charm, right?  This works across platforms but is needlessly complex and I
+    think I've worked out the better solution.  Hang tight.
+
+    7. Hmm.  RS-232 is _better_ but it can get itself thoroughly wedged if flow
+    control isn't handled correctly.  Which it isn't.  Wired up the pin change
+    notifications (probably broken on Unix, but we'll see?) to see if that makes
+    any difference.  Getting handshaking to behave properly on three platforms
+    is going to be "challenging."
+
+    6. Audio refactoring: take two.  Windows 10 (on my stupid test PC) was mute
+    until I forced the use of the "dsound" driver instead of the default; this
+    may have to be configurable.  Changed the strategy to open the device once,
+    using common 16-bit/44.1Khz/mono (as "CD quality" ought to be a very common
+    rate that any modern host can match); if the driver insists on 2 channels at
+    the minimum, accommodate it.  If your host can produce mono output and you
+    find it weird or disconcerting, you can tell the emulator to do fake stereo
+    output through a debug command or possible Settings option?
+
+    5. Small fix to the file logging setup on a new host: not picking up initial
+    default (or changes to) the output directory setting correctly.  Now creates
+    (if needed) and rescans the directory when file logging is enabled.  Small
+    corrections to the Kriz tablet to offset a slight regression in IOB configs
+    due to SIO/Speech changes.
+
     4. Ethernet fix: sort of.  On a "quiet" dedicated network, don't pass any
     traffic to the PERQ until the FCS probe has been completed, or it'll blow
     up POS's fragile network stack.  Someday I plan to update PERQ Kermit, the
@@ -37,4 +62,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Thu Jan  8 16:24:34 PST 2026
+Last update: skeezics    Fri Jan 23 11:04:42 PST 2026
