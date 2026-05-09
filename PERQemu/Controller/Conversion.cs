@@ -137,11 +137,11 @@ namespace PERQemu
         /// clock period used by the hardware, but it doesn't have to be that
         /// accurate.  We just want to "pace" data from the virtual machine so
         /// that the Z80/PERQ see realistic interrupt rates for serial transfers.
-        /// Assume 10 bits per character (8-N-1).
+        /// Assume 10 bits per character (8-N-1 for async modes).
         /// </remarks>
-        public static ulong BaudRateToNsec(int baud)
+        public static ulong BaudRateToNsec(int baud, int bits = 10)
         {
-            return (ulong)(1000000000 / (baud / 10));
+            return (ulong)(1000000000 / (baud / bits));
         }
 
         /// <summary>
@@ -149,6 +149,11 @@ namespace PERQemu
         /// upgrade to a newer toolchain and can use Math.Clamp().  Sigh.
         /// </summary>
         public static int Clamp(int value, int min, int max)
+        {
+            return (value < min) ? min : (value > max) ? max : value;
+        }
+
+        public static ulong Clamp(ulong value, ulong min, ulong max)
         {
             return (value < min) ? min : (value > max) ? max : value;
         }

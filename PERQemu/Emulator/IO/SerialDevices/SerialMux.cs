@@ -17,6 +17,8 @@
 // along with PERQemu.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System.IO;
+
 using PERQemu.IO.Z80;
 
 namespace PERQemu.IO.SerialDevices
@@ -27,63 +29,70 @@ namespace PERQemu.IO.SerialDevices
     /// the transmit half of a channel to stream bytes through the MC3417 for
     /// audio output, while the Kriz tablet uses the receive half to report
     /// mouse updates.  Should handle both the original IOB implementation and
-    /// the later EIO as well.  Also handles DMA for "HiVol" operation.
+    /// the later EIO as well.
     /// </summary>
-    public sealed class SerialMux : ISIODevice
+    public sealed class SerialMux : SerialDevice
     {
-        public SerialMux()
+        public SerialMux(Z80System sys) : base(sys)
         {
+            _name = "SIO mux device";
             Log.Info(Category.SIO, "Created {0} mux device", IOBoard.Name);
         }
 
-        public void AttachRxDevice(ISIODevice rxDev)
+        public override bool ReadReady => _rxDevice?.ReadReady ?? false;
+        public override ulong ReceiveRate => _rxDevice?.ReceiveRate ?? 0;
+
+        public override bool WriteReady => _txDevice?.WriteReady ?? false;
+        public override ulong TransmitRate => _txDevice?.TransmitRate ?? 0;
+
+        public override ulong PollRate => _txDevice?.PollRate ?? 0;
+     
+        public void AttachRxDevice(SerialDevice rxDev)
         {
             _rxDevice = rxDev;
             Log.Info(Category.SIO, "Attached Rx device {0}", rxDev);
         }
 
-        public void AttachTxDevice(ISIODevice txDev)
+        public void AttachTxDevice(SerialDevice txDev)
         {
             _txDevice = txDev;
             Log.Info(Category.SIO, "Attached Tx device {0}", txDev);
         }
 
-        //
-        // ISIODevice implementation
-        //
-
-        public void Reset()
+        public override void Reset()
         {
-            _txDevice?.Reset();
             _rxDevice?.Reset();
+            _txDevice?.Reset();
         }
 
-        /// <summary>
-        /// If the Rx device is attached, pass through the receive delegate.
-        /// </summary>
-        public void RegisterReceiveDelegate(ReceiveDelegate rxDelegate)
+        public override bool Poll()
         {
-            _rxDevice?.RegisterReceiveDelegate(rxDelegate);
+            return _txDevice?.Poll() ?? false;
         }
 
-        /// <summary>
-        /// If the Tx device is attached, pass through the bytes to transmit.
-        /// </summary>
-        public void Transmit(byte value)
+        public override byte Receive()
+        {
+            return _rxDevice?.Receive() ?? 0;
+        }
+
+        public override void Transmit(byte value)
         {
             _txDevice?.Transmit(value);
         }
 
-        // Not used by Speech device, but pass it anyway.
-        public void TransmitBreak()
+        public override void Status()
         {
-            _txDevice?.TransmitBreak();
+            _rxDevice?.Status();
+            _txDevice?.Status();
         }
 
-        public ulong TransmitRate => _txDevice?.TransmitRate ?? 0;
-        public ulong ReceiveRate => _rxDevice?.ReceiveRate ?? 0;
+        public override void Telemetry(bool enable, ref StreamWriter file)
+        {
+            // Pass through to speech (no need for Kriz?)
+            _txDevice?.Telemetry(enable, ref file);
+        }
 
-        ISIODevice _txDevice;       // MC3417 for audio output
-        ISIODevice _rxDevice;       // KrizTablet for mouse input
+        SerialDevice _rxDevice;       // KrizTablet for mouse input
+        SerialDevice _txDevice;       // MC3417 for audio output
     }
 }

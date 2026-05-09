@@ -1,5 +1,5 @@
 //
-// Z80DMA.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80DMA.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -162,7 +162,7 @@ namespace PERQemu.IO.Z80
             switch (_state)
             {
                 case DMAState.SourceRead:
-                    if (source.ReadDataReady)
+                    if (source.DMAReadReady)
                     {
                         if (sourceIsIO)
                         {
@@ -187,7 +187,7 @@ namespace PERQemu.IO.Z80
                     break;
 
                 case DMAState.DestWrite:
-                    if (dest.WriteDataReady)
+                    if (dest.DMAWriteReady)
                     {
                         if (destIsIO)
                         {

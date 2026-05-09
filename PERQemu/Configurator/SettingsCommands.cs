@@ -19,7 +19,9 @@
 
 using System;
 using System.IO;
-using System.IO.Ports;
+
+using PERQemu.IO.Z80;
+using PERQemu.IO.Ports;
 
 namespace PERQemu.UI
 {
@@ -91,13 +93,16 @@ namespace PERQemu.UI
 
             // Devices
             Console.WriteLine();
+            Console.Write("Host audio device:          ");
+            Console.WriteLine(Settings.AudioDevice == string.Empty ? "<default>" :
+                              $"{Settings.AudioDevice}");
             Console.Write("Host serial port A device:  ");
             Console.WriteLine(Settings.RSADevice == string.Empty ? "<unassigned>" :
                               Settings.RSADevice == "RSX:" ? "RSX:" :
-                              $"{Settings.RSADevice} {Settings.RSASettings}");
+                              $"{Settings.RSADevice} {Settings.RSASettings.ToStringExt()}");
             Console.Write("Host serial port B device:  ");
             Console.WriteLine(Settings.RSBDevice == string.Empty ? "<unassigned>" :
-                              $"{Settings.RSBDevice} {Settings.RSBSettings}");
+                              $"{Settings.RSBDevice} {Settings.RSBSettings.ToStringExt()}");
             Console.Write("Host Ethernet device:       ");
             Console.WriteLine(Settings.EtherDevice == string.Empty ? "<unassigned>" :
                               $"{Settings.EtherDevice}");
@@ -301,12 +306,42 @@ namespace PERQemu.UI
 
         #endregion
 
-        #region Serial port settings
+        #region Serial device settings
 
-        [Command("settings assign rs232 device", "Map a host device to a PERQ serial port")]
-        public void SetRS232Device(char port, [KeywordMatch("ComPorts")] string hostDevice,
-                                  int baud = 9600, int data = 8, Parity par = Parity.None, StopBits stop = StopBits.One)
+
+        [Command("settings assign rs232a device", "Map a host serial device to port A")]
+        public void SetRSADevice([KeywordMatch("ComPorts")] string hostDevice,
+                     int baud = 9600, int data = 8,
+                     Parity parity = Parity.None, StopBits stop = StopBits.One)
         {
+            SetRS232Device('A', hostDevice, baud, data, parity, stop);
+        }
+
+        [Command("settings assign rs232b device", "Map a host serial device to port B")]
+        public void SetRSBDevice([KeywordMatch("ComPorts")] string hostDevice,
+                             int baud = 9600, int data = 8,
+                             Parity parity = Parity.None, StopBits stop = StopBits.One)
+        {
+            SetRS232Device('B', hostDevice, baud, data, parity, stop);
+        }
+
+        [Command("settings assign rs232 device", Discreet = true)]  // Deprecated in v0.9.0
+        public void SetRS232Device(char port, string hostDevice, int baud = 9600, int data = 8,
+                                   Parity par = Parity.None, StopBits stop = StopBits.One)
+        {
+            // Sanity check the baud rate and character length values
+            if (baud < 110 || baud > 38400)
+            {
+                baud = 9600;
+                QuietWrite($"Baud rate {baud} out of range, reset to default.");
+            }
+
+            if (data < 5 || data > 8)
+            {
+                data = 8;
+                QuietWrite($"Bits-per-character {data} out of range (5..8), reset to default.");
+            }
+
             var dev = hostDevice;
             var devSettings = new SerialSettings(baud, data, par, stop);
             var curDev = string.Empty;
@@ -379,41 +414,125 @@ namespace PERQemu.UI
             Console.WriteLine($"Device '{dev}' invalid or not found; port {port} unchanged.");
         }
 
-        [Command("settings unassign rs232 device", "Unmap a device from a PERQ serial port")]
-        void UnSetRS232Device(char port = 'a')
+        [Command("settings unassign rs232a device", "Unmap the host serial device from port A")]
+        public void UnSetRSADevice()
         {
-            var curDev = string.Empty;
+            if (!string.IsNullOrEmpty(Settings.RSADevice))
+            {
+                Settings.RSADevice = string.Empty;
+                Settings.Changed = true;
+            }
 
+            Console.WriteLine("Serial port A unassigned.");
+        }
+
+        [Command("settings unassign rs232b device", "Unmap the host serial device from port B")]
+        public void UnSetRSBDevice()
+        {
+            if (!string.IsNullOrEmpty(Settings.RSBDevice))
+            {
+                Settings.RSBDevice = string.Empty;
+                Settings.Changed = true;
+            }
+
+            Console.WriteLine("Serial port B unassigned.");
+        }
+
+        [Command("settings unassign rs232 device", Discreet = true)]    // Deprecated in v0.9.0
+        public void UnSetRS232Device(char port = 'A')
+        {
             switch (port)
             {
                 case 'a':
                 case 'A':
-                    curDev = Settings.RSADevice;
-                    port = 'A';
-                    break;
+                    UnSetRSADevice();
+                    return;
 
                 case 'b':
                 case 'B':
-                    curDev = Settings.RSBDevice;
-                    port = 'B';
-                    break;
+                    UnSetRSBDevice();
+                    return;
 
                 default:
                     Console.WriteLine($"Port {port} is invalid; please choose 'A' or 'B'.");
                     return;
             }
+        }
 
-            if (!string.IsNullOrEmpty(curDev))
+        [Command("settings assign rs232a option", "Set or clear options for serial port A")]
+        public void SetRSAOptions([KeywordMatch("SerialFlags")] string opt)
+        {
+            SetRS232Options('A', opt, ref Settings.RSASettings);
+        }
+
+        [Command("settings assign rs232b option", "Set or clear options for serial port B")]
+        public void SetRSBOptions([KeywordMatch("SerialFlags")] string opt)
+        {
+            SetRS232Options('B', opt, ref Settings.RSBSettings);
+        }
+
+        /// <summary>
+        /// Sets the RS-232 port flow control or option flags.
+        /// </summary>
+        void SetRS232Options(char port, string opt, ref SerialSettings settings)
+        {
+            int hs;
+
+            switch (opt.ToLower())
             {
-                if (port == 'A')
-                    Settings.RSADevice = string.Empty;
-                else
-                    Settings.RSBDevice = string.Empty;
+                case "none":
+                    if ((settings.FlowControl != Handshake.None) &&
+                        (settings.Options != SerialOptions.None))
+                    {
+                        settings.FlowControl = Handshake.None;
+                        settings.Options = SerialOptions.None;
 
-                Settings.Changed = true;
+                        Settings.Changed = true;
+                        QuietWrite($"Serial port {port} options reset.");
+                    }
+                    break;
+
+                case "xonxoff":
+                    // This is so bad it's good!  Well, no, it's really just bad.
+                    hs = (int)settings.FlowControl ^ 1;
+                    settings.FlowControl = (Handshake)hs;
+
+                    Settings.Changed = true;
+                    QuietWrite($"Serial port {port} flow control option now {settings.FlowControl}.");
+                    break;
+
+                case "rtscts":
+                    hs = (int)settings.FlowControl ^ 2;
+                    settings.FlowControl = (Handshake)hs;
+
+                    Settings.Changed = true;
+                    QuietWrite($"Serial port {port} flow control option now {settings.FlowControl}.");
+                    break;
+
+                case "dcdforceon":
+                    if (settings.Options == SerialOptions.DCDForceOn)
+                        settings.Options = SerialOptions.None;
+                    else
+                        settings.Options = SerialOptions.DCDForceOn;
+
+                    Settings.Changed = true;
+                    QuietWrite($"Serial port {port} carrier detect flag now {settings.Options}.");
+                    break;
+
+                case "dcdfollowdsr":
+                    if (settings.Options == SerialOptions.DCDFollowDSR)
+                        settings.Options = SerialOptions.None;
+                    else
+                        settings.Options = SerialOptions.DCDFollowDSR;
+
+                    Settings.Changed = true;
+                    QuietWrite($"Serial port {port} carrier detect flag now {settings.Options}.");
+                    break;
+
+                default:
+                    Console.WriteLine($"Unknown RS-232 option '{opt}', ignored.");
+                    return;
             }
-
-            Console.WriteLine($"Serial port {port} unassigned.");
         }
 
         /// <summary>
@@ -472,6 +591,112 @@ namespace PERQemu.UI
             Log.Warn(Category.All,
                      "Note: Both RS-232 ports assigned to the same device; some configurations\n" +
                      "might not load properly.  Please check your settings to reassign ports.");
+        }
+
+        #endregion
+
+        #region Audio/speech settings
+
+        [Command("settings assign audio device", "Set the host audio driver to use")]
+        public void SetAudioDev([KeywordMatch("AudioDrivers")] string hostDevice)
+        {
+            if (hostDevice == "default")
+            {
+                UnSetAudioDev();
+                return;
+            }
+
+            if (Settings.AudioDevice != hostDevice)
+            {
+                Settings.AudioDevice = hostDevice;
+                Settings.Changed = true;
+            }
+
+            QuietWrite($"Audio device set to '{hostDevice}'.");
+        }
+
+        [Command("settings unassign audio device", "Use the host's default audio driver")]
+        public void UnSetAudioDev()
+        {
+            if (!string.IsNullOrEmpty(Settings.AudioDevice))
+            {
+                Settings.AudioDevice = string.Empty;
+                Settings.Changed = true;
+            }
+
+            QuietWrite("Audio device reset to default.");
+        }
+
+        [Command("settings assign audio option", "Fine tune the CVSD audio output parameters")]
+        public void TuneAudio(AudioKnobs knob, int val)
+        {
+            // CLI doesn't handle floating pt inputs, yet?
+            var scaled = (val * .0001);
+            var changed = $"{knob} = {scaled:N4}";
+
+            switch (knob)
+            {
+                case AudioKnobs.Channels:
+                    if (val < 1 || val > 2)
+                    {
+                        Console.WriteLine($"Audio channels {val} out of range (1..2), ignored.");
+                        return;
+                    }
+
+                    if (Settings.AudioSettings.Channels != (byte)val)
+                    {
+                        Settings.AudioSettings.Channels = (byte)val;
+                        changed = $"Channels = {val} " + (val == 2 ? "(stereo)" : "(mono)");
+                    }
+                    break;
+
+                case AudioKnobs.Min:
+                    Settings.AudioSettings.FilterMin = scaled;
+                    break;
+
+                case AudioKnobs.Max:
+                    Settings.AudioSettings.FilterMax = scaled;
+                    break;
+
+                case AudioKnobs.Decay:
+                    Settings.AudioSettings.FilterDecayTC = scaled;
+                    break;
+
+                case AudioKnobs.Charge:
+                    Settings.AudioSettings.FilterChargeTC = scaled;
+                    break;
+
+                case AudioKnobs.Leak:
+                    Settings.AudioSettings.IntegratorLeakTC = scaled;
+                    break;
+
+                case AudioKnobs.Gain:
+                    Settings.AudioSettings.SampleGain = val / 32768.0;
+                    break;
+
+                default:
+                    Console.WriteLine($"Unknown audio parameter '{knob}', ignored.");
+                    return;
+            }
+
+            // Rather than fuss over floating point precision, assume the value
+            // has changed.  Other than channels, nobody will likely mess with these
+            Settings.Changed = true;
+            QuietWrite($"Audio settings changed:  {changed}");
+
+            // Note: If the machine is running, changes will be picked up when the
+            // next sample starts playing (at filter reset)
+        }
+
+        [Command("settings assign audio option default", "Reset audio output parameters to defaults")]
+        public void ResetAudio()
+        {
+            if (!Settings.AudioSettings.Equals(SpeechSettings.Defaults))
+            {
+                Settings.AudioSettings = SpeechSettings.Defaults;
+                Settings.Changed = true;
+                Console.WriteLine("Audio settings reset to defaults.");
+            }
         }
 
         #endregion
@@ -576,5 +801,4 @@ namespace PERQemu.UI
 	is globally set for all virtual machines:
 
 	settings::ethernet encapsulation [raw, udp, ???]
-	settings::audio device [dev]            -- audio output device?
 */

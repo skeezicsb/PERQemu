@@ -1,5 +1,5 @@
 ﻿//
-// EventLoop.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// EventLoop.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -67,7 +67,11 @@ namespace PERQemu.UI
             if (!PERQemu.HostIsUnix)
             {
                 SDL.SDL_SetHint("SDL_WINDOWS_DISABLE_THREAD_NAMING", "1");
-                SDL.SDL_SetHint("SDL_AUDIODRIVER", "dsound");
+            }
+
+            if (!string.IsNullOrEmpty(Settings.AudioDevice))
+            {
+                SDL.SDL_SetHint("SDL_AUDIODRIVER", Settings.AudioDevice);
             }
 
             // Get SDL humming
@@ -131,7 +135,6 @@ namespace PERQemu.UI
                 }
 
                 if (_winStateChanged) UpdateWindowState();
-                if (_audioDevice.Busy) _audioDevice.CheckIdle();
             }
         }
 

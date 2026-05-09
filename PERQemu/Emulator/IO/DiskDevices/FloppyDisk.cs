@@ -73,14 +73,9 @@ namespace PERQemu.IO.DiskDevices
         public bool Fault => _fault;
         public bool Ready => (IsLoaded && _ready);
         public bool Track0 => (_cylinder == 0);
+        public bool DiskChange => _diskChange;
         public bool IsSingleSided => _isSingleSided;
         public bool IsDoubleDensity => _isDoubleDensity;
-
-        public bool DiskChange
-        {
-            get { return _diskChange; }
-            set { _diskChange = value; }
-        }
 
         public bool DriveSelect
         {
@@ -117,6 +112,9 @@ namespace PERQemu.IO.DiskDevices
             }
         }
 
+        /// <summary>
+        /// Compute a seek and schedule a callback on the provided delegate.
+        /// </summary>
         public void SeekTo(ushort track, SchedulerEventCallback cb)
         {
             // Clip cylinder count into range and compute seek delay
@@ -183,7 +181,6 @@ namespace PERQemu.IO.DiskDevices
         {
             _ready = false;
             _fault = false;
-            _driveSelect = false;
             _diskChange = true;
             _isSingleSided = (Geometry.Heads == 1);
             _isDoubleDensity = (Geometry.SectorSize == 256 && Geometry.Sectors == 26);
@@ -207,6 +204,9 @@ namespace PERQemu.IO.DiskDevices
             base.OnLoad();
         }
 
+        /// <summary>
+        /// Eject the current media and reset flags.
+        /// </summary>
         public override void Unload()
         {
             Log.Info(Category.FloppyDisk, "Floppy is about to eject...");
@@ -216,7 +216,6 @@ namespace PERQemu.IO.DiskDevices
             // are pulled up, so we set some relevant ones here accordingly
             _ready = false;
             _fault = false;
-            _driveSelect = false;
             _diskChange = true;
             _isSingleSided = true;
             _isDoubleDensity = false;

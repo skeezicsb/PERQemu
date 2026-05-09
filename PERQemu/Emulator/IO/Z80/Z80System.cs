@@ -1,5 +1,5 @@
 //
-// Z80System.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80System.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -72,6 +72,7 @@ namespace PERQemu.IO.Z80
         public MC3417 Speech => _cvsd;
 
         public abstract Z80SIO SIOA { get; }
+        public abstract Z80SIO SIOB { get; }
         public abstract Z80CTC CTC { get; }
 
         public abstract void WriteStatus(int status);
@@ -83,13 +84,13 @@ namespace PERQemu.IO.Z80
         public abstract void Run();
         public abstract void QueueKeyboardInput(byte keyCode);
 
+        public abstract void SerialReset(char port);
+
         protected abstract void DeviceReset();
         protected abstract void DeviceShutdown();
 
         // Debugging access
         public abstract void DumpFifos();
-        public abstract void DumpPortAStatus();
-        public abstract void DumpPortBStatus();
         public abstract void DumpIRQStatus();
         public abstract void DumpDMAStatus();
 
@@ -106,12 +107,13 @@ namespace PERQemu.IO.Z80
         /// </remarks>
         public void Reset(bool soft = false)
         {
-            // Synchronize our scheduler to the main processor!
-            _scheduler.Reset(_system.Scheduler.CurrentTimeNsec);
             _cpu.Reset();
 
             if (soft)
             {
+                // Synchronize our scheduler to the main processor!
+                _scheduler.Reset(_system.Scheduler.CurrentTimeNsec);
+
                 // A software-initiated reset may not do all devices...
                 DeviceReset();
                 Log.Debug(Category.Z80, "System (soft) reset");
@@ -119,6 +121,7 @@ namespace PERQemu.IO.Z80
             else
             {
                 // ...while a power-on or "hard" reset does everything
+                _scheduler.Reset();
                 _bus.Reset();
                 Log.Debug(Category.Z80, "System reset");
             }

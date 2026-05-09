@@ -49,9 +49,9 @@ namespace PERQemu.IO.Z80
             _z80ctc = new Z80CTC(0x90, _scheduler);
             _z80sio = new Z80SIO(0xb0, _scheduler);
 
-            _cvsd = new MC3417();
+            _cvsd = new MC3417(this);
             _keyboard = new Keyboard();
-            _speechMux = new SerialMux();
+            _speechMux = new SerialMux(this);
 
             _ioReg3 = new IOReg3(_perqToZ80Fifo, _keyboard, _fdc, _dmaRouter);
 
@@ -74,6 +74,7 @@ namespace PERQemu.IO.Z80
 
         // Expose to the DMA router
         public override Z80SIO SIOA => _z80sio;
+        public override Z80SIO SIOB => null;
 
         // Allow for external CTC triggers (disk seeks)
         public override Z80CTC CTC => _z80ctc;
@@ -92,7 +93,7 @@ namespace PERQemu.IO.Z80
 
             if (_system.Config.Tablet.HasFlag(TabletType.Kriz))
             {
-                _speechMux.AttachRxDevice(new KrizTablet(_scheduler, _system));
+                _speechMux.AttachRxDevice(new KrizTablet(this, _system));
             }
 
             // If enabled, attach the CVSD chip
@@ -102,27 +103,8 @@ namespace PERQemu.IO.Z80
                 _z80ctc.AttachDevice(1, _cvsd);
             }
 
-            // If enabled and configured, attach device to RS232
-            if (_system.Config.RSAEnabled && Settings.RSADevice != string.Empty)
-            {
-                if (Settings.RSADevice == "RSX:")
-                {
-                    var rsx = new RSXFilePort(this);
-                    _z80sio.AttachPortDevice(0, rsx);
-                    _z80ctc.AttachDevice(0, rsx);
-                }
-                else
-                {
-                    var rsa = new PhysicalPort(this, Settings.RSADevice, Settings.RSASettings, "A");
-                    _z80sio.AttachPortDevice(0, rsa);
-                    _z80ctc.AttachDevice(0, rsa);
-                }
-            }
-            else
-            {
-                // Otherwise direct it to the bit bucket
-                _z80sio.AttachPortDevice(0, new NullPort(this));
-            }
+            // Attach the RS232 device to SIO channel A
+            SerialReset('a');
 
             // Attach the mux device to SIO channel B
             _z80sio.AttachDevice(1, _speechMux);
@@ -138,6 +120,42 @@ namespace PERQemu.IO.Z80
             _bus.RegisterDevice(_z80ToPerqFifo, false);
             _bus.RegisterDevice(_seekControl, false);
             _bus.RegisterDevice(_ioReg3, false);
+        }
+
+        public override void SerialReset(char port)
+        {
+            if (port != 'a' && port != 'A')
+                throw new InvalidOperationException($"Bad port {port}");
+
+            _z80ctc.DetachDevice(0);
+            _z80sio.DetachDevice(0);
+            SerialInit();
+            _z80sio.Reset(0);
+        }
+
+        void SerialInit()
+        {
+            // If enabled and configured, attach device to RS232
+            if (_system.Config.RSAEnabled && Settings.RSADevice != string.Empty)
+            {
+                if (Settings.RSADevice == "RSX:")
+                {
+                    var rsx = new RSXFilePort(this);
+                    _z80sio.AttachDevice(0, rsx);
+                    _z80ctc.AttachDevice(0, rsx);
+                }
+                else
+                {
+                    var rsa = new RealPort(this, "Port A", Settings.RSADevice, Settings.RSASettings);
+                    _z80sio.AttachDevice(0, rsa);
+                    _z80ctc.AttachDevice(0, rsa);
+                }
+            }
+            else
+            {
+                // Otherwise direct it to the bit bucket
+                _z80sio.AttachDevice(0, new NullPort(this));
+            }
         }
 
         protected override void DeviceReset()
@@ -356,16 +374,6 @@ namespace PERQemu.IO.Z80
         {
             _z80ToPerqFifo.DumpFifo();
             _perqToZ80Fifo.DumpFifo();
-        }
-
-        public override void DumpPortAStatus()
-        {
-            _z80sio.DumpPortStatus(0);
-        }
-
-        public override void DumpPortBStatus()
-        {
-            Console.WriteLine($"{_system.Config.IOBoard} board does not have a serial port B.");
         }
 
         public override void DumpIRQStatus()

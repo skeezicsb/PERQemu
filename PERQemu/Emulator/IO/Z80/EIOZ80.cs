@@ -52,9 +52,9 @@ namespace PERQemu.IO.Z80
             _rtc = new Oki5832RTC(0x76);
 
             // Create our serial devices
-            _cvsd = new MC3417();
-            _keyboard = new SerialKeyboard();
-            _speechMux = new SerialMux();
+            _cvsd = new MC3417(this);
+            _keyboard = new SerialKeyboard(this);
+            _speechMux = new SerialMux(this);
 
             // Same Z80 PROM code for EIO/NIO
             _z80Debugger = new Z80Debugger("eioz80.lst");
@@ -62,8 +62,9 @@ namespace PERQemu.IO.Z80
             DeviceInit();
         }
 
-        // Port "A" is public, since it's a DMA-capable device
+        // Handles to the serial ports (for debug, reconfig)
         public override Z80SIO SIOA => _z80sioA;
+        public override Z80SIO SIOB => _z80sioB;
 
         // No hard disk seek circuit on the EIO
         public override Z80CTC CTC => null;
@@ -87,7 +88,7 @@ namespace PERQemu.IO.Z80
 
             if (_system.Config.Tablet.HasFlag(TabletType.Kriz))
             {
-                _speechMux.AttachRxDevice(new KrizTablet(_scheduler, _system));
+                _speechMux.AttachRxDevice(new KrizTablet(this, _system));
             }
 
             // If enabled, attach the CVSD chip
@@ -101,42 +102,9 @@ namespace PERQemu.IO.Z80
             _z80sioA.AttachDevice(1, _speechMux);
             _z80sioB.AttachDevice(1, _keyboard);
 
-            // If enabled and configured, attach device to RS232 port A
-            if (_system.Config.RSAEnabled && Settings.RSADevice != string.Empty)
-            {
-                if (Settings.RSADevice == "RSX:")
-                {
-                    var rsx = new RSXFilePort(this);
-                    _z80sioA.AttachPortDevice(0, rsx);
-                    _timerA.AttachDevice(0, rsx);
-                }
-                else
-                {
-                    var rsa = new PhysicalPort(this, Settings.RSADevice, Settings.RSASettings, "A");
-                    _z80sioA.AttachPortDevice(0, rsa);
-                    _timerA.AttachDevice(0, rsa);
-                    _timerA.AttachDevice(2, rsa);
-                }
-            }
-            else
-            {
-                // Otherwise direct it to the bit bucket
-                _z80sioA.AttachPortDevice(0, new NullPort(this));
-            }
-
-            // Now do RS232 port B
-            if (_system.Config.RSBEnabled && Settings.RSBDevice != string.Empty)
-            {
-                var rsb = new PhysicalPort(this, Settings.RSBDevice, Settings.RSBSettings, "B");
-                _z80sioB.AttachPortDevice(0, rsb);
-                _timerB.AttachDevice(0, rsb);
-                _timerB.AttachDevice(2, rsb);
-            }
-            else
-            {
-                // Otherwise direct it to the bit bucket
-                _z80sioB.AttachPortDevice(0, new NullPort(this));
-            }
+            // Attach serial ports (split out so we can reconfigure on-the-fly)
+            SerialInitRSA();
+            SerialInitRSB();
 
             // All aboard the bus
             _bus.RegisterDevice(_z80sioA);
@@ -167,6 +135,75 @@ namespace PERQemu.IO.Z80
             _dmac.AttachChannelDevice(1, _tms9914a, 0x07);
             _dmac.AttachChannelDevice(2, _z80sioA, 0x10);
             _dmac.AttachChannelDevice(3, _pdma, 0x75);
+        }
+
+        public override void SerialReset(char port)
+        {
+            if (port == 'a' || port == 'A')
+            {
+                // Disconnect current device
+                _timerA.DetachDevice(0);
+                _timerA.DetachDevice(2);
+                _z80sioA.DetachDevice(0);
+
+                // Initialize and reset new one
+                SerialInitRSA();
+                _z80sioA.Reset(0);
+            }
+            else if (port == 'b' || port == 'B')
+            {
+                _timerB.DetachDevice(0);
+                _timerB.DetachDevice(2);
+                _z80sioB.DetachDevice(0);
+
+                SerialInitRSB();
+                _z80sioB.Reset(0);
+            }
+            else
+                throw new InvalidOperationException($"Bad port {port}");
+        }
+
+        void SerialInitRSA()
+        {
+            // If enabled and configured, attach device to RS232 port A
+            if (_system.Config.RSAEnabled && Settings.RSADevice != string.Empty)
+            {
+                if (Settings.RSADevice == "RSX:")
+                {
+                    var rsx = new RSXFilePort(this);
+                    _z80sioA.AttachDevice(0, rsx);
+                    _timerA.AttachDevice(0, rsx);
+                }
+                else
+                {
+                    var rsa = new RealPort(this, "Port A", Settings.RSADevice, Settings.RSASettings);
+                    _z80sioA.AttachDevice(0, rsa);
+                    _timerA.AttachDevice(0, rsa);
+                    _timerA.AttachDevice(2, rsa);
+                }
+            }
+            else
+            {
+                // Otherwise direct it to the bit bucket
+                _z80sioA.AttachDevice(0, new NullPort(this));
+            }
+        }
+
+        void SerialInitRSB()
+        {
+            // If enabled and configured, attach device to RS232 port B
+            if (_system.Config.RSBEnabled && Settings.RSBDevice != string.Empty)
+            {
+                var rsb = new RealPort(this, "Port B", Settings.RSBDevice, Settings.RSBSettings);
+                _z80sioB.AttachDevice(0, rsb);
+                _timerB.AttachDevice(0, rsb);
+                _timerB.AttachDevice(2, rsb);
+            }
+            else
+            {
+                // Otherwise direct it to the bit bucket
+                _z80sioB.AttachDevice(0, new NullPort(this));
+            }
         }
 
         protected override void DeviceReset()
@@ -393,16 +430,6 @@ namespace PERQemu.IO.Z80
             _pdma.DumpFIFOs();
         }
 
-        public override void DumpPortAStatus()
-        {
-            _z80sioA.DumpPortStatus(0);
-        }
-
-        public override void DumpPortBStatus()
-        {
-            _z80sioB.DumpPortStatus(0);
-        }
-
         public override void DumpIRQStatus()
         {
             _bus.DumpInterrupts();
@@ -428,7 +455,7 @@ namespace PERQemu.IO.Z80
         Z80ToPERQFIFO _z80ToPerqFifo;
 
 #if DEBUG
-        // Debugging the DMAC/Z80 "slowness" that trips up FLEX
+        // Z80 instruction profiling (debug support)
         int[] _buckets = new int[32];
 #endif
     }

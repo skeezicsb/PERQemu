@@ -1,5 +1,5 @@
 ﻿//
-// DMARouter.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// DMARouter.cs - Copyright (c) 2006-20265 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -73,8 +73,8 @@ namespace PERQemu.IO.Z80
             }
         }
 
-        public bool ReadDataReady => _selectedDevice.ReadDataReady;
-        public bool WriteDataReady => _selectedDevice.WriteDataReady;
+        public bool DMAReadReady => _selectedDevice.DMAReadReady;
+        public bool DMAWriteReady => _selectedDevice.DMAWriteReady;
 
         public AcknowledgeDelegate DMAAcknowledge => _selectedDevice.DMAAcknowledge;
 

@@ -1,5 +1,5 @@
 //
-// Z80CTC.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80CTC.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -73,6 +73,14 @@ namespace PERQemu.IO.Z80
         public void AttachDevice(int channel, ICTCDevice dev)
         {
             _channels[channel].TimerClient = dev;
+        }
+
+        public void DetachDevice(int channel)
+        {
+            if (_channels[channel].TimerClient == null) return;
+
+            _channels[channel].Stop();
+            _channels[channel].TimerClient = null;
         }
 
         public byte Read(byte portAddress)

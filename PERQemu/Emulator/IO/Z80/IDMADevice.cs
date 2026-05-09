@@ -30,12 +30,12 @@ namespace PERQemu.IO.Z80
         /// <summary>
         /// Indicates that the device has data ready to read.
         /// </summary>
-        bool ReadDataReady { get; }
+        bool DMAReadReady { get; }
 
         /// <summary>
         /// Indicates that the device is ready for data to be written.
         /// </summary>
-        bool WriteDataReady { get; }
+        bool DMAWriteReady { get; }
 
         /// <summary>
         /// Get an optional delegate to fire prior to any data read or write.

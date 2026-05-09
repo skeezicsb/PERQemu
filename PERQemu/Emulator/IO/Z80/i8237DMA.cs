@@ -1,5 +1,5 @@
-﻿//
-// i8237DMA.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+//
+// i8237DMA.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -152,7 +152,7 @@ namespace PERQemu.IO.Z80
                         // Is the source ready? (It better be, since right now
                         // we don't have any timeout or reset if things get out
                         // of sync!
-                        if (!_channels[_active].Device.ReadDataReady)
+                        if (!_channels[_active].Device.DMAReadReady)
                         {
                             // Bug out, _state unchanged
                             Log.Warn(Category.Z80DMA, "Device {0} not ready on read!", _active);
@@ -190,7 +190,7 @@ namespace PERQemu.IO.Z80
                             _channels[_active].AckRequested(_channels[_active].DataPort);
                         }
 
-                        if (!_channels[_active].Device.WriteDataReady)
+                        if (!_channels[_active].Device.DMAWriteReady)
                         {
                             Log.Warn(Category.Z80DMA, "Device {0} not ready on write!", _active);
                             return 0;
@@ -565,8 +565,8 @@ namespace PERQemu.IO.Z80
                 // Set the Requested flag if the channel is ready to go
                 // Note: Use |= if software requests/block mode allowed...
                 Requested = (!Masked && !Terminated &&
-                             (((Transfer == TransferMode.Read) && Device.WriteDataReady) ||
-                              ((Transfer == TransferMode.Write) && Device.ReadDataReady)));
+                             (((Transfer == TransferMode.Read) && Device.DMAWriteReady) ||
+                              ((Transfer == TransferMode.Write) && Device.DMAReadReady)));
             }
 
             public override string ToString()

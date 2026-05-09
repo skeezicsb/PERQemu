@@ -1,5 +1,5 @@
 //
-// Display.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Display.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -223,7 +223,7 @@ namespace PERQemu.UI
             PERQemu.GUI.Events.AssignEventID(ref _renderEvent, CustomEventType.RenderPERQDisplay);
 
             _fpsUpdateEvent = new SDL.SDL_Event();
-            PERQemu.GUI.Events.AssignEventID(ref _renderEvent, CustomEventType.UpdateFPSDisplay);
+            PERQemu.GUI.Events.AssignEventID(ref _fpsUpdateEvent, CustomEventType.UpdateFPSDisplay);
 
             // Register callbacks for our render events
             PERQemu.GUI.Events.Register(_renderEvent.type, RenderDisplay);

@@ -119,6 +119,13 @@ namespace PERQemu
             }
         }
 
+        [Conditional("DEBUG")]
+        [Command("debug z80 poke")]
+        void PokeZ80Mem(ushort addr = 0x6800, byte val = 0)
+        {
+            PERQemu.Sys.IOB.Z80System.Memory[addr] = val;
+        }
+
         #region Breakpoints
 #if DEBUG
         //
@@ -262,12 +269,7 @@ namespace PERQemu
 #endif
         #endregion
 
-        [Conditional("DEBUG")]
-        [Command("debug z80 poke")]
-        void PokeZ80Mem(ushort addr = 0x6800, byte val = 0)
-        {
-            PERQemu.Sys.IOB.Z80System.Memory[addr] = val;
-        }
+        #region Dump commands
 
         //[Conditional("DEBUG")]
         [Command("debug dump fifos")]
@@ -298,6 +300,42 @@ namespace PERQemu
             if (CheckSys()) PERQemu.Sys.IOB.Z80System.Scheduler.DumpEvents("Z80");
         }
 
+        [Command("debug z80 dump rs232a")]
+        void ShowRS232Status()
+        {
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.SIOA.DumpPortStatus(0);
+        }
+
+        [Command("debug z80 dump rs232b")]
+        void ShowRS232BStatus()
+        {
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.SIOB?.DumpPortStatus(0);
+        }
+
+        [Command("debug z80 dump sio mux")]
+        void ShowMuxStatus()
+        {
+            // Show Speech/Kriz tablet mux status
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.SIOA.DumpPortStatus(1);
+        }
+
+        [Command("debug z80 dump sio registers")]
+        void ShowSIOStatus()
+        {
+            // Show SIO internals
+            if (CheckSys())
+            {
+                PERQemu.Sys.IOB.Z80System.SIOA.DumpRegisters();
+                PERQemu.Sys.IOB.Z80System.SIOB?.DumpRegisters();
+            }
+        }
+
+        [Command("debug z80 sio telemetry")]
+        void SIOTelemetry(int chan, bool enable)
+        {
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.SIOA.Telemetry(chan, enable);
+        }
+
         //[Conditional("DEBUG")]
         [Command("debug z80 dump rtc")]
         void DumpRTC()
@@ -314,32 +352,6 @@ namespace PERQemu
             var eio = PERQemu.Sys.IOB.Z80System as EIOZ80;
 
             eio.RTC.DumpRTC();
-        }
-
-        [Command("debug z80 audio play")]
-        void PlayAudio()
-        {
-            PERQemu.GUI.Audio.Resume();
-        }
-
-        [Command("debug z80 audio pause")]
-        void PauseAudio()
-        {
-            PERQemu.GUI.Audio.Pause();
-        }
-
-        [Command("debug z80 audio channels")]
-        void SetAudioChannels(byte chan)
-        {
-            if (chan < 1 || chan > 2) return;
-
-            PERQemu.GUI.Audio.SetChannels(chan);
-        }
-
-        [Command("debug z80 audio tune")]
-        void TuneAudio(AudioKnobs knob, int val)
-        {
-            PERQemu.Sys.IOB.Z80System.Speech.SetTunable(knob, val);
         }
 
 #if DEBUG
@@ -368,9 +380,22 @@ namespace PERQemu
             Console.WriteLine($"  Total instructions: {total}");
         }
 #endif
+        #endregion
 
-        // todo: ram & rom disassembler, like the perq microcode disassembler?
-        // todo: i/o port reads - and writes!?
-        // todo: interrogate memory, fifos, peripheral controllers & registers, etc.
+        [Command("debug z80 audio play")]
+        void PlayAudio()
+        {
+            PERQemu.GUI.Audio.Resume();
+        }
+
+        [Command("debug z80 audio pause")]
+        void PauseAudio()
+        {
+            PERQemu.GUI.Audio.Pause();
+        }
+
+        // Todo: ram disassembler, like the microcode disassembler?
+        // Todo: i/o port reads - and writes!?
+        // Todo: interrogate memory, fifos, peripheral controllers & registers, etc.
     }
 }

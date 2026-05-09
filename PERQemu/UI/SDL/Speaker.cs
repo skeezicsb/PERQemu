@@ -1,5 +1,5 @@
 //
-// Speaker.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Speaker.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -21,7 +21,6 @@ using SDL2;
 
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 
 namespace PERQemu.UI
 {
@@ -30,40 +29,57 @@ namespace PERQemu.UI
     /// "speech" device.  Speaker buffers PCM output from the MC3417 and plays
     /// it on the host's default audio device.
     /// </summary>
-    /// <remarks>
-    /// Like the approach to other host devices, here we open the default audio
-    /// device with a very common output profile:  48kHz, mono or stereo, 16-bit
-    /// PCM.  We use a conversion stream to do the upsampling from the PERQ's
-    /// 16kHz (or 32kHz) mono output and allow SDL to do the buffering for us.
-    /// We let callbacks from the driver handle the pacing AND let us determine
-    /// when the PERQ has stopped playback without a polling loop.
-    /// </remarks>
     public class Speaker
     {
         public Speaker()
         {
             _devId = 0;
-            _devFrequency = 44100;      // Tunable; should come from Settings
-            _devChannels = 1;           // Tunable; should come from Settings
-            _devBufSize = 1024;         // Desired buffer size (in samples)
+            _devChannels = 1;           // Assume default mono sound
+            _channels = 1;              // Can be changed in Settings
+            _devFrequency = 32000;      // Assume the initial Kriz baud rate
+            _frequency = 16000;         // Assume the default Speech baud rate
 
-            _frequency = 32000;         // Assume the initial Kriz baud rate
-            _newFrequency = 16000;      // Assume the default Speech baud rate
-
-            _bufSize = 0;
-
-            _stream = IntPtr.Zero;
             _paused = true;
+            _enabled = true;
+            _logging = false;
+
+            // Allocate once and set fixed params
+            _desired = new SDL.SDL_AudioSpec();
+            _desired.format = SDL.AUDIO_S16SYS; // Signed 16-bit PCM samples
+            _desired.samples = 1024;            // Audio buffer size in samples
+            _desired.callback = null;           // No callback function
+            _desired.userdata = IntPtr.Zero;    // No user data
         }
 
         public bool HaveAudio => _devId > 0;
-        public bool HaveStream => _stream != IntPtr.Zero;
+        public long DevBytes => HaveAudio ? SDL.SDL_GetQueuedAudioSize(_devId) : 0;
 
-        public int BytesAvailable => HaveStream ? SDL.SDL_AudioStreamAvailable(_stream) : 0;
+        public bool Enabled
+        {
+            get { return _enabled; }
+            set { _enabled = value; }
+        }
 
-        public bool Paused => !HaveAudio || _paused;
-        public bool Playing => HaveAudio && !Paused;
-        public bool Busy => Playing || BytesAvailable > 0;
+        /// <summary>
+        /// Returns the current/active frequency.  Buffers rate changes from the
+        /// CVSD chip so that a current sample will complete without distortion;
+        /// the device will be reopened with the new rate at the next pause.
+        /// </summary>
+        public int Frequency
+        {
+            get { return _frequency; }
+            set { _devFrequency = value; }
+        }
+
+        /// <summary>
+        /// Return the current/active number of channels.  Buffers changes the
+        /// same as Frequency so the new setting takes effect at the next pause.
+        /// </summary>
+        public byte Channels
+        {
+            get { return _channels; }
+            set { _devChannels = value; }
+        }
 
         /// <summary>
         /// Reset this instance: pause and clear.  Called by the MC3417 when the
@@ -72,7 +88,6 @@ namespace PERQemu.UI
         public void Reset()
         {
             Pause();
-            Clear();
         }
 
         /// <summary>
@@ -80,20 +95,16 @@ namespace PERQemu.UI
         /// </summary>
         public void Initialize()
         {
+            if (!_enabled) return;
+
             if (_devId == 0)
             {
-                SDL.SDL_AudioSpec desired = new SDL.SDL_AudioSpec();
+                // Set the tunable audio options
+                _desired.freq = _devFrequency;      // PERQ sets this
+                _desired.channels = _devChannels;   // User can set
 
-                // Set the desired audio format
-                desired.freq = _devFrequency;       // Samples per second
-                desired.format = SDL.AUDIO_S16SYS;  // Signed 16-bit PCM samples
-                desired.channels = _devChannels;    // Channels (mono or fake stereo)
-                desired.samples = _devBufSize;      // Audio buffer size in samples
-                desired.callback = null;            // No callback function
-                desired.userdata = IntPtr.Zero;     // User data passed to the callback
+                _devId = SDL.SDL_OpenAudioDevice(IntPtr.Zero, 0, ref _desired, out _spec, 0);
 
-                _devId = SDL.SDL_OpenAudioDevice(IntPtr.Zero, 0, ref desired, out _spec, 0);
-                                               // (int)SDL.SDL_AUDIO_ALLOW_ANY_CHANGE);
                 if (_devId == 0)
                 {
                     Log.Warn(Category.UI, "Could not open audio device; no speech output available.");
@@ -101,58 +112,29 @@ namespace PERQemu.UI
                 }
 
                 Log.Info(Category.Speech, "Requested: format {0}, freq {1}, chan {2}, samples {3}",
-                                            desired.format, desired.freq, desired.channels, desired.samples);
+                                            _desired.format, _desired.freq, _desired.channels, _desired.samples);
                 Log.Info(Category.Speech, "Obtained:  format {0}, freq {1}, chan {2}, samples {3}, size {4}",
                                            _spec.format, _spec.freq, _spec.channels, _spec.samples, _spec.size);
 
-                // If the driver insists on stereo or can't match our requested
-                // frequency, update our expectations to match the host
-                _devFrequency = _spec.freq;
-                _devChannels = _spec.channels;
-                _devBufSize = _spec.samples;
+                if (_spec.format != _desired.format) Log.Warn(Category.Speech, "Audio device cannot match requested format!");
+                // Just continue and hope for the best?
 
-                // Set our buffer size in bytes - just match what the device gave us
-                _bufSize = _spec.size;
-                _buffer = new byte[_bufSize];
+                if (_spec.freq != _devFrequency) Log.Warn(Category.Speech, "Audio device could not match requested frequency");
+                _frequency = _spec.freq;
+
+                if (_spec.channels != _devChannels) Log.Warn(Category.Speech, "Audio device could not match requested channels");
+                _channels = _spec.channels;
 
                 // Recompute the threshold (in ms) for the idle check
                 // (I know, I know, don't think hard about this, just go with it)
-                _threshold = (ulong)(_devBufSize / (_frequency / 1000.0) / 2.0);
+                _startDelay = _frequency / (_channels * 2);
+                _idleThreshold = 100;
             }
 
+            if (_logging) _log.WriteLine($"0,{HighResolutionTimer.ElapsedHiRes()},Initialize called");
             Log.Info(Category.UI, "Audio device ID {0} open for playback", _devId);
 
             Reset();
-        }
-
-        /// <summary>
-        /// Set up a new AudioStream with the current frequency rate.
-        /// </summary>
-        bool InitStream()
-        {
-            _frequency = _newFrequency;
-            _stream = SDL.SDL_NewAudioStream(SDL.AUDIO_S16SYS, 1, _frequency,
-                                             SDL.AUDIO_S16SYS, _devChannels, _devFrequency);
-
-            if (!HaveStream)
-            {
-                Log.Warn(Category.Speech, "Failed to create audio stream: {0}", SDL.SDL_GetError());
-                return false;
-            }
-
-            Log.Info(Category.Speech, "Created conversion stream for {0}kHz sample output", _frequency / 1000.0);
-            return true;
-        }
-
-        /// <summary>
-        /// Buffer the latest baud rate change from the CTC/PIT for the channel feeding
-        /// the CVSD chip.  If necessary will reopen the converter stream at next pause.
-        /// </summary>
-        public void RateChange(int newFreq)
-        {
-            _newFrequency = newFreq;
-
-            Log.Info(Category.Speech, "Rate change request: {0}", _newFrequency);
         }
 
         /// <summary>
@@ -163,11 +145,10 @@ namespace PERQemu.UI
         {
             if (HaveAudio && !_paused)
             {
-                Clear();                                    // Clear stream
-                SDL.SDL_PauseAudioDevice(_devId, 1);        // Clear device
+                SDL.SDL_PauseAudioDevice(_devId, 1);
                 _paused = true;
 
-                Log.Info(Category.Speech, "Audio PAUSED");  // debug
+                Log.Info(Category.Speech, "Audio PAUSED");    // debug
             }
         }
 
@@ -181,187 +162,79 @@ namespace PERQemu.UI
                 SDL.SDL_PauseAudioDevice(_devId, 0);
                 _paused = false;
 
-                Log.Info(Category.Speech, "Audio RESUMED");  // debug
+                Log.Info(Category.Speech, "Audio RESUMED");   // debug
             }
         }
 
         /// <summary>
-        /// Queue a block of samples from the MC3417 for playback.  If we're
-        /// paused and have accumulated a buffer's worth, start the playback.
+        /// Queue a block of samples from the MC3417 for playback.  We let SDL2
+        /// do all of the buffering.
         /// </summary>
-        public void QueueSamples(ref short[] samples, int count)
+        public void QueueSamples(ref short[] samples)
         {
+            // Nothing queued and parameters changed?
+            if (DevBytes == 0 && ((_frequency != _devFrequency) || (_channels != _devChannels)))
+            {
+                // Debug: should only do this when paused!
+                if (!_paused) Log.Warn(Category.Speech, "Settings change while not idle!");
+
+                // Close and reopen the device with the new settings
+                Shutdown();
+                Initialize();
+            }
+
             // Silently discard if we haven't got anywhere to send 'em
             if (!HaveAudio) return;
 
-            // Do we have a conversion stream set up?
-            if (!HaveStream)
-            {
-                // Make one, or else
-                if (!InitStream()) return;
-            }
-
             _lastSampleRcvd = HighResolutionTimer.ElapsedHiRes();
 
-            var queued = BytesAvailable;
-
-            // Are we starting up playback?  If output is paused and we haven't
-            // queued up any samples yet, check that the conversion stream is 
-            // set up for the correct sample frequency.  Close and recreate it
-            // if necessary; leave paused and bail out if that fails.
-            if (queued == 0 && _paused && _frequency != _newFrequency)
-            {
-                SDL.SDL_FreeAudioStream(_stream);
-                if (!InitStream()) return;
-            }
-
-            // This is going to hurt me more than it hurts you
+            // Hand off the samples to SDL's audio buffer directly
             unsafe
             {
                 fixed (short* p = samples)
                 {
                     IntPtr ptr = (IntPtr)p;
 
-                    // Queue up the current batch of samples for conversion
-                    var res = SDL.SDL_AudioStreamPut(_stream, ptr, count * 2);
-
-                    if (res < 0)
-                    {
-                        Log.Warn(Category.Speech, "AudioStreamPut failed: {0}", SDL.SDL_GetError());
-                    }
-                }
-            }
-
-            Log.Debug(Category.Speech, "Queued {0} samples", count);
-
-            // If we've got a full buffer, send it
-            if (BytesAvailable >= _bufSize)
-            {
-                Flush();
-                if (_paused) Resume();
-            }
-        }
-
-
-        /// <summary>
-        /// Flush the sample stream buffer to the audio device.
-        /// </summary>
-        /// <remarks>
-        /// Could SDL2-CS have wrapped things in a way that hides the marshaling
-        /// and made interfacing easier?  Probably.  Could I have used a pinned
-        /// GCHandle or Marshal.Copy or whatever?  Yeah.  But SDL_QueueAudio says
-        /// it's both thread safe AND it copies the data anyway, so "I'm just gonna
-        /// give this a go and see what happens," said every Darwin Award winner.
-        /// </remarks>
-        public int Flush()
-        {
-            // Anything to do?
-            if (!HaveAudio || !HaveStream)
-            {
-                Log.Info(Category.Speech, "Flush called but no audio dev/stream!");
-                return 0;
-            }
-
-            var queued = BytesAvailable;
-
-            if (queued == 0) return 0;    // Nothing more to send
-
-            // Clip to one full buffer's worth
-            if (queued >= _bufSize)
-            {
-                queued = (int)_bufSize;
-            }
-
-            // Sigh.  Have to double copy to move from the conversion stream to
-            // the output queue.  It's too bad the SDL-CS API sucks so hard.
-            unsafe
-            {
-                fixed (byte* p = _buffer)
-                {
-                    IntPtr ptr = (IntPtr)p;
-
-                    // Queue up the current batch of samples for conversion
-                    if (SDL.SDL_AudioStreamGet(_stream, ptr, queued) < 0)
-                    {
-                        Log.Warn(Category.Speech, "AudioStreamGet failed: {0}", SDL.SDL_GetError());
-                    }
-
-                    if (SDL.SDL_QueueAudio(_devId, ptr, (uint)queued) < 0)
+                    if (SDL.SDL_QueueAudio(_devId, ptr, (uint)(samples.Length * 2)) < 0)
                     {
                         Log.Warn(Category.Speech, "QueueAudio failed: {0}", SDL.SDL_GetError());
                     }
                 }
             }
 
-            var residual = BytesAvailable;
+            if (_logging) _log.WriteLine($"1,{_lastSampleRcvd},{DevBytes}");
 
-            // Let the caller know how much we flushed
-            Log.Info(Category.Speech, "Flushed {0} bytes, {1} buffered", queued, residual);
-            return residual;
+            Log.Debug(Category.Speech, "Queued {0} samples @ time {1}", samples.Length, _lastSampleRcvd);
         }
 
         /// <summary>
-        /// Manage the state of the audio device: if input from the PERQ has
-        /// stopped, flush any residual/partial buffer data, then pause playback.
+        /// Manage the state of the audio device: resume or pause playback as
+        /// required based on buffer status.
         /// </summary>
-        /// <remarks>
-        /// Having done the work to make custom SDL events easier to manage, it
-        /// turns out just polling this once a frame (at the 16ms timer tick used
-        /// for display updates) is probably fine.  It avoids the question of
-        /// infinite loops (or checking for SDL_POLLSENTINEL?) if CheckIdle were
-        /// to push another event to continue checking.  That might be preferred,
-        /// though, as we could inject the event when a new sample arrives, with
-        /// zero overhead if audio is disabled or inactive.  Meh.  We'll see.
-        /// </remarks>
         public void CheckIdle()
         {
             var now = HighResolutionTimer.ElapsedHiRes();
             var delta = now - _lastSampleRcvd;
+            var buffered = DevBytes;
 
-            // Has the data from the MC3417 stopped?
-            if (delta > _threshold)
+            if (_logging) _log.WriteLine($"2,{now},{buffered},{(_paused ? 1 : 0)}");
+
+            // Resume playback?
+            if (_paused && (((delta > _idleThreshold) && (buffered > 0)) || (buffered > _startDelay)))
             {
-                // Do we have data buffered up?
-                if (BytesAvailable > 0)
-                {
-                    Log.Info(Category.Speech, "Data's late! delta={0:N4}ms", delta);
-
-                    // Yes: whether playing or paused, ship it
-                    Flush();
-
-                    // Must be a short sample, so start playback
-                    if (_paused) Resume();
-                }
-                else
-                {
-                    var remaining = SDL.SDL_GetQueuedAudioSize(_devId) / (2 * _devChannels);
-
-                    Log.Debug(Category.Speech, "Waiting for playback to complete ({0} samples)", remaining);
-
-                    // Done playing out the remaining bytes?
-                    if (remaining == 0) Pause();
-                }
+                // Short sample, or enough data buffered up to begin!
+                Resume();
+                return;
             }
-            else
+
+            // Pause playback?
+            if (!_paused && (delta > _idleThreshold) && (buffered == 0))
             {
-                Log.Debug(Category.Speech, "PERQ is actively streaming: delta={0:N4}ms", delta);
+                // Not paused but the data stopped and the queue has played out
+                Pause();
             }
-        }
 
-
-        /// <summary>
-        /// Clear the local buffer to zeros and reset counter.
-        /// </summary>
-        void Clear()
-        {
-            var queued = BytesAvailable;
-
-            if (queued > 0)
-            {
-                SDL.SDL_AudioStreamClear(_stream);
-
-                Log.Info(Category.Speech, "Cleared {0} samples", queued);
-            }
+            // In all other cases, just continue
         }
 
         /// <summary>
@@ -369,13 +242,7 @@ namespace PERQemu.UI
         /// </summary>
         public void Shutdown()
         {
-            if (HaveStream)
-            {
-                SDL.SDL_FreeAudioStream(_stream);
-                _stream = IntPtr.Zero;
-
-                Log.Info(Category.UI, "Conversion stream closed");
-            }
+            if (_logging) _log.WriteLine($"0,{HighResolutionTimer.ElapsedHiRes()},Shutdown called");
 
             if (HaveAudio)
             {
@@ -392,116 +259,73 @@ namespace PERQemu.UI
         {
             if (!HaveAudio)
             {
-                Console.WriteLine("Audio device is not available.");
+                Console.WriteLine("Audio device is not " + (_enabled ? "available." : "enabled."));
                 return;
             }
 
+            var delta = HighResolutionTimer.ElapsedHiRes() - _lastSampleRcvd;
             var stat = SDL.SDL_GetAudioDeviceStatus(_devId);
             var bytes = SDL.SDL_GetQueuedAudioSize(_devId);
-            var queued = BytesAvailable;
+            var samples = bytes / (2 * _channels);
 
             Console.WriteLine("Audio status:");
             Console.WriteLine("  Device: ID: {0}  Frequency: {1:N1}kHz  Channels: {2}  Status: {3}",
                               _devId, _devFrequency / 1000.0, _devChannels, stat);
-            Console.WriteLine("  Stream: Input: {0:N1}kHz  Buffered: [{1} / {2} bytes] ({3} samples)",
-                              _frequency / 1000.0, queued, _bufSize, queued / (2 * _devChannels));
-            Console.WriteLine("  Output: Late threshold: {0:N3}ms  Queued: {1} bytes ({2} samples)",
-                              _threshold, bytes, bytes / (2 * _devChannels));
-            Console.WriteLine("  Filter: Min/Max {0:N4}/{1:N4}, Decay {2:N4}, Charge {3:N4}, Leak {4:N4}, Gain {5:N4}",
-                              PERQemu.Sys.IOB.Z80System.Speech.FilterMin,
-                              PERQemu.Sys.IOB.Z80System.Speech.FilterMax,
-                              PERQemu.Sys.IOB.Z80System.Speech.FilterDecayTC,
-                              PERQemu.Sys.IOB.Z80System.Speech.FilterChargeTC,
-                              PERQemu.Sys.IOB.Z80System.Speech.IntegratorLeakTC,
-                              PERQemu.Sys.IOB.Z80System.Speech.SampleGain);
+            Console.WriteLine("   Input: {0:N1}kHz  Last sample: {1}ms  Late threshold: {2:N3}ms",
+                              _frequency / 1000.0, delta, _idleThreshold);
+            Console.WriteLine("  Output: Queued: {0} bytes ({1} samples)  Paused: {2}",
+                              bytes, samples, _paused);
         }
 
-        // Debugging
-        public void SetChannels(byte chan)
+        // Extended debugging
+        public void Telemetry(bool enable)
         {
-            // Only execute if not busy -- be careful with this
-            if (_paused)
+            if (enable)
             {
-                Console.WriteLine($"Resetting for {chan} output channels");
-                _devChannels = chan;
-                Shutdown();
-                Initialize();
-            }
-        }
+                if (_logging) return;
 
+                var path = Paths.BuildOutputPath("Speech-telemetry.log");
+                _log = File.AppendText(path);
+                _log.WriteLine("0,{0},Logging started at {1}",
+                               HighResolutionTimer.ElapsedHiRes(), DateTime.Now.ToString());
+                _logging = true;
+
+                Console.WriteLine($"Opened {path} for Speech telemetry logging.");
+                return;
+            }
+
+            // Disable
+            if (!_logging) return;
+
+            _logging = false;
+            _log.WriteLine("0,{0},Logging stopped at {1}",
+                           HighResolutionTimer.ElapsedHiRes(), DateTime.Now.ToString());
+            _log.Flush();
+            _log.Close();
+
+            Console.WriteLine("Speech telemetry log closed.");
+        }
 
         uint _devId;
-        int _devFrequency;
-        byte _devChannels;
-        ushort _devBufSize;
 
-        bool _paused;
+        byte _channels;
+        byte _devChannels;
 
         int _frequency;
-        int _newFrequency;
+        int _devFrequency;
 
-        uint _bufSize;
-        byte[] _buffer;
+        bool _enabled;
+        bool _paused;
 
-        ulong _threshold;
+        int _startDelay;            // in bytes
+        uint _idleThreshold;        // in ms
         double _lastSampleRcvd;
 
-        IntPtr _stream;
+        SDL.SDL_AudioSpec _desired;
         SDL.SDL_AudioSpec _spec;
+
+        // Extended debugging
+        protected bool _logging;
+        protected StreamWriter _log;
     }
 }
-
-/*
-    Notes:
-
-    New strategery:  open the device once with a fixed common frequency to avoid
-    Windows 10 stupidity (at least on my fonky Dell 7050?).  Buffer any baud rate
-    change requests forwarded from the MC3417 (via the CTC/SIO) until the first
-    PCM samples arrive -- at that point, if the conversion stream needs to be
-    opened or changed, close/reopen it with the new settings.  Pump the samples
-    into the stream object and let SDL2 manage 'em -- no manual buffering in the
-    managed code since SDL does it for us anyway.
-
-    We'll hold off un-pausing the output until a "block" of data is received;
-    this ought to be a reasonable size chunk of bytes that balances latency and
-    overhead.  Use the callback mechanism to simply wait for requests from the
-    output driver, then pull bytes from the conversion queue and shove them out
-    the host output pipe.  *Hopefully* by choosing a common output rate there
-    won't be any need for resampling a second time!  (Have to see how much CPU
-    overhead this scheme adds.)
-
-    Using the callback mechanism, however, requires all the thread locking crap
-    that using the "QueueAudio" interface avoids (or handles itself), so for now
-    we'll still just poll in the main event loop when audio is "busy" to pause
-    and unpause the output.  Sigh.
-
-    Data rates:
-
-	16kHz == 2000 chars/sec in CVSD samples; 32kHz == 4000 chars/sec
-
-	Speaker sees 8 samples (or 16 bytes) at a time, every .5 (.25) ms at the
-	nominal SIO rate.  We adjust this if the host can't keep up.
-
-	Conversion stream queues up 1024 samples before playback is started: that's
-	1K samples @ 16kHz or 512 @ 32kHz, or 2KB on the input side; about .064 (.032)
-	seconds' worth of playback in real time.  Thus, 15.625 full buffers/sec at
-	16kHz is exactly 1 second of audio output (or 31.25 buffers at 32kHz).
-
-	Output is pulled from the stream and shoved out the device interface in 2KB
-	or 4KB chunks, depending on how many channels; the up-sampling should produce
-	x3 (or x1.5) the input rate to match the 48kHz output rate of the device;
-	these have to be fed quickly enough to prevent gaps, so sending 2K (or 4K)
-	bytes every 21ms (very roughly) should assure smooth playback.
-
-	Thus, if the PERQ stops sending data and the conversion stream holds back 
-	~ half a buffer's worth (to smooth resampling) then we should figure that an
-	11ms gap means "we're done here" and playback can be stopped and reset once
-	the output device queue drains.  Checking in the event loop every 15-16ms
-	ought to be fine.
-
-	IN THEORY, the Z80's 1KB speech buffer could hold up to 8K samples after the
-	PERQ stops sending, so _at most_ the playback should stop no more than 512
-	milliseconds later?  But we aren't pacing the DMA or SIO quite right yet, and
-	are queueing up 30+ seconds' worth on the host side so more tuning is needed...
-
- */

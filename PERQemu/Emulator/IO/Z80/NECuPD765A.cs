@@ -107,11 +107,12 @@ namespace PERQemu.IO.Z80
             _readDataReady = false;
             _writeByte = 0;
             _writeDataReady = false;
-            _unitSelect = 0;
-            _headSelect = 0;
             _lastSector = 0;
             _seekEnd = false;
             _byteTimeNsec = FMByteTimeNsec;
+
+            // Reset unit #, head #
+            SelectUnitHead(0);
 
             // Turn off activity light
             PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, false);
@@ -142,12 +143,13 @@ namespace PERQemu.IO.Z80
         //
         // IDMADevice Implementation
         //
-        bool IDMADevice.ReadDataReady => _readDataReady;
-        bool IDMADevice.WriteDataReady => _writeDataReady;
+
+        public bool DMAReadReady => _readDataReady;
+        public bool DMAWriteReady => _writeDataReady;
 
         public AcknowledgeDelegate DMAAcknowledge => null;
 
-        void IDMADevice.DMATerminate()
+        public void DMATerminate()
         {
             _transfer.Aborted = true;
             Log.Detail(Category.FloppyDisk, "DMA transfer terminated");
@@ -190,7 +192,7 @@ namespace PERQemu.IO.Z80
                 SelectedUnit.DriveSelect = false;   // Clears DiskChanged
             }
 
-            _unitSelect = select & 0x3;
+            _unitSelect = select & 0x1;             // US1 is NC on PERQ
             _headSelect = (select & 0x4) >> 2;
 
             // Select the new one
@@ -227,7 +229,6 @@ namespace PERQemu.IO.Z80
             last++;
             return (last > SelectedUnit.Geometry.Sectors) ? (ushort)1 : last;
         }
-
 
         //
         // IZ80Device implementation (Read & Write)
@@ -457,7 +458,6 @@ namespace PERQemu.IO.Z80
             if (_pollEvent == null)
             {
                 _pollEvent = _scheduler.Schedule(PollTimeNsec, PollDrives);
-                //PollDrives(0, null);
             }
         }
 
@@ -515,6 +515,9 @@ namespace PERQemu.IO.Z80
             PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, true);
         }
 
+        /// <summary>
+        /// Invoked by the drive when a seek operation completes.
+        /// </summary>
         void SeekCompleteCallback(ulong skewNsec, object context)
         {
             // Stimpy!  We made it!
@@ -582,7 +585,6 @@ namespace PERQemu.IO.Z80
             FinishCommand(false);
         }
 
-
         /// <summary>
         /// Read the next sector ID.  Implemented on the EIO, but is it ever used?
         /// </summary>
@@ -640,7 +642,6 @@ namespace PERQemu.IO.Z80
             // and handle the result phase, turn off the blinky icon, etc.
             _scheduler.Schedule(SectorTimeNsec, SectorTransferCallback);
         }
-
 
         #endregion
 
@@ -1121,7 +1122,7 @@ namespace PERQemu.IO.Z80
             PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, false);
 
             // Apply the "ID Information at Result Phase" rules
-            // todo: if anything uses MT, that subtly changes things at eot
+            // Todo: if anything uses MT, that subtly changes things at eot
             if (request.Sector < request.EndOfTrack)
             {
                 request.Sector++;
@@ -1138,7 +1139,7 @@ namespace PERQemu.IO.Z80
             Log.Detail(Category.FloppyDisk, "ST0 = {0}", request.ST0);
             Log.Detail(Category.FloppyDisk, "ST1 = {0}", request.ST1);
             Log.Detail(Category.FloppyDisk, "ST2 = {0}", request.ST2);
-
+                                            
             // Post result data to the status register queue:
             _statusData.Enqueue((byte)request.ST0);
             _statusData.Enqueue((byte)request.ST1);
@@ -1185,9 +1186,23 @@ namespace PERQemu.IO.Z80
         /// </summary>
         StatusRegister0 SetErrorStatus(StatusRegister0 error)
         {
-            // This just can't happen
+            // This should never happen - no official configuration ever included
+            // multiple drives -- but of course, ICL provides a floppy that selects
+            // unit 1 and tries to issue a command, which fails.  Oy vey.  Catch it
+            // and return an error status, rather than throw an exception.
             if (SelectedUnit == null)
-                throw new InvalidOperationException($"Selected drive {_unitSelect} is null");
+            {
+                Log.Warn(Category.FloppyDisk, "Unit {0} selected for {1} command!?",
+                                              _unitSelect, _currentCommand.Command);
+                
+                _errorStatus = StatusRegister0.AbnormalTermination |
+                               StatusRegister0.EquipChk |
+                               StatusRegister0.NotReady |
+                               (_headSelect > 0 ? StatusRegister0.Head : StatusRegister0.None) |
+                               (StatusRegister0)_unitSelect;
+                
+                return _errorStatus;
+            }
 
             // If the drive has gone offline but the status code given doesn't
             // indicate an error, override it; this can happen in the middle of

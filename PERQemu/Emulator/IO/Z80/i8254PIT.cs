@@ -1,5 +1,5 @@
 ﻿//
-// i8254PIT.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// i8254PIT.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -84,6 +84,11 @@ namespace PERQemu.IO.Z80
         public void AttachDevice(int channel, ICTCDevice dev)
         {
             _channels[channel].TimerClient = dev;
+        }
+
+        public void DetachDevice(int channel)
+        {
+            _channels[channel].TimerClient = null;
         }
 
         public byte Read(byte portAddress)

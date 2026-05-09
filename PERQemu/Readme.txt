@@ -380,8 +380,9 @@ The following hardware has been implemented in the emulator:
   RS-232:
     - The Z80 SIO chip is implemented to work with the new Z80 emulator;
     - Software running under emulation can control a real physical serial port
-      on the host; second RS-232 port available with the PERQ-2/EIO models [not
-      yet fully tested];
+      on the host; second RS-232 port available with the PERQ-2/EIO models;
+    - Rewrite of the host-side physical serial port interface now runs more
+      consistently and reliably on all platforms;
     - The RSX: pseudo-device for transferring text files from the host to POS
       has been reinstated.
 
@@ -414,6 +415,11 @@ The following hardware has been implemented in the emulator:
       PERQ chassis/IO Board combinations.  It provides high quality output in
       PNG or TIFF format at 240 or 300 dpi.
 
+  Speech:
+    - The PERQ's CVSD chip is implemented and can produce 16-32kHz mono sound
+      output on the host's default audio device.  The latest rewrite is still
+      undergoing testing and refinement, and the Settings/Configuration options
+      (and debugging aids) are subject to change.  But it bleeps and bloops!
 
 There is a ton of additional detail about the internals of PERQemu itself in
 the source distribution.  See Readme-source.txt, or the copious notes in the
@@ -424,8 +430,6 @@ Docs/ directory for way, way more information than you need.  Way more.
 --------------
  
 - Ethernet.  In development! [See above]
-
-- Sound.  [In progress!]
 
 - Z80 disassembly/source debugging when running from RAM (PERQ-2/EIO).
 
@@ -484,6 +488,9 @@ Workaround:  None, yet.  This is largely due to serious deficiencies in the
 C#/Mono System.IO.Ports.SerialPort implementation that will require a reworking
 of the emulator's port handling.
 
+Solution:  A complete rewrite of the SerialPort implementation is available in
+v0.9.0 (experiments branch); upgrade to the next release (likely v0.9.5, TBD).
+
 
 4. PNX boot failure at DDS 142.
 
@@ -533,11 +540,13 @@ v1.0 - TBD
   - See if CIO Micropolis has any real software support?
   - Remaining items from the "What's Not" list above
 
-v0.8.9 - Experiments branch
-  - Speech output proof-of-concept is now working!
-  - Rework of the serial port implementation for improved RS-232 reliability
-    on Mac/Linux hosts.
-  - Minor bug fixes and UI improvements.
+v0.9.0 - Experiments branch
+  - Speech output proof-of-concept is now working!  Mostly!
+  - Full rewrite of the SerialPort and updates to the SIO emulation increase
+    emulation accuracy and reliability of all serial devices
+  - Dynamic reloading of RS-232 ports at runtime (host port device settings
+    can be changed without restarting the VM) 
+  - Minor bug fixes, CLI changes, updated UserGuide
 
 v0.8.5 - Main branch
   - Minor updates to Nuget package dependencies (now tested/verified against
@@ -711,7 +720,7 @@ v0.1 - First public release
 
 Update history:
 
-1/7/2026 - skeezicsb - v0.8.9 (experiments)
+5/9/2026 - skeezicsb - v0.9.0 (experiments)
 12/12/2025 - skeezicsb - v0.8.5 (main)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)

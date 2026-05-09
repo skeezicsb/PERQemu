@@ -1,5 +1,5 @@
 //
-// Z80MemoryBus.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80MemoryBus.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -55,8 +55,8 @@ namespace PERQemu.IO.Z80
 
         public int Size => 0x10000;             // 64K address space
 
-        public bool ReadDataReady => true;      // Always ready
-        public bool WriteDataReady => true;     // Always ready
+        public bool DMAReadReady => true;       // Always ready
+        public bool DMAWriteReady => true;      // Always ready
 
         public AcknowledgeDelegate DMAAcknowledge => null;  // No ACKs needed
 

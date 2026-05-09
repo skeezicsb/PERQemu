@@ -1,5 +1,5 @@
 //
-// Z80SIOChannel.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80SIOChannel.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -18,10 +18,11 @@
 //
 
 using System;
-using System.IO.Ports;
+using System.IO;
 using System.Diagnostics;
 using System.Collections.Generic;
 
+using PERQemu.IO.Ports;
 using PERQemu.IO.SerialDevices;
 
 namespace PERQemu.IO.Z80
@@ -36,17 +37,16 @@ namespace PERQemu.IO.Z80
         {
             public Channel(int channelNumber, Scheduler scheduler)
             {
-                _channelNumber = channelNumber;
+                _channelNum = channelNumber;
                 _scheduler = scheduler;
 
-                _writeRegs = new byte[8];
-                _readRegs = new byte[3];
+                _registers = new Registers(_channelNum);
 
-                _rxFifo = new Queue<byte>();
-                _txFifo = new Queue<byte>();
+                _rxFifo = new Queue<byte>(4);
+                _txFifo = new Queue<byte>(2);
 
                 _device = null;
-                _port = null;
+                _logging = false;
             }
 
             /// <summary>
@@ -54,443 +54,314 @@ namespace PERQemu.IO.Z80
             /// </summary>
             public void Reset()
             {
-                for (var i = 0; i < _writeRegs.Length; i++)
-                    _writeRegs[i] = 0;
-
-                for (var i = 0; i < _readRegs.Length; i++)
-                    _readRegs[i] = 0;
+                _scheduler.Cancel(_pollEvent);
+                _pollEvent = null;
+                _nextPoll = 0;
 
                 _rxFifo.Clear();
                 _txFifo.Clear();
+                _nextCharRx = _nextCharTx = 0;
 
-                _selectedRegister = 0;
-                _huntMode = true;               // re-entered after Reset
+                _registers.Reset();
 
-                _extInterruptLatched = false;
-                _txInterruptLatched = false;
-                _rxInterruptLatched = false;
-                _rxIntOnNextCharacter = false;
+                _extIntLatched = false;
+                _txIntLatched = false;
+                _rxIntLatched = false;
+                _rxIntOnNextChar = false;
+
+                _breakSent = false;
                 _breakDetected = false;
 
-                _device?.Reset();
+                if (_device != null)
+                {
+                    if (!_device.IsOpen) _device.Open();
+                    _device.Reset();
+                }
 
                 UpdateFlags();
 
-                Log.Info(Category.SIO, "Channel {0} reset", _channelNumber);
+                Log.Info(Category.SIO, "Channel {0} ({1}) reset", _channelNum, _device?.Name);
             }
+
+            public SerialDevice Port => _device;
 
             public bool CanRead => _rxFifo.Count > 0;
-            public bool CanWrite => _txFifo.Count < 4;      // Season to taste
+            public bool CanWrite => _txFifo.Count < 3;
 
-            public bool InterruptLatched => _rxInterruptLatched || _txInterruptLatched || _extInterruptLatched;
-            public bool StatusAffectsVector => (_writeRegs[1] & (byte)WReg1.StatusAffectsVector) != 0;
-            public byte InterruptBase => _readRegs[2];      // Valid for Channel B only...
+            public bool InterruptLatched => _rxIntLatched || _txIntLatched || _extIntLatched;
+            public bool StatusAffectsVector => _registers.StatusAffectsVector;
+            public byte InterruptBase => _registers.Read(2);
             public int InterruptOffset => _interruptOffset;
 
-            // Debugging
-            public SerialDevice Port => _port;
-
-            bool RxEnabled => (_writeRegs[3] & (byte)WReg3.RxEnable) != 0;
-            bool TxEnabled => (_writeRegs[5] & (byte)WReg5.TxEnable) != 0;
-
-            WReg4Bits Bits => (WReg4Bits)((_writeRegs[4] & 0xc) >> 2);
-            bool SyncMode => Bits == WReg4Bits.SyncModesEnable;
-
-            WReg1IntEnables IntFlags => (WReg1IntEnables)((_writeRegs[1] & 0x18) >> 3);
-            bool IntOnFirstRxCharacter => IntFlags == WReg1IntEnables.RxIntOnFirstChar;
-            bool IntOnAllRxCharacters => IntFlags == WReg1IntEnables.RxIntOnAllParityAffectsVector ||
-                                         IntFlags == WReg1IntEnables.RxIntOnAllParityNotAffectsVector;
-
-            bool RxInterruptEnabled => (IntOnFirstRxCharacter && _rxIntOnNextCharacter) || IntOnAllRxCharacters;
-            bool TxInterruptEnabled => (_writeRegs[1] & (byte)WReg1.TxIntEnable) != 0;
-            bool ExtInterruptEnabled => (_writeRegs[1] & (byte)WReg1.ExtIntEnable) != 0;
+            bool RxIntEnabled => _registers.IntOnAllRxChars ||
+                                (_registers.IntOnFirstRxChar && _rxIntOnNextChar);
 
 
-            public void AttachDevice(ISIODevice device)
+            /// <summary>
+            /// Attach a serial device.  Defers the Open() call until Reset.
+            /// </summary>
+            public void AttachDevice(SerialDevice device)
             {
                 _device = device;
-
-                _device.RegisterReceiveDelegate(ReceiveData);
             }
 
+            /// <summary>
+            /// Close and detach the serial device.
+            /// </summary>
             public void DetachDevice()
             {
-                ClosePort();
+                if (_logging) StopLog();
+                _device?.Close();
                 _device = null;
             }
 
-            public void OpenPort(SerialDevice port)
-            {
-                _port = port;
-                _port.Open();
-            }
-
-            public void ClosePort()
-            {
-                _port?.Close();
-                _port = null;
-            }
-
+            // TODO/FIXME: move this up to SIO?
             void DisablePort()
             {
-                Log.Warn(Category.All, "Serial port {0} has thrown an exception; disabling it", _port.Name);
-                Log.Warn(Category.All, "Check that {1} is a valid port and restart the PERQ to reenable.", _port.Port);
+                Log.Warn(Category.All, "Serial port {0} has thrown an exception; disabling it", _device.Name);
+                Log.Warn(Category.All, "Check that {0} is a valid port and restart the PERQ to reenable.", _device.Port);
                 DetachDevice();
 
                 // Replace with a null port
                 AttachDevice(new NullPort(PERQemu.Sys.IOB.Z80System));
             }
 
+            /// <summary>
+            /// Read the currently selected Read register.
+            /// </summary>
             public byte ReadRegister()
             {
-                if (_selectedRegister > _readRegs.Length)
-                {
-                    Log.Debug(Category.SIO, "Channel {0} read from invalid register {2}",
-                                            _channelNumber, _selectedRegister);
-                    return 0;
-                }
-
-                byte value = _readRegs[_selectedRegister];
-                Log.Detail(Category.SIO, "Channel {0} read 0x{1:x2} from register {2}",
-                                         _channelNumber, value, _selectedRegister);
-                return value;
+                return _registers.Read();
             }
 
+            /// <summary>
+            /// Write into the currently selected Write register.  If the command
+            /// register is selected, perform any required actions to update the
+            /// channel's device and/or status.
+            /// </summary>
+            public void WriteRegister(byte value)
+            {
+                // Store the value and update register state
+                _registers.Write(value);
 
+                if (_registers.Selected == 0)
+                {
+                    // The primary command register
+                    var cmd = (Command)(value & CmdMask);
+
+                    Log.Debug(Category.SIO, "Channel {0} command is {1}", _channelNum, cmd);
+
+                    switch (cmd)
+                    {
+                        case Command.NullCode:
+                            break;
+
+                        case Command.ResetExtStatusInt:
+                            // FIXME: more to do here?
+                            _extIntLatched = false;
+                            break;
+
+                        case Command.ResetTxInt:
+                            _txIntLatched = false;
+                            break;
+
+                        case Command.ChannelReset:
+                            // Whack everything...
+                            Reset();
+                            break;
+
+                        case Command.ErrorReset:
+                            // Clear everything but AllSent
+                            _registers.ErrorReset();
+                            break;
+
+                        case Command.EnableIntOnRx:
+                            _rxIntOnNextChar = _registers.IntOnFirstRxChar;
+                            break;
+
+                        //case Command.ReturnFromInt:
+                        //case Command.SendAbort:
+                        default:
+                            throw new NotImplementedException($"SIO command {cmd}");
+                    }
+
+                    // The CRC reset/Tx underrun/EOM latch isn't implemented
+                    // (These are non-fatal; just log if they're being used!)
+                    var crc = (Resets)(value & ResetMask);
+
+                    if (crc != Resets.NullCode)
+                        Log.Info(Category.SIO, "Channel {0} reset command {1} not implemented",
+                                               _channelNum, crc);
+
+                    // Select register pointer
+                    _registers.Selected = (value & RegSelMask);
+
+                    Log.Detail(Category.SIO, "Channel {0} register pointer now {1}",
+                                             _channelNum, _registers.Selected);
+                    return;
+                }
+
+                // See if any changes need to be applied to the device
+                switch (_registers.Selected)
+                {
+                    case 3:
+                        // See notes about the separate Tx/Rx bits-per-char problem
+                        UpdateBitsPerChar(_registers.RxBits);
+
+                        // If the Rx enable bit changed
+                        CheckPollEnable();
+                        break;
+
+                    case 4:
+                        // Apply changes to parity and stop bits
+                        UpdateParity();
+                        UpdateStopBits();
+                        break;
+
+                    case 5:
+                        // Update the Tx bits
+                        UpdateBitsPerChar(_registers.TxBits);
+
+                        // Update output pins: DTR tracks the register bit
+                        _device.DTR = _registers.DTRState;
+
+                        // RTS only tracks the register in sync modes
+                        if (_registers.SyncMode) _device.RTS = _registers.RTSState;
+
+                        // Change in break state?
+                        if (_registers.SendBreak != _breakSent)
+                        {
+                            // Docs say that the SendBreak bit sets the line to
+                            // spacing "regardless of any data being transmitted"
+                            // (and presumably, independent of the TxEnable bit
+                            // as well).
+                            _breakSent = _registers.SendBreak;
+                            _device.TransmitBreak(_breakSent);
+                        }
+
+                        // If the Tx enable bit changed
+                        CheckPollEnable();
+                        break;
+
+                        // Writes to WR1, WR2, WR6 and WR7 don't require action
+                }
+
+                // Next access is to reg 0
+                _registers.Selected = 0;
+            }
+
+            /// <summary>
+            /// Read the next byte from the Rx FIFO.
+            /// </summary>
             public byte ReadData()
             {
                 byte data = 0;
 
                 if (_rxFifo.Count == 0)
                 {
-                    // In synchronous mode, the SIO chip is supposed to transmit
-                    // two CRC bytes, which is why the Kriz tablet does "extra"
-                    // reads on each update.  But this causes a lot of spurious
-                    // log spewage, so turn this down for now. :-/
-                    Log.Debug(Category.SIO, "Channel {0} read from empty FIFO", _channelNumber);
+                    Log.Debug(Category.SIO, "Channel {0} read from empty FIFO", _channelNum);
                     return data;
                 }
 
                 data = _rxFifo.Dequeue();
+                if (_logging) _log.WriteLine($"3,{_scheduler.CurrentTimeNsec},{data:x2}");
 
                 // Update interrupt status
-                _rxIntOnNextCharacter = false;
-                _rxInterruptLatched = (_rxFifo.Count > 0 && RxInterruptEnabled);
+                _rxIntLatched = (_rxFifo.Count > 0 && RxIntEnabled);
+                _rxIntOnNextChar = false;
 
                 UpdateFlags();
 
                 Log.Debug(Category.SIO, "Channel {0} read data 0x{1:x2}, {2} remaining",
-                                        _channelNumber, data, _rxFifo.Count);
+                                        _channelNum, data, _rxFifo.Count);
                 return data;
             }
-
-
-            public void WriteRegister(byte value)
-            {
-                Log.Debug(Category.SIO, "Channel {0} write 0x{1:x2} to register {2}",
-                                        _channelNumber, value, _selectedRegister);
-
-                _writeRegs[_selectedRegister] = value;
-
-                if (_selectedRegister == 0)
-                {
-                    //
-                    // Write to WR0
-                    //
-
-                    // Execute command:
-                    var cmd = (WReg0Cmd)((value & 0x38) >> 3);
-
-                    Log.Debug(Category.SIO, "Channel {0} command is {1}", _channelNumber, cmd);
-
-                    switch (cmd)
-                    {
-                        case WReg0Cmd.NullCode:
-                            break;
-
-                        case WReg0Cmd.ResetExtStatusInterrupts:
-                            _extInterruptLatched = false;
-                            break;
-
-                        case WReg0Cmd.ResetTxInt:
-                            _txInterruptLatched = false;
-                            break;
-
-                        case WReg0Cmd.ChannelReset:
-                            // Whack everything...
-                            Reset();
-                            break;
-
-                        case WReg0Cmd.ErrorReset:
-                            // Clear everything but AllSent
-                            _readRegs[1] &= (byte)~RReg1.AllSent;
-                            break;
-
-                        case WReg0Cmd.EnableIntOnRx:
-                            _rxIntOnNextCharacter = IntOnFirstRxCharacter;
-                            break;
-
-                        //case WReg0Cmd.ReturnFromInt:
-                        //case WReg0Cmd.SendAbort:
-                        default:
-                            throw new NotImplementedException($"SIO command {cmd}");
-                    }
-
-                    // Select register pointer
-                    _selectedRegister = (value & 0x7);
-
-                    Log.Detail(Category.SIO, "Channel {0} register pointer now {1}",
-                                             _channelNumber, _selectedRegister);
-
-                    UpdateFlags();
-                }
-                else
-                {
-                    // Handle special cases for bits which trigger actions when set:
-                    switch (_selectedRegister)
-                    {
-                        case 1:
-                            // Bits D4..D0 (various irq enables) referenced elsewhere;
-                            // The WAIT/READY functons may affect DMA operation?
-                            Log.Detail(Category.SIO, "Channel {0} WR1 now {1}", _channelNumber, (WReg1)_writeRegs[1]);
-                            break;
-
-                        case 2:
-                            if (_channelNumber == 1)
-                            {
-                                // Copy interrupt vector into RR2 (Channel B only!)
-                                _readRegs[2] = _writeRegs[2];
-                            }
-                            break;
-
-                        case 3:
-                            if ((_writeRegs[3] & (byte)WReg3.EnterHuntPhase) != 0)
-                            {
-                                // Re-enter HUNT mode
-                                _huntMode = true;
-                                Log.Detail(Category.SIO, "Channel {0} Entering hunt mode", _channelNumber);
-                            }
-
-                            UpdateBitsPerChar((_writeRegs[3] & (byte)WReg3.RxBitsPerChar) >> 6);
-                            Log.Detail(Category.SIO, "Channel {0} WR3 now {1}", _channelNumber, (WReg3)_writeRegs[3]);
-
-                            // If applicable enable or disable polling the physical port
-                            PollReceiver(RxEnabled);
-                            break;
-
-                        case 4:
-                            // Clock mode and sync mode don't require action
-                            UpdateParity();
-                            UpdateStopBits();
-                            break;
-
-                        case 5:
-                            // Enables and CRC mode don't require action
-                            UpdateBitsPerChar((_writeRegs[5] & (byte)WReg5.TxBitsPerChar) >> 5);
-                            UpdateOutputPins();
-
-                            if ((_writeRegs[5] & (byte)WReg5.SendBreak) != 0)
-                            {
-                                _device?.TransmitBreak();
-                            }
-                            Log.Detail(Category.SIO, "Channel {0} WR5 now {1}", _channelNumber, (WReg5)_writeRegs[5]);
-                            break;
-
-                        case 6:
-                        case 7:
-                            // Debugging
-                            Log.Detail(Category.SIO, "Channel {0} WR{1} sync now 0x{2:x2}",
-                                      _channelNumber, _selectedRegister, value);
-                            break;
-                    }
-                    // Write to other register, next access is to reg 0
-                    _selectedRegister = 0;
-
-                    Log.Detail(Category.SIO, "Channel {0} status: rxEnb {1}, txEnb {2}, syncMode {3}, hunting {4}",
-                                             _channelNumber, RxEnabled, TxEnabled, SyncMode, _huntMode);
-                }
-            }
-
-
-            /// <summary>
-            /// Return true if programmed for sync mode and the sync byte/word
-            /// has not yet been seen.  Return false otherwise.  The matched
-            /// sync bytes are not passed through!
-            /// </summary>
-            /// <remarks>
-            /// Only one 8-bit sync byte is matched; the 16-bit mode is not
-            /// implemented; maaaaybe the PERQ 3270 comm package uses it?  But
-            /// I don't have any IBM equipment to test that against anyway.
-            /// </remarks>
-            bool Hunting(byte data, byte match)
-            {
-                if (_huntMode)              // Looking for sync byte(s)
-                {
-                    if (data == match)      // 8-bit sync value
-                    {
-                        _huntMode = false;  // Exit hunt mode
-                        Log.Debug(Category.SIO, "Channel {0} sync word matched", _channelNumber);
-                    }
-
-                    return true;            // Consume the sync byte
-                }
-
-                // Sync byte was matched, so we're in data mode
-                return false;
-            }
-
 
             /// <summary>
             /// Accept a byte from the SIO and schedule it for transmission.
             /// </summary>
             public void WriteData(byte data)
             {
-                if (TxEnabled)
+                // Can't happen? The CanWrite flag shouldn't allow it
+                if (_txFifo.Count > 1)
                 {
-                    // If we're hunting for the sync char, bail out
-                    // NB: Speech sets this, THEN NEVER SENDS THE EFFING SYNC BYTE #$)*FJ WTF
-                    // if (SyncMode && Hunting(data, _writeRegs[6])) return;
-
-                    _txFifo.Enqueue(data);
-                    _txInterruptLatched = false;
-
-                    UpdateFlags();
-
-                    Trace.Assert(_device.TransmitRate > 0, $"TXRATE FOR {_device} IS ZERO");
-
-                    // Apply output pacing and send it
-                    _scheduler.Schedule(_device.TransmitRate, SendData, null);
-
-                    Log.Debug(Category.SIO, "Channel {0} write data 0x{1:x2}, {2} pending",
-                                            _channelNumber, data, _txFifo.Count);
+                    // TODO: Overrun!!
                 }
 
-                // If not enabled, gripe about dropped characters?
+                _txFifo.Enqueue(data);
+                _txIntLatched = false;
+                if (_logging) _log.WriteLine($"4,{_scheduler.CurrentTimeNsec},{data:x2}");
+
+                // In async mode, RTS is asserted when there's data to send
+                if (!_registers.SyncMode) _device.RTS = true;
+
+                UpdateFlags();
+
+                Log.Debug(Category.SIO, "Channel {0} write data 0x{1:x2}, {2} pending",
+                                        _channelNum, data, _txFifo.Count);
             }
 
             /// <summary>
-            /// Sends the the next byte on the transmit queue to the device.
+            /// In monosync mode, return true if programmed for "hunt mode" and
+            /// we're still waiting to match the sync byte.  Return false otherwise.
+            /// The matched sync bytes are not passed through!
             /// </summary>
-            void SendData(ulong skewNsec, object context)
+            /// <remarks>
+            /// Only one 8-bit sync byte is matched; other modes aren't implemented.
+            /// </remarks>
+            bool Hunting(byte data, byte match)
             {
-                if (_txFifo.Count > 0)
+                if (_registers.HuntMode)                // Looking for sync byte(s)
                 {
-                    var b = _txFifo.Dequeue();
-
-                    _device?.Transmit(b);
-
-                    Log.Detail(Category.SIO, "Channel {0} Tx data: 0x{1:x2}, queue depth {2}",
-                                             _channelNumber, b, _txFifo.Count);
-
-                    // If the buffer just became empty, raise the Tx interrupt (if enabled)
-                    if (_txFifo.Count == 0)
+                    if (data == match)                  // 8-bit sync value
                     {
-                        _txInterruptLatched = TxInterruptEnabled;
+                        _registers.HuntMode = false;    // Exit hunt mode
+
+                        Log.Debug(Category.SIO, "Channel {0} sync word matched", _channelNum);
                     }
+
+                    return true;    // Consume the sync byte
                 }
+
+                // Sync byte was matched, so we're in data mode
+                return false;
             }
 
             /// <summary>
-            /// Receive data from the device.  Invoked by the attached ISIODevice.
-            /// </summary>
-            void ReceiveData(byte data)
-            {
-                if (RxEnabled)
-                {
-                    // Still in hunt mode?
-                    if (SyncMode && Hunting(data, _writeRegs[7])) return;
-
-                    // Async receive, or Sync mode (not in hunt mode)
-                    _rxFifo.Enqueue(data);
-                    _rxInterruptLatched = RxInterruptEnabled;
-
-                    UpdateFlags();
-
-                    Log.Detail(Category.SIO, "Channel {0} Rx data: 0x{1:x2}, queue depth {2}",
-                                             _channelNumber, data, _rxFifo.Count);
-                }
-
-                // If not enabled, squawk about spurious data received??
-            }
-
-            /// <summary>
-            /// Invoked by an attached ISerialDevice when it has pin changes or
-            /// error status information to send.  Updates flags in RR1.
-            /// </summary>
-            void ReceiveStatusData(PortStatus status)
-            {
-                // Spurious?  Ignore it
-                if (status == PortStatus.None) return;
-
-                // See what happened...
-                if ((status & PortStatus.PinChange) != 0)
-                {
-                    // If ext int enable (WR1) then latch it; UpdateFlags
-                    // will update RR0 and trigger the interrupt
-                    _extInterruptLatched = ExtInterruptEnabled;
-
-                    Log.Debug(Category.SIO, "Channel {0} pin change received!", _channelNumber);
-                }
-
-                // Latch error bits in RR1
-                if ((status & PortStatus.RxOverrun) != 0)
-                {
-                    _readRegs[1] |= (byte)RReg1.RxOverrun;
-                }
-
-                if ((status & PortStatus.ParityError) != 0)
-                {
-                    _readRegs[1] |= (byte)RReg1.ParityError;
-                }
-
-                if ((status & PortStatus.FramingError) != 0)
-                {
-                    _readRegs[1] |= (byte)RReg1.CrcFraming;
-                }
-
-                if ((status & PortStatus.BreakDetected) != 0)
-                {
-                    // "The Break/Abort bit is not used in the Synchronous Receive mode."
-                    _breakDetected = !SyncMode;
-                }
-
-                UpdateFlags();      // Update RR0
-            }
-
-            /// <summary>
-            /// Update the read registers and interrupt status.
+            /// Update the read registers and interrupt status bits.
             /// </summary>
             void UpdateFlags()
             {
+                const byte pinMask = (byte)(RR0.DCDState | RR0.CTSState);
+
                 // Save the state of the pins before we update 'em
-                var oldPinState = (RReg0)_readRegs[0];
+                var oldPinState = _registers.Read(0);
 
-                // Set RX-related flags in RR0
-                _readRegs[0] = (byte)((_rxFifo.Count > 0 ? RReg0.RxCharAvailable : 0) |
-                                      (_txFifo.Count == 0 ? RReg0.TxBufferEmpty : 0) |
-                                      (_huntMode ? 0x0 : RReg0.SyncHunt));
+                // Update char status bits
+                _registers.RxCharAvailable = _rxFifo.Count > 0;
+                _registers.TxBufferEmpty = _txFifo.Count == 0;
 
-                // Physical port? Update modem control pins, even though this is
-                // largely symbolic given the likely disparity between the host's
-                // physical port and our virtual machine's actual execution rate...
-                if (_port != null)
+                // Update modem control pins
+                if (_registers.DCDState != _device.DCD)
                 {
-                    try
-                    {
-                        _readRegs[0] |= (byte)(_port.DCD ? RReg0.DCDState : 0);
-                        _readRegs[0] |= (byte)(_port.CTS ? RReg0.CTSState : 0);
-                        _readRegs[0] |= (byte)(_breakDetected ? RReg0.BreakAbort : 0);
-                    }
-                    catch (Exception e)
-                    {
-                        // On our first (lazy) access, may get an "inappropriate ioctl for device"
-                        // error from the host, so at this point just punt and assign a NullPort
-                        // Todo: add a CLI option to close/reset/reopen the port at runtime without
-                        // having to power off -- USB gizmos can be unreliable and transient serial
-                        // port issues should require a restart if we can avoid it!
-                        Log.Error(Category.RS232, "Exception thrown in UpdateFlags: {0}", e.Message);
-                        DisablePort();
-                    }
+                    if (_logging) _log.WriteLine("6,{0},DCD,{1}", _scheduler.CurrentTimeNsec, _registers.DCDState);
+                    _registers.DCDState = _device.DCD;
+                }
+
+                if (_registers.CTSState != _device.CTS)
+                {
+                    if (_logging) _log.WriteLine("6,{0},CTS,{1}", _scheduler.CurrentTimeNsec, _registers.CTSState);
+                    _registers.CTSState = _device.CTS;
+                }
+
+                // TODO: we aren't detecting these (yet?)
+                // it's not clear termios/mono will even pass them to us?
+                //_readRegs[0] |= (byte)(_breakDetected ? RR0.BreakAbort : 0);
+
+                // If they changed, latch the external/status interrupt (if enabled)
+                if ((_registers.Read(0) & pinMask) != (oldPinState & pinMask))
+                {
+                    _extIntLatched = _registers.ExtIntEnabled;
                 }
 
                 // If no interrupts pending, the Z80 returns V3..V1 = 011.  So
@@ -503,67 +374,57 @@ namespace PERQemu.IO.Z80
                 // Now update the offset and interrupts bits in lowest-to-highest
                 // priority order, and account for the channel # (A > B).  First,
                 // did the tx buffer just become empty?
-                if (_txFifo.Count == 0 && _txInterruptLatched)
+                if (_txFifo.Count == 0 && _txIntLatched)
                 {
                     _interruptOffset = 0;
                 }
 
                 // If one of the modem control pins changed state (DCD or CTS),
                 // bump the offset ("external/status interrupt")
-                if ((((RReg0)_readRegs[0] & RReg0.DCDState) != (oldPinState & RReg0.DCDState) ||
-                     ((RReg0)_readRegs[0] & RReg0.CTSState) != (oldPinState & RReg0.CTSState)) &&
-                    _extInterruptLatched)
+                if (_extIntLatched)
                 {
                     _interruptOffset = 1;
                 }
 
                 // Receive character available?
-                if (_rxInterruptLatched)
+                if (_rxIntLatched)
                 {
                     _interruptOffset = 2;
                 }
 
                 // Errors received will latch the bits in RR1; just update a few
                 // status bits if they've changed
-                if (SyncMode || (!SyncMode && _txFifo.Count == 0))
-                {
-                    _readRegs[1] |= (byte)RReg1.AllSent;
-                }
-                else
-                {
-                    _readRegs[1] &= (byte)~RReg1.AllSent;
-                }
+                _registers.AllSent = (_registers.SyncMode ||
+                                     (!_registers.SyncMode && _txFifo.Count == 0));
 
                 // If an error occurred ("special receive conditions") that we
                 // care about, set the offset...
-                if (((_readRegs[1] & 0xf0) != 0) && _rxInterruptLatched)
+                if (((_registers.Read(1) & 0xf0) != 0) && _rxIntLatched)
                 {
                     // Except... the silly mode where Parity Errors aren't "special"
                     // (so the offset should already have been set, above)
-                    var parErr = (_readRegs[1] & (byte)RReg1.ParityError) != 0;
+                    var parErr = _registers.ParityError;
 
-                    if (!parErr || (parErr && (IntFlags == WReg1IntEnables.RxIntOnAllParityAffectsVector)))
+                    if (!parErr || (parErr && _registers.ParityAffectsVector))
                     {
                         _interruptOffset = 3;
                     }
 
-                    // Todo: rx overrun if rxfifo len > 3?  or just let it grow...
-                    // end of frame/sdlc checking happens here, of course, if that is ever used?
-                    // framing errors would come from the serial port, but crc errors generated here
+                    // TODO: There's probably a LOT of finicky error handling detail that
+                    // currently is unhandled; framing, parity, CRC, over/underruns...
                 }
 
-                // Finally: update the interrupt pending bit in RR0.  This is
-                // problematic, as the SIO only updates the bit in channel A's
-                // RR0 but it takes into account both channel's status?  The
-                // PERQ may or may not even rely on this bit...
-                _readRegs[0] |= (byte)(InterruptLatched ? RReg0.IntPending : 0);
+                // Finally: update the interrupt pending bit in RR0.  The SIO only updates
+                // this bit in channel A's RR0 but it takes into account the status from
+                // both channels?  The PERQ may or may not even rely on this bit...
+                _registers.IntPending = InterruptLatched;
 
-                Log.Detail(Category.SIO, "Channel {0} RR0 = {1}", _channelNumber, (RReg0)_readRegs[0]);
-                Log.Detail(Category.SIO, "Channel {0} RR1 = {1}", _channelNumber, (RReg1)_readRegs[1]);
+                Log.Detail(Category.SIO, "Channel {0} RR0 = {1}", _channelNum, (RR0)_registers.Read(0));
+                Log.Detail(Category.SIO, "Channel {0} RR1 = {1}", _channelNum, (RR1)_registers.Read(1));
                 Log.Detail(Category.SIO, "Channel {0} IRQ enable: Rx {1}, Tx {2}, Ext {3}",
-                           _channelNumber, RxInterruptEnabled, TxInterruptEnabled, ExtInterruptEnabled);
+                           _channelNum, RxIntEnabled, _registers.TxIntEnabled, _registers.ExtIntEnabled);
                 Log.Detail(Category.SIO, "Channel {0} IRQ status: Rx {1}, Tx {2}, Ext {3}, Vec {4}",
-                          _channelNumber, _rxInterruptLatched, _txInterruptLatched, _extInterruptLatched, _interruptOffset);
+                           _channelNum, _rxIntLatched, _txIntLatched, _extIntLatched, _interruptOffset);
             }
 
             /// <summary>
@@ -571,44 +432,21 @@ namespace PERQemu.IO.Z80
             /// and if necessary issue a change to the connected serial device.
             /// </summary>
             /// <remarks>
-            /// This is fairly problematic if we want to do "real" pass-thru to
-            /// the port, and not just due to limitations and bugs in the C#
-            /// SerialPort class.  The Z80 SIO allows _separate_ sizes for Rx and
-            /// Tx, which is kind of nuts; here we take the latest setting and
-            /// compare it to the last, only changing it in the device based on 
-            /// the last register write, if it differs from the hardware setting.
-            /// Oof.  Ugly.  We might just shine on the PERQ and let it think it
-            /// made the change, while configuring the host port through Settings
-            /// to suit the user's actual hardware and synthesizing the data flow
-            /// as bytes are received...
+            /// The Z80 SIO allows _separate_ sizes for Rx and Tx, which is kind
+            /// of nuts.  Given the split-brained approach where the Settings for
+            /// the host port are separate from the PERQ's view, all we really do
+            /// here is update the virtual state and reflect it back in the status
+            /// registers.  But... should we actually mask off bits for every byte 
+            /// transmitted or received!?  (Yeah, probably?  Maybe?  Hmm.)
             /// </remarks>
             void UpdateBitsPerChar(int bits)
             {
-#if DEBUG
-                var rxBits = ((_writeRegs[3] & (byte)WReg3.RxBitsPerChar) >> 6);
-                var txBits = ((_writeRegs[5] & (byte)WReg5.TxBitsPerChar) >> 5);
-
-                // Whine about this, at least until we see how different Z80 and
-                // OSes handle setting this.  Unfortunately, the PERQ/Z80 doesn't
-                // seem to set both values consistently; for speech (output only)
-                // it never bothers to set the receive bits?
-                if (rxBits != txBits)
+                if (bits != _device.DataBits)
                 {
-                    Log.Debug(Category.SIO, "Channel {0} receive bits ({1}), transmit bits ({2}) mismatch",
-                                            _channelNumber, rxBits, txBits);
-                }
-#endif
-                // Why, Zilog.  Why.
-                var setBits = ((bits == 3) ? 8 :
-                               (bits == 1) ? 7 :
-                               (bits == 2) ? 6 : 5);
-
-                if ((_port != null) && (setBits != _port.DataBits))
-                {
-                    _port.DataBits = setBits;
+                    _device.DataBits = bits;
 
                     Log.Debug(Category.SIO, "Channel {0} bits per character now {1}",
-                                            _channelNumber, setBits);
+                                            _channelNum, bits);
                 }
             }
 
@@ -617,16 +455,12 @@ namespace PERQemu.IO.Z80
             /// </summary>
             void UpdateParity()
             {
-                var enable = (_writeRegs[4] & (byte)WReg4.ParityEnable) != 0;
-                var polarity = (_writeRegs[4] & (byte)WReg4.ParityEvenOdd) >> 1;
-
-                var parity = ((!enable) ? Parity.None : (polarity == 1) ? Parity.Even : Parity.Odd);
-
-                if ((_port != null) && (_port.Parity != parity))
+                if (_registers.Parity != _device.Parity)
                 {
-                    _port.Parity = parity;
+                    _device.Parity = _registers.Parity;
 
-                    Log.Debug(Category.SIO, "Channel {0} parity now {1}", _channelNumber, parity);
+                    Log.Debug(Category.SIO, "Channel {0} parity now {1}",
+                                            _channelNum, _registers.Parity);
                 }
             }
 
@@ -635,201 +469,264 @@ namespace PERQemu.IO.Z80
             /// </summary>
             void UpdateStopBits()
             {
-                if (Bits != WReg4Bits.SyncModesEnable)
-                {
-                    // Map from the SIO bits to the SerialPort enum, sigh
-                    var stopBits = ((Bits == WReg4Bits.One) ? StopBits.One :
-                                    (Bits == WReg4Bits.Two) ? StopBits.Two : StopBits.OnePointFive);
+                // None is illegal (used to indicate Sync Mode); don't pass thru
+                if (_registers.StopBits == StopBits.None) return;
 
-                    if ((_port != null) && (_port.StopBits != stopBits))
+                // Update the device if the setting changed
+                if (_registers.StopBits != _device.StopBits)
+                {
+                    _device.StopBits = _registers.StopBits;
+
+                    Log.Debug(Category.SIO, "Channel {0} stop bits now {1}",
+                                            _channelNum, _registers.StopBits);
+                }
+            }
+
+            /// <summary>
+            /// Update signal pin status bits in RR1 based on latest poll.
+            /// </summary>
+            void UpdateErrorFlags()
+            {
+                //    // Latch error bits in RR1
+                //    if ((status & PortStatus.RxOverrun) != 0)
+                //    {
+                //        _readRegs[1] |= (byte)RReg1.RxOverrun;
+                //    }
+
+                //    if ((status & PortStatus.ParityError) != 0)
+                //    {
+                //        _readRegs[1] |= (byte)RReg1.ParityError;
+                //    }
+
+                //    if ((status & PortStatus.FramingError) != 0)
+                //    {
+                //        _readRegs[1] |= (byte)RReg1.CrcFraming;
+                //    }
+
+                //    if ((status & PortStatus.BreakDetected) != 0)
+                //    {
+                //        // "The Break/Abort bit is not used in the Synchronous Receive mode."
+                //        _breakDetected = !SyncMode;
+                //    }
+
+                //    UpdateFlags();   // Update RR0
+            }
+
+            /// <summary>
+            /// Start the polling event if a port device is attached, the loop is
+            /// not already running, and one/both of the Rx/Tx enable bits are set.
+            /// </summary>
+            void CheckPollEnable()
+            {
+                // Have a device?
+                if (_device == null) return;
+
+                Log.Detail(Category.SIO, "Channel {0} check: polling={1} rate={2} rx={3}/{4} tx={5}/{6}",
+                                         _channelNum, (_pollEvent != null), _device.PollRate,
+                                         _registers.RxEnabled, _device.ReceiveRate,
+                                         _registers.TxEnabled, _device.TransmitRate);
+
+                // If not already polling, start the loop
+                if (_pollEvent == null) PollDevice(0, null);
+            }
+
+            /// <summary>
+            /// Poll the attached device and reschedule.  Updates flags if the
+            /// signals or state of the fifos changes.
+            /// </summary>
+            /// <remarks>
+            /// The goal here is to consolidate polling into one periodic event
+            /// per device.  Poll/PollRate is for updating signals and/or moving
+            /// data from the SIO to a real host device; Recv/RecvRate and Xmit/
+            /// XmitRate allow characters to be paced according to the baud rate
+            /// currently in effect (they can be changed by the Z80 at any time)
+            /// and/or as the Tx/Rx enable flags change.  This kinda smells bad.
+            /// But the performance impact of the polled approach so far seems
+            /// minimal, so for now I'll live with it.  Hmm.
+            /// </remarks>
+            void PollDevice(ulong skewNsec, object context)
+            {
+                // Sanity check
+                if (_device == null)
+                {
+                    Log.Debug(Category.SIO, "Channel {0} polling stopped (no device!)", _channelNum);
+                    _pollEvent = null;
+                    return;
+                }
+
+                byte data;
+
+                var updateNeeded = false;
+                var now = _scheduler.CurrentTimeNsec;
+                var delay = _device.PollRate;
+
+                // Poll the device first, if requested
+                if ((_device.PollRate > 0) && (_nextPoll <= now))
+                {
+                    if (_logging) _log.WriteLine($"0,{now},Polling");
+                    updateNeeded = _device.Poll();          // Hack.  for now.
+                    _nextPoll = now + _device.PollRate;
+                }
+
+                if (_registers.RxEnabled)
+                {
+                    // Time to read another char?
+                    if ((_nextCharRx <= now) && _device.ReadReady && (_rxFifo.Count < 4))
                     {
-                        _port.StopBits = stopBits;
+                        data = _device.Receive();
+                        if (_logging) _log.WriteLine($"1,{now},{data:x2}");
 
-                        Log.Debug(Category.SIO, "Channel {0} stop bits now {1}", _channelNumber, stopBits);
+                        // Still in hunt mode?
+                        if (!_registers.SyncMode ||
+                            (_registers.SyncMode && !Hunting(data, _registers.RxSyncByte)))
+                        {
+                            // Async receive, or Sync mode (not in hunt mode)
+                            _rxFifo.Enqueue(data);
+                            _rxIntLatched = RxIntEnabled;
+
+                            Log.Detail(Category.SIO, "Channel {0} Rx data: 0x{1:x2}, queue depth {2}",
+                                                     _channelNum, data, _rxFifo.Count);
+                        }
+
+                        updateNeeded = true;
+                        _nextCharRx = now + _device.ReceiveRate;
                     }
-                }
-            }
 
-            /// <summary>
-            /// Change the state of the programmable output pins (RTS, DTR).
-            /// </summary>
-            void UpdateOutputPins()
-            {
-                if (_port != null)
+                    if ((delay == 0) || (_device.ReceiveRate > 0 && _device.ReceiveRate < delay))
+                        delay = _device.ReceiveRate;
+                }
+
+                if (_registers.TxEnabled)
                 {
-                    var dtr = (_writeRegs[5] & (byte)WReg5.DTR) != 0;
-                    var rts = (_writeRegs[5] & (byte)WReg5.RTS) != 0;
+                    // Have a char? Time to send it?
+                    if ((_nextCharTx <= now) && _device.WriteReady && ((_txFifo.Count > 0) || _registers.SyncMode))
+                    {
+                        if (_txFifo.Count > 0)
+                        {
+                            data = _txFifo.Dequeue();
+                            _device.Transmit(data);
+                        }
+                        else
+                        {
+                            // In SyncMode (Speech) if there's no data, inject a sync byte
+                            data = _registers.TxSyncByte;
+                        }
 
-                    // Only change 'em if different
-                    if (_port.DTR != dtr) _port.DTR = dtr;
-                    if (_port.RTS != rts) _port.RTS = rts;
+                        if (_logging) _log.WriteLine($"2,{now},{data:x2}");
 
-                    // Logged on UpdateFlags
+                        Log.Detail(Category.SIO, "Channel {0} Tx data: 0x{1:x2}, queue depth {2}",
+                                                 _channelNum, data, _txFifo.Count);
+
+                        // If the buffer just became empty, raise the Tx interrupt (if enabled)
+                        if (_txFifo.Count == 0)
+                        {
+                            _txIntLatched = _registers.TxIntEnabled;
+                            if (!_registers.SyncMode) _device.RTS = false;
+                        }
+
+                        updateNeeded = true;
+                        _nextCharTx = now + _device.TransmitRate;
+                    }
+
+                    if ((delay == 0) || (_device.TransmitRate > 0 && _device.TransmitRate < delay))
+                        delay = _device.TransmitRate;
                 }
-            }
 
-            /// <summary>
-            /// On Unix hosts, poke the receiver since the event-based API of the
-            /// broken SerialPort class never actually fires.  Yay.
-            /// </summary>
-            void PollReceiver(bool enabled)
-            {
-                if (PERQemu.HostIsUnix && _port != null)
+                // Update the registers if anything changed
+                if (updateNeeded) UpdateFlags();
+
+                // Reschedule if a positive poll rate
+                if (delay > skewNsec)
                 {
-                    _port.PollReceiver(enabled);
+                    _pollEvent = _scheduler.Schedule(delay - skewNsec, PollDevice);
+                }
+                else
+                {
+                    Log.Debug(Category.SIO, "Channel {0} polling stopped (nothing active!)", _channelNum);
+                    _pollEvent = null;
                 }
             }
 
-            int _channelNumber;
-            int _selectedRegister;
+            // Debugging
+            public void DumpRegs()
+            {
+                if (_device == null)
+                {
+                    Console.WriteLine($"  No device attached on channel {_channelNum}");
+                    return;
+                }
 
-            bool _rxIntOnNextCharacter;
-            bool _rxInterruptLatched;
-            bool _txInterruptLatched;
-            bool _extInterruptLatched;
+                Console.WriteLine("  Channel {0} polling={1} rate={2} next={3}",
+                                  _channelNum, (_pollEvent != null), _device.PollRate, _nextPoll);
+                Console.WriteLine("    Receive: enabled={0} count={1} rate={2} next={3}",
+                                  _registers.RxEnabled, _rxFifo.Count, _device.ReceiveRate, _nextCharRx);
+                Console.WriteLine("    Transmit: enabled={0} count={1} rate={2} next={3}",
+                                  _registers.TxEnabled, _txFifo.Count, _device.TransmitRate, _nextCharTx);
+
+                _registers.DumpStatus();
+            }
+
+            public void StartLog()
+            {
+                if (_logging) return;
+
+                var path = Paths.BuildOutputPath($"SIO{_channelNum}-telemetry.log");
+                _log = File.AppendText(path);
+                _log.WriteLine("0,{0},Logging started at {1}",
+                               _scheduler.CurrentTimeNsec, DateTime.Now.ToString());
+                _logging = true;
+
+                Console.WriteLine($"Opened {path} for SIO {_channelNum} telemetry logging.");
+
+                // Enable telemetry in the attached device (if implemented)
+                _device?.Telemetry(true, ref _log);
+            }
+
+            public void StopLog()
+            {
+                if (!_logging) return;
+
+                _device?.Telemetry(false, ref _log);
+
+                _logging = false;
+                _log.WriteLine($"0,{0},Logging stopped at {1}",
+                               _scheduler.CurrentTimeNsec, DateTime.Now.ToString());
+                _log.Flush();
+                _log.Close();
+
+                Console.WriteLine($"SIO {_channelNum} telemetry log closed.");
+            }
+
+
+            int _channelNum;
+
+            bool _rxIntOnNextChar;
+            bool _rxIntLatched;
+            bool _txIntLatched;
+            bool _extIntLatched;
 
             int _interruptOffset;
 
-            bool _huntMode;
+            bool _breakSent;
             bool _breakDetected;
 
-            byte[] _writeRegs;
-            byte[] _readRegs;
+            ulong _nextPoll;
+            ulong _nextCharRx;
+            ulong _nextCharTx;
 
-            // These two FIFOs on the real hardware are just 3 bytes deep.  Here
-            // they're unbounded in size and are (ab)used as the communications
-            // stream between the SIO channel and the device it's connected to.
             Queue<byte> _rxFifo;
             Queue<byte> _txFifo;
+
+            Registers _registers;
+
             Scheduler _scheduler;
+            SchedulerEvent _pollEvent;
 
-            ISIODevice _device;
-            SerialDevice _port;
-        }
+            SerialDevice _device;
 
-        //
-        // Read registers
-        //
-
-        [Flags]
-        enum RReg0 : byte
-        {
-            RxCharAvailable = 0x1,
-            IntPending = 0x2,
-            TxBufferEmpty = 0x4,
-            DCDState = 0x8,
-            SyncHunt = 0x10,
-            CTSState = 0x20,
-            TxUnderrun = 0x40,
-            BreakAbort = 0x80
-        }
-
-        [Flags]
-        enum RReg1 : byte
-        {
-            AllSent = 0x1,
-            ExtraBits = 0x0e,
-            ParityError = 0x10,
-            RxOverrun = 0x20,
-            CrcFraming = 0x40,
-            EndOfFrame = 0x80
-        }
-
-        //
-        // Write registers
-        //
-
-        enum WReg0Cmd
-        {
-            NullCode = 0,
-            SendAbort = 1,
-            ResetExtStatusInterrupts = 2,
-            ChannelReset = 3,
-            EnableIntOnRx = 4,
-            ResetTxInt = 5,
-            ErrorReset = 6,
-            ReturnFromInt = 7
-        }
-
-        enum WReg0Crc
-        {
-            NullCode = 0,
-            ResetRxCRC = 1,
-            ResetTxCRC = 2,
-            ResetTxUnderrun = 3,
-        }
-
-        [Flags]
-        enum WReg1
-        {
-            ExtIntEnable = 0x1,
-            TxIntEnable = 0x2,
-            StatusAffectsVector = 0x4,
-            WaitReadyOnRT = 0x20,
-            WaitReadyFunction = 0x40,
-            WaitReadyEnable = 0x80,
-        }
-
-        enum WReg1IntEnables
-        {
-            RxIntDisable = 0,
-            RxIntOnFirstChar = 1,
-            RxIntOnAllParityAffectsVector = 2,
-            RxIntOnAllParityNotAffectsVector = 3,
-        }
-
-        [Flags]
-        enum WReg3
-        {
-            RxEnable = 0x1,
-            SyncCharLoadInhibit = 0x2,
-            AddressSearchMode = 0x4,
-            RxCRCEnable = 0x8,
-            EnterHuntPhase = 0x10,
-            AutoEnables = 0x20,
-            RxBitsPerChar = 0xc0
-        }
-
-        enum WReg4
-        {
-            ParityEnable = 0x1,
-            ParityEvenOdd = 0x2,
-        }
-
-        enum WReg4Bits
-        {
-            SyncModesEnable = 0,
-            One = 1,
-            OnePointFive = 2,
-            Two = 3,
-        }
-
-        enum WReg4SyncMode
-        {
-            EightBit = 0,
-            SixteenBit = 1,
-            SDLCMode = 2,
-            ExtSyncMode = 3,
-        }
-
-        enum WReg4ClockMode
-        {
-            X1 = 0,
-            X16 = 1,
-            X32 = 2,
-            X64 = 3
-        }
-
-        [Flags]
-        enum WReg5
-        {
-            TxCRCEnable = 0x1,
-            RTS = 0x2,
-            SDLC = 0x4,
-            TxEnable = 0x8,
-            SendBreak = 0x10,
-            TxBitsPerChar = 0x60,
-            DTR = 0x80
+            // Detailed debugging - should use Log for this, but one off? :-/
+            bool _logging;
+            StreamWriter _log;
         }
     }
 }

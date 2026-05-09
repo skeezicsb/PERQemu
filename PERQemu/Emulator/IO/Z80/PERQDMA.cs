@@ -1,5 +1,5 @@
-﻿//
-// PERQDMA.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+//
+// PERQDMA.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -60,8 +60,8 @@ namespace PERQemu.IO.Z80
         // Z80 DMA Interface
         //
 
-        public bool ReadDataReady => _readReady;
-        public bool WriteDataReady => _writeReady;
+        public bool DMAReadReady => _readReady;
+        public bool DMAWriteReady => _writeReady;
 
         public AcknowledgeDelegate DMAAcknowledge => null;
 

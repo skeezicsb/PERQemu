@@ -363,9 +363,12 @@ namespace PERQemu.Config
                         sw.WriteLine("keymap " + _current.Keymap);
                     }
 
-                    // Save serial ports, if enabled
-                    if (_current.RSAEnabled) sw.WriteLine("enable rs232 a");
-                    if (_current.RSBEnabled) sw.WriteLine("enable rs232 b");
+                    // Save serial ports, if enabled (off by default)
+                    if (_current.RSAEnabled) sw.WriteLine("enable rs232a");
+                    if (_current.RSBEnabled) sw.WriteLine("enable rs232b");
+
+                    // Turn OFF speech, if disabled (on by default)
+                    if (!_current.SpeechEnabled) sw.WriteLine("disable speech");
 
                     sw.WriteLine("option board " + _current.IOOptionBoard);
 

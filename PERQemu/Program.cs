@@ -1,5 +1,5 @@
 //
-// Program.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Program.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -43,11 +43,17 @@ namespace PERQemu
                            Environment.OSVersion.Platform == PlatformID.MacOSX);
 
             //
+            // "Split for the coast"
+            //      -- Dirk Kalp, v87.z80
+            //
             // "Man is born to trouble, as the sparks fly upwards" - Job Ch.5
-            //      -- Change log in Layered/mulReal.High
+            //      -- Change log in micro/Real.High
+            //
+            // "Unconventional and subtle"
+            //      -- Dirk Kalp, Z80 Concept Document
             //
             Version vers = Assembly.GetCallingAssembly().GetName().Version;
-            _version = string.Format("PERQemu v{0}.{1}.{2} ('As the sparks fly upwards.')",
+            _version = string.Format("PERQemu v{0}.{1}.{2} ('Split for the coast.')",
                                     vers.Major, vers.Minor, vers.Build);
 
             _initialized = false;

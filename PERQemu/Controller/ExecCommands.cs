@@ -114,7 +114,6 @@ namespace PERQemu
             }
         }
 
-
         //
         // Miscellany
         //
@@ -172,6 +171,9 @@ namespace PERQemu
             }
         }
 
+        //
+        // Fixme: the printer stuff belongs somewhere else...
+        //
 
         bool FindCanon(out IO.CanonController ctrl)
         {
@@ -227,10 +229,12 @@ namespace PERQemu
         }
 
 #if DEBUG
-        // debugging
+        // Debugging
         [Command("hide", "Hide the PERQ display", Discreet = true)]
         void HideDisplay()
         {
+            if (PERQemu.Sys == null) return;
+
             PERQemu.Sys.Display.Hide();
             Console.WriteLine("Sent window hide event.");
         }
@@ -238,6 +242,8 @@ namespace PERQemu
         [Command("unhide", "Restore the PERQ display", Discreet = true)]
         void ShowDisplay()
         {
+            if (PERQemu.Sys == null) return;
+
             PERQemu.Sys.Display.Restore();
             Console.WriteLine("Sent window restore event.");
         }

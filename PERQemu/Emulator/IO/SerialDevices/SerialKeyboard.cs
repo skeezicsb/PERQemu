@@ -1,5 +1,5 @@
 ﻿//
-// SerialKeyboard.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// SerialKeyboard.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -17,8 +17,6 @@
 // along with PERQemu.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System;
-
 using PERQemu.IO.Z80;
 
 namespace PERQemu.IO.SerialDevices
@@ -26,48 +24,53 @@ namespace PERQemu.IO.SerialDevices
     /// <summary>
     /// The PERQ-2 "VT100-style" serial keyboard.
     /// </summary>
-    public class SerialKeyboard : ISIODevice
+    public class SerialKeyboard : SerialDevice
     {
-        public SerialKeyboard()
+        public SerialKeyboard(Z80System sys) : base(sys)
         {
             // This keyboard doesn't latch data or interrupt the Z80 the way the
             // PERQ-1 parallel unit does; it lets the SIO interrupt as keystrokes
             // are received.  The hardware is set to a fixed 300 baud, 8/N/1, and
             // normal SIO and circular buffer processing by the Z80 code deals
             // with possible overruns.  So we don't sweat any of that here. :-)
+
+            // Like the PERQ-1 keyboard, this is written on the main thread and
+            // read on the Z80 thread.  I shouldn't be so cavalier with the lack
+            // of proper locking but it's just not worth fussing over...
+
+            _name = "VT100-style serial keyboard";
+            _rxRate = Conversion.BaudRateToNsec(300);
         }
 
-        public ulong TransmitRate => 0;
-        public ulong ReceiveRate => Conversion.BaudRateToNsec(300);
+        public override bool ReadReady => _keyReady;
 
-        public void RegisterReceiveDelegate(ReceiveDelegate rxDelegate)
-        {
-            _rxDelegate = rxDelegate;
-        }
+        public override bool CTS => true;
+        public override bool DCD => true;
 
-        public void Reset()
+        public override void Reset()
         {
+            _key = 0;
+            _keyReady = false;
+
             Log.Debug(Category.Keyboard, "Reset");
+        }
+
+        public override byte Receive()
+        {
+            _keyReady = false;
+            return _key;
         }
 
         public void QueueInput(byte key)
         {
-            // Key bytes transmitted inverted; for logging, flip it back
-            Log.Detail(Category.Keyboard, "Queuing key '{0}' (0x{1:x2})", (char)(~key & 0x7f), key);
-            _rxDelegate(key);
+            _key = key;
+            _keyReady = true;
+
+            // Key bytes are transmitted inverted; for logging, flip it back
+            Log.Debug(Category.Keyboard, "Queuing key '{0}' (0x{1:x2})", (char)(~key & 0x7f), key);
         }
 
-        public void Transmit(byte value)
-        {
-            throw new NotImplementedException("Transmit on SerialKeyboard");
-        }
-
-        public void TransmitBreak()
-        {
-            Log.Detail(Category.Keyboard, "VT100 Keyboard received a Break?");
-        }
-
-
-        ReceiveDelegate _rxDelegate;
+        byte _key;
+        bool _keyReady;
     }
 }

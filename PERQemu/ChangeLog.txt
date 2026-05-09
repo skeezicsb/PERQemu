@@ -5,6 +5,44 @@ Summary of changes on the development branch since the v0.8.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+April, 2026:
+
+    1. Updates to the User Guide and CLI to support new serial stuff.  Testing
+    of USB/serial exception handling and dynamic reload ongoing.  This push to
+    try to swap back in some context for what the hell I was working on last
+    month before distractions IRL pulled me away from development.  Expect this
+    update is shaky at best; look for an update forthwith.
+
+
+March, 2026:
+
+    2. SIO/RS-232/Speech refactoring and testing is slow and painstaking, but I
+    am working out the kinks.  Haven't fallen off the map.  Just struggling to
+    find time/energy/focus/flow to get it done.
+
+    1. While the human race is busy Great Filtering itself into extinction, I've
+    put back together the Z80 SIO implementation and reworked all of the serial
+    devices.  It is painstakingly documented "for posterity" (ha, ha ha haahaha)
+    in Docs/SerialPorts.txt.  RSX: file copies now write the host's native line
+    endings (CRLF on Windows, LF on Unix).  Bump to v0.9.0 as we close in on a
+    v1.0.0 release and/or the fall of civilization.
+
+
+February, 2026:
+
+    2. Serial port rewrite in progress.  This is artisinal, 100% organic, free
+    range RS-232 emulation from the clear bitstreams of the Pacific Northwest.
+
+    1. Went down a rabbit hole to investigate a proper refactoring of the Z80's
+    serial handling (RS-232 and audio).  Had a great visit from Josh (IRL!) and
+    exchanged a pile of media and discovered that we do, in fact, have a copy of
+    PNX v4 and -- possibly -- some bloody PNX v5 source code!!  Very excited
+    that I might *finally* be able to diagnose why v5 will not boot.  (PNX v4
+    boots just fine, but as with the PNX v3 set the media needs to be re-imaged
+    to capture track 0.)  Along with the last of the 150+ QIC tape images, there
+    are many more goodies to eventually add to the Bitsavers/PERQmedia pile!
+
+
 January, 2026:
 
     8. Push to capture audio changes that I'm about to undo.  Third time's a
@@ -62,4 +100,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Fri Jan 23 11:04:42 PST 2026
+Last update: skeezics    Sat Apr 25 13:06:06 PDT 2026

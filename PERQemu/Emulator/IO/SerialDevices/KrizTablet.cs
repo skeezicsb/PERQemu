@@ -1,5 +1,5 @@
 //
-// KrizTablet.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// KrizTablet.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -30,163 +30,111 @@ namespace PERQemu.IO.SerialDevices
     /// and landscape orientations to match the selected display.  Interfaces
     /// with the Z80 via a serial port.
     /// </summary>
-    public class KrizTablet : ISIODevice
+    /// <remarks>
+    /// See the file Docs/SerialPorts.txt for information about the tablet's
+    /// message format and other operational details.
+    /// </remarks>
+    public class KrizTablet : SerialDevice
     {
-        public KrizTablet(Scheduler scheduler, PERQSystem system)
+        public KrizTablet(Z80System sys, PERQSystem perq) : base(sys)
         {
-            _scheduler = scheduler;
-            _system = system;
-            _sendEvent = null;
+            _name = "Kriz tablet";
+            _perq = perq;
+            _sampleEvent = null;
 
-            _dataInterval = (ulong)(16.666667 * Conversion.MsecToNsec);
+            // 60 samples/sec
+            _sampleRate = (ulong)(16.666667 * Conversion.MsecToNsec);
+
+            // This should be 32kHz, but we'll use 16kHz (shared Speech clock)
+            // to reduce overhead a little bit.  Sync mode (8 bit chars).
+            _dataRate = Conversion.BaudRateToNsec(16000, 8);
+
+            _sample = new byte[8];
+            _nextByte = 0;
         }
 
-        public ulong TransmitRate => 0;
-        public ulong ReceiveRate => Conversion.BaudRateToNsec(9600);    // Not 32kHz :)
+        public override ulong ReceiveRate => _dataRate;
+        public override bool ReadReady => _nextByte > 0;
 
-        public void Reset()
+
+        public override void Reset()
         {
-            // Schedule the first data event, which runs once every 1/60th of
-            // a second, forever.  But don't re-register it again and again...
-            _scheduler.Cancel(_sendEvent);
-            _sendEvent = _scheduler.Schedule(_dataInterval, SendData);
+            _scheduler.Cancel(_sampleEvent);
+            _sampleEvent = _scheduler.Schedule(_sampleRate, SampleTablet);
+
+            _nextByte = 0;
 
             Log.Debug(Category.Tablet, "Kriz reset");
         }
 
-        public void RegisterReceiveDelegate(ReceiveDelegate rxDelegate)
+        public override byte Receive()
         {
-            _rxDelegate = rxDelegate;
+            var value = _sample[_nextByte];
+
+            if (_nextByte > 0) _nextByte--;
+
+            return value;
         }
 
-        public void TransmitBreak()
+        void SampleTablet(ulong skewNsec, object context)
         {
-            throw new NotImplementedException("TransmitBreak on Kriz");
-        }
+            // Don't clobber the sample buffer if the receiver is active
+            if (_nextByte == 0 || _nextByte == 7)
+            {
+                // SDL provides absolute mouse positions clipped to the PERQ screen
+                // dimensions for us, so there's no need to adjust for display width.
+                // Apply X/Y "kluge" values based on POS tablet driver's expectations
+                int tabX = _perq.HID.MouseX + 64;
+                int tabY = _perq.VideoController.DisplayHeight -
+                           _perq.Display.TopY -
+                           _perq.HID.MouseY + 64;
 
-        public void Transmit(byte value)
-        {
-            throw new NotImplementedException("Transmit on Kriz");
-        }
+                // Format 'em
+                var tab1 = (byte)(((tabX >> 8) & 0x0f) |
+                                   (_perq.HID.MouseOffTablet ? 0x40 : 0) |
+                                   (_perq.Config.Display == Config.DisplayType.Landscape ? 0x20 : 0));
+                var tab2 = (byte)(tabX & 0xff);
+                var tab3 = (byte)(((tabY >> 8) & 0x0f) | (_perq.HID.MouseButton << 5));
+                var tab4 = (byte)(tabY & 0xff);
 
-        void SendData(ulong skewNsec, object context)
-        {
-            // See the Notes below for message format details!
+                // Save the sample data - invert (active low data) if NOT EIO
+                _sample[7] = (_perq.IOB.IsEIO ? Sync : (byte)~Sync);
+                _sample[6] = (_perq.IOB.IsEIO ? tab1 : (byte)~tab1);
+                _sample[5] = (_perq.IOB.IsEIO ? tab2 : (byte)~tab2);
+                _sample[4] = (_perq.IOB.IsEIO ? tab3 : (byte)~tab3);
+                _sample[3] = (_perq.IOB.IsEIO ? tab4 : (byte)~tab4);
 
-            // Calc Y and X positions.  SDL provides absolute mouse positions
-            // clipped to the PERQ screen dimensions for us, so there's no need
-            // to adjust for display width.  Apply the X/Y "kluge" values based
-            // on the POS tablet driver's expectations (see below)
-            int tabX = _system.HID.MouseX + 64;
-            int tabY = _system.VideoController.DisplayHeight -
-                       _system.Display.TopY -
-                       _system.HID.MouseY + 64;
+                // CIO and EIO explicitly do three extra reads to "clear out any junk
+                // left in the chip" (i.e., the padding/CRC bytes the SIO injected)
 
-            // Format 'em
-            var tab1 = (byte)(((tabX >> 8) & 0x0f) |
-                               (_system.HID.MouseOffTablet ? 0x40 : 0) |
-                               (_system.Config.Display == Config.DisplayType.Landscape ? 0x20 : 0));
-            var tab2 = (byte)(tabX & 0xff);
-            var tab3 = (byte)(((tabY >> 8) & 0x0f) | (_system.HID.MouseButton << 5));
-            var tab4 = (byte)(tabY & 0xff);
+                // Let the receiver know we have data available
+                _nextByte = 7;
 
-            // Send the data to the SIO - invert (active low data) if NOT EIO
-            _rxDelegate(_system.IOB.IsEIO ? Sync : (byte)~Sync);
-            _rxDelegate(_system.IOB.IsEIO ? tab1 : (byte)~tab1);
-            _rxDelegate(_system.IOB.IsEIO ? tab2 : (byte)~tab2);
-            _rxDelegate(_system.IOB.IsEIO ? tab3 : (byte)~tab3);
-            _rxDelegate(_system.IOB.IsEIO ? tab4 : (byte)~tab4);
-
-            // CIO and EIO explicitly do three extra reads to "clear out any junk
-            // "left in the chip" (i.e., the padding/CRC bytes the SIO injected)
-            _rxDelegate(0);
-            _rxDelegate(0);
-            _rxDelegate(0);
-
-            // Log the Tablet update
-            Log.Debug(Category.Tablet, "Kriz sampled: x={0} y={1} button={2}",
-                                        tabX, tabY, (tab3 >> 5));
+                Log.Debug(Category.Tablet, "Kriz sampled: x={0} y={1} button={2}",
+                                            tabX, tabY, (tab3 >> 5));
+            }
 
             // Wait a jiffy and do it again
-            _sendEvent = _scheduler.Schedule(_dataInterval, SendData);
+            _sampleEvent = _scheduler.Schedule(_sampleRate, SampleTablet);
         }
 
-        // Standard SDLC flag character
-        readonly byte Sync = 0x7e;
-        readonly ulong _dataInterval;
+        public override void Status()
+        {
+            Console.WriteLine("Kriz tablet status:");
+            Console.Write("  Sample buffer:");
+            for (var i = 6; i > 2; i--) Console.Write($"  0x{_sample[i]:x2}");
+            Console.WriteLine($"  Next: {_nextByte}");
+        }
 
-        ReceiveDelegate _rxDelegate;
-        SchedulerEvent _sendEvent;
-        Scheduler _scheduler;
-        PERQSystem _system;
+
+        readonly byte Sync = 0x7e;      // Standard SDLC flag character
+        readonly ulong _sampleRate;     // Mouse position sample rate
+        ulong _dataRate;                // Baud rate for serial transmission
+
+        int _nextByte;
+        byte[] _sample;
+
+        SchedulerEvent _sampleEvent;
+        PERQSystem _perq;
     }
 }
-
-/*
-    Notes:
- 
-    The Kriz tablets send updates every 1/60th of a second to the Z80 on
-    serial port SIO B.  But the ICL T2 Service guide says 90 updates/sec?
-    (Made no difference to PNX, and 60 is plenty smooth for every other OS.)
-
-    Data format(from the v8.7 ROM), with updates from "kriz.doc":
-
-        ; Byte0<7:0> = sync char (filtered out by SIO B hardware)
-        ; Byte1<7>   = ValidMsg bit (0)
-		; Byte1<6>   = TabOffTablet (1 -> mouse off tablet)
-	    ; Byte1<5>   = Landscape (1 -> landscape tablet)
-	    ; Byte1<4>   = unused (0)
-        ; Byte1<3:0> = high bits of X
-        ; Byte2<7:0> = low X
-        ; Byte3<7:5> = Switches (right, middle, left)
-        ; Byte3<4>   = unused (0)
-        ; Byte3<3:0> = high bits of Y
-        ; Byte4<7:0> = low Y
-
-    The Sync char transmitted is 0x81 (for CIO, active low) or 0x7e (EIO).  Some
-    "junk" pad bytes are tacked on here because, as the ROM explains:
-    
-        ; Note: A complete msg is only 4 chars.  But we count 2 extra chars
-        ; and just throw them away.  This was done to overcome problem we had
-        ; with SIO internal operation on Sync recognition when it is programmed 
-        ; back into Hunt mode below.
-
-    Evidently nobody read the Z80 SIO datasheet, because in sync mode the chip
-    is transmitting two CRC bytes *after* reception of a second flag byte -- but
-    we would have to disassemble the embedded i8748 ROM or snoop an actual Kriz
-    serial bitstream to find out if it's actually sending one.  No matter; since
-    our SIO implementation doesn't (yet?) compute and insert a CRC at the end of
-    the message or flag CRC errors in the status bits, we just send extra NULs
-    here.  Problem solved! :-)
-
-    The Z80 then reformats the "raw" packets from the Kriz into a 5-byte packet
-    to send to the PERQ; see Pointer.{CIO,EIO} or the old v87.z80 (original IOB)
-    code for more info.
-
-    Also from v87.z80:
-    
-        ; Note: Tablet data is active low.
-
-    This is useful information as it turns out, although it is NOT the case for EIO!
-
-    The "fudge factors" for applying cursor offsets (io_private.pas):
-
-    { Fudge factors for Kriz Tablet. }
-    KrizXfudge = 64;        { actual range of X is 0..895 }
-    KrizYfudge = 1087;      { actual range of Y is 0..1151 }
-                            { of TX, TabAbsX: 0..895  }
-                            { of TX, TabAbsY: 0..1151 }
-                            { of TabRelX: -64..831    limited to 0..767 }
-                            { of TabRelY: 1087..-64   limited to 1023..0 }
-
-
-    Note that the only way for the tablet itself to "know" if it's been enabled
-    or disabled is to peek at the SIO's receiver status.  The hardware obviously
-    can't do that and just transmits the data stream regardless of whether the
-    Z80 is doing anything with it.  Unfortunately, that's all we can do here too.
-    The SIO will ignore the messages when the tablet is disabled, and since it's
-    relatively low impact to schedule and process this message, I'm not going to
-    try to snoop the SIO's RxEnabled bit and maintain some kind of on/off state
-    for the tablet.  The prefab Configurations just don't enable the Kriz for
-    early PERQ-1 configs to avoid the extra overhead.
-*/

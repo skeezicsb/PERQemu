@@ -157,6 +157,11 @@
     <Compile Include="Emulator\IO\OIO.cs" />
     <Compile Include="Emulator\IO\OptionBoard.cs" />
     <Compile Include="Emulator\IO\PERQLink.cs" />
+    <Compile Include="Emulator\IO\Ports\SerialPort.cs" />
+    <Compile Include="Emulator\IO\Ports\WinSerialStream.cs" />
+    <Compile Include="Emulator\IO\Ports\UnixSerialStream.cs" />
+    <Compile Include="Emulator\IO\Ports\ISerialStream.cs" />
+    <Compile Include="Emulator\IO\Ports\SerialTypes.cs" />
     <Compile Include="Emulator\IO\Printers\CanonController.cs" />
     <Compile Include="Emulator\IO\Printers\CanonFormatter.cs" />
     <Compile Include="Emulator\IO\Printers\CanonPrinter.cs" />
@@ -179,7 +184,6 @@
     <Compile Include="Emulator\IO\Z80\ICTCDevice.cs" />
     <Compile Include="Emulator\IO\Z80\IDMADevice.cs" />
     <Compile Include="Emulator\IO\Z80\IOReg3.cs" />
-    <Compile Include="Emulator\IO\Z80\ISIODevice.cs" />
     <Compile Include="Emulator\IO\Z80\IZ80Device.cs" />
     <Compile Include="Emulator\IO\Z80\Keyboard.cs" />
     <Compile Include="Emulator\IO\Z80\MC3417.cs" />
@@ -195,6 +199,7 @@
     <Compile Include="Emulator\IO\Z80\Z80MemoryBus.cs" />
     <Compile Include="Emulator\IO\Z80\Z80SIO.cs" />
     <Compile Include="Emulator\IO\Z80\Z80SIOChannel.cs" />
+    <Compile Include="Emulator\IO\Z80\Z80SIORegisters.cs" />
     <Compile Include="Emulator\IO\Z80\Z80System.cs" />
     <Compile Include="Emulator\IO\Z80\Z80ToPERQFIFO.cs" />
     <Compile Include="Emulator\IO\Z80\Z80ToPERQLatch.cs" />
@@ -407,6 +412,7 @@
     <None Include="Docs\Network.txt" />
     <None Include="Docs\NewIOPorts.txt" />
     <None Include="Docs\PERQ_Chart.png" />
+    <None Include="Docs\SerialPorts.txt" />
     <None Include="Docs\Streamer.txt" />
     <None Include="Docs\Video.txt" />
     <None Include="Docs\Hardware References\Am9517A.pdf" />
@@ -776,6 +782,7 @@
     <Folder Include="Emulator\IO\DiskDevices\" />
     <Folder Include="Emulator\IO\TapeDevices\" />
     <Folder Include="Emulator\IO\Network\" />
+    <Folder Include="Emulator\IO\Ports\" />
     <Folder Include="Emulator\IO\Printers\" />
     <Folder Include="Resources\" />
     <Folder Include="UI\" />

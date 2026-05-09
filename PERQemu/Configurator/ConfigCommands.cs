@@ -21,6 +21,7 @@ using System;
 
 using PERQmedia;
 using PERQemu.Config;
+using PERQemu.IO.Ports;
 
 namespace PERQemu.UI
 {
@@ -289,6 +290,8 @@ namespace PERQemu.UI
         [Command("configure cpu", "Set the CPU type")]
         public void SetCPU(CPUType cpu)
         {
+            // Todo: add aliases for "4k", "16k", "24-bit"
+
             if (PERQemu.Config.Quietly)
             {
                 PERQemu.Config.Current.CPU = cpu;
@@ -730,68 +733,106 @@ namespace PERQemu.UI
             }
         }
 
-        [Command("configure enable rs232", "Enable use of a serial port")]
-        public void EnableRS232(char port = 'a')
-        {
-            if (OKtoReconfig())
-            {
-                var changed = EnableOrDisableSerial(port, true);
-
-                if (changed && !PERQemu.Config.Quietly)
-                    Console.WriteLine($"RS-232 port {char.ToUpper(port)} enabled.");
-            }
-        }
-
-        [Command("configure disable rs232", "Disable use of a serial port")]
-        public void DisableRS232(char port = 'a')
-        {
-            if (OKtoReconfig())
-            {
-                var changed = EnableOrDisableSerial(port, false);
-
-                if (changed && !PERQemu.Config.Quietly)
-                    Console.WriteLine($"RS-232 port {char.ToUpper(port)} disabled.");
-            }
-        }
-
-        bool EnableOrDisableSerial(char port, bool flag)
+        [Command("configure enable rs232", Discreet = true)]    // Deprecated in v0.9.0
+        public void EnableRS232(char port = 'a', bool enable = true)
         {
             switch (port)
             {
                 case 'a':
                 case 'A':
-                    if (PERQemu.Config.Current.RSAEnabled != flag)
-                    {
-                        PERQemu.Config.Current.RSAEnabled = flag;
-                        PERQemu.Config.Changed = true;
-                        return true;
-                    }
-                    return false;
+                    EnableRSA(enable);
+                    return;
 
                 case 'b':
                 case 'B':
-                    if (PERQemu.Config.Current.IOBoard == IOBoardType.EIO ||
-                        PERQemu.Config.Current.IOBoard == IOBoardType.NIO)
-                    {
-                        if (PERQemu.Config.Current.RSBEnabled != flag)
-                        {
-                            PERQemu.Config.Current.RSBEnabled = flag;
-                            PERQemu.Config.Changed = true;
-                            return true;
-                        }
-                        return false;
-                    }
-                    break;
+                    EnableRSB(enable);
+                    return;
             }
 
             // Fall through if bad port
             Console.WriteLine($"Invalid RS-232 port '{port}'.");
-            return false;
+        }
+
+        [Command("configure disable rs232", Discreet = true)]    // Deprecated in v0.9.0
+        public void DisableRS232(char port = 'a')
+        {
+            EnableRS232(port, false);
+        }
+
+        [Command("configure enable rs232a", "Enable use of serial port A")]
+        public void EnableRSA(bool enable = true)
+        {
+            if (PERQemu.Config.Quietly)
+            {
+                PERQemu.Config.Current.RSAEnabled = enable;
+                return;
+            }
+
+            if (PERQemu.Config.Current.RSAEnabled != enable)
+            {
+                PERQemu.Config.Current.RSAEnabled = enable;
+                PERQemu.Config.Changed = true;
+
+                Console.WriteLine("RS-232 port A is {0}abled.", (enable ? "en" : "dis"));
+
+                // Apply to the running system?
+                if (PERQemu.Controller.State > RunState.Off)
+                {
+                    PERQemu.Sys.IOB.Z80System.SIOA.DetachDevice(0);
+                    PERQemu.Sys.IOB.Z80System.SerialReset('A');
+                    PERQemu.Sys.IOB.Z80System.SIOA.Reset();     // Fixme: redundant?
+                }
+            }
+        }
+
+        [Command("configure enable rs232b", "Enable use of serial port B")]
+        public void EnableRSB(bool enable = true)
+        {
+            if (PERQemu.Config.Quietly)
+            {
+                PERQemu.Config.Current.RSBEnabled = enable;
+                return;
+            }
+
+            if (PERQemu.Config.Current.IOBoard != IOBoardType.EIO &&
+                PERQemu.Config.Current.IOBoard != IOBoardType.NIO)
+            {
+                Console.WriteLine("No serial port B on this I/O board.");
+                return;
+            }
+
+            if (PERQemu.Config.Current.RSBEnabled != enable)
+            {
+                PERQemu.Config.Current.RSBEnabled = enable;
+                PERQemu.Config.Changed = true;
+
+                if (!PERQemu.Config.Quietly)
+                    Console.WriteLine("RS-232 port B is {0}abled.", (enable ? "en" : "dis"));
+
+                if (PERQemu.Controller.State > RunState.Off)
+                {
+                    PERQemu.Sys.IOB.Z80System.SIOB.DetachDevice(0);
+                    PERQemu.Sys.IOB.Z80System.SerialReset('B');
+                    PERQemu.Sys.IOB.Z80System.SIOB.Reset();
+                }
+            }
+        }
+
+        [Command("configure disable rs232a", "Disable use of serial port A")]
+        public void DisableRSA()
+        {
+            EnableRSA(false);
+        }
+
+        [Command("configure disable rs232b", "Disable use of serial port B")]
+        public void DisableRSB()
+        {
+            EnableRSB(false);
         }
 
         #endregion
 
-        #region Tablet and keyboard commands
+        #region Tablet, keyboard and speech commands
 
         [Command("configure tablet", "Configure the pointing device(s)")]
         public void SetTablet(TabletType tab)
@@ -818,13 +859,45 @@ namespace PERQemu.UI
         {
             if (mapName == "default") mapName = string.Empty;
 
+            if (PERQemu.Config.Quietly)
+            {
+                PERQemu.Config.Current.Keymap = mapName;
+                return;
+            }
+
             if (mapName != PERQemu.Config.Current.Keymap)
             {
                 PERQemu.Config.Current.Keymap = mapName;
                 PERQemu.Config.Changed = true;
 
                 Console.WriteLine("Keyboard map is now {0}.",
-                                 mapName == "" ? "unset" : mapName);
+                                  mapName == "" ? "unset" : mapName);
+            }
+        }
+
+        [Command("configure enable speech", "Enable speech output")]
+        public void EnableSpeech()
+        {
+            if (!PERQemu.Config.Current.SpeechEnabled)
+            {
+                if (!PERQemu.Config.Quietly)
+                    Console.WriteLine("Speech enabled.");
+
+                PERQemu.Config.Current.SpeechEnabled = true;
+
+                // Change picked up automatically if running
+            }
+        }
+
+        [Command("configure disable speech", "Disable speech output")]
+        public void DisableSpeech()
+        {
+            if (PERQemu.Config.Current.SpeechEnabled)
+            {
+                if (!PERQemu.Config.Quietly)
+                    Console.WriteLine("Speech disabled.");
+
+                PERQemu.Config.Current.SpeechEnabled = false;
             }
         }
 
@@ -917,19 +990,17 @@ namespace PERQemu.UI
             {
                 Console.WriteLine("Configuration is not valid:");
                 Console.WriteLine(PERQemu.Config.Current.Reason);
+                return;
             }
-            else
+
+            if (PERQemu.Config.Current.Reason != string.Empty)
             {
-                if (PERQemu.Config.Current.Reason != string.Empty)
-                {
-                    Console.WriteLine("Configuration is valid, with warnings:");
-                    Console.WriteLine(PERQemu.Config.Current.Reason);
-                }
-                else
-                {
-                    Console.WriteLine("This configuration is valid.");
-                }
+                Console.WriteLine("Configuration is valid, with warnings:");
+                Console.WriteLine(PERQemu.Config.Current.Reason);
+                return;
             }
+
+            Console.WriteLine("This configuration is valid.");
         }
     }
 }

@@ -1,5 +1,5 @@
 //
-// Z80SIO.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80SIO.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -27,18 +27,11 @@ namespace PERQemu.IO.Z80
     /// Implements the Z80 SIO serial controller, with some PERQ peculiarities
     /// built-in.  It provides the operational modes that the PERQ I/O boards
     /// make use of for talking to RS-232 ports, the Speech output device, and
-    /// (optionally) the Kriz tablet.  On EIO, the serial keyboard is connected
-    /// to an SIO.  Handles async and (simple) sync modes.
+    /// the Kriz tablet.  On EIO, the serial keyboard is connected to an SIO.
+    /// Handles async and (simple) sync modes.
     /// </summary>
     /// <remarks>
-    /// Each channel may have a basic ISIODevice attached (for pseudo devices
-    /// not backed by a physical port) or an ISerialDevice (a superset that has
-    /// hooks for mapping register configuration to real hardware on the host).
-    /// On both board types (IOB and EIO, regardless of variant or firmware) one
-    /// SIO is DMA capable; the RS-232 port "A" can do "HiVol" reads or writes,
-    /// while the Speech device using port "B" can do DMA writes only.  On both
-    /// board types, the Kriz tablet uses the port "B" receive side and shares
-    /// a clock with speech.
+    /// See Docs/SerialPorts.txt for way more information.
     /// </remarks>
     public partial class Z80SIO : IZ80Device, IDMADevice
     {
@@ -64,7 +57,6 @@ namespace PERQemu.IO.Z80
         protected Z80SIO(byte baseAddress, Scheduler scheduler, int portCount)
         {
             _baseAddress = baseAddress;
-            _scheduler = scheduler;
 
             _ports = new byte[portCount];
 
@@ -74,19 +66,30 @@ namespace PERQemu.IO.Z80
             }
 
             _channels = new Channel[2];
-            _channels[0] = new Channel(0, _scheduler);
-            _channels[1] = new Channel(1, _scheduler);
+            _channels[0] = new Channel(0, scheduler);
+            _channels[1] = new Channel(1, scheduler);
         }
 
+        /// <summary>
+        /// Fully reset this instance - both channels and DMA.
+        /// </summary>
         public void Reset()
         {
-            _channels[0].Reset();
-            _channels[1].Reset();
+            Reset(0);
+            Reset(1);
 
             _dmaChanSelect = SpeechSel;
             _dmaAcknowledged = false;
 
             Log.Debug(Category.SIO, "Unit {0} reset", _unit);
+        }
+
+        /// <summary>
+        /// Reset only the specified channel; used to re-open the serial device(s).
+        /// </summary>
+        public void Reset(int chan)
+        {
+            _channels[chan].Reset();
         }
 
         public char Unit => _unit;
@@ -136,11 +139,9 @@ namespace PERQemu.IO.Z80
 
         public event EventHandler NmiInterruptPulse { add { } remove { } }
 
-        //
-        // IDMADevice implementation
-        //
+        #region IDMADevice implementation
 
-        public bool ReadDataReady
+        public bool DMAReadReady
         {
             get
             {
@@ -152,7 +153,7 @@ namespace PERQemu.IO.Z80
             }
         }
 
-        public bool WriteDataReady
+        public bool DMAWriteReady
         {
             get
             {
@@ -168,8 +169,8 @@ namespace PERQemu.IO.Z80
 
         public void DMATerminate()
         {
-            Log.Info(Category.SIO, "DMATerminate called (chan {0}, ack {1})",
-                                   _dmaChanSelect, _dmaAcknowledged);
+            Log.Detail(Category.SIO, "DMATerminate called (chan {0}, ack {1})",
+                                     _dmaChanSelect, _dmaAcknowledged);
 
             _dmaAcknowledged = false;
         }
@@ -181,10 +182,12 @@ namespace PERQemu.IO.Z80
             // the _dmaChanSelect remapping, or not.  This is just kinda gross.
             _dmaAcknowledged = true;
 
-            Log.Info(Category.SIO, "DMA ACK on port 0x{0:x2}", portAddress);
+            Log.Detail(Category.SIO, "DMA ACK on port 0x{0:x2}", portAddress);
         }
 
-        public void AttachDevice(int channel, ISIODevice device)
+        #endregion
+
+        public void AttachDevice(int channel, SerialDevice device)
         {
             if (channel < 0 || channel > 1)
             {
@@ -192,12 +195,6 @@ namespace PERQemu.IO.Z80
             }
 
             _channels[channel].AttachDevice(device);
-        }
-
-        public void AttachPortDevice(int channel, SerialDevice device)
-        {
-            AttachDevice(channel, device);
-            _channels[channel].OpenPort(device);
         }
 
         public void DetachDevice(int channel)
@@ -245,7 +242,8 @@ namespace PERQemu.IO.Z80
                 // assigned the A & B halves of the device in the opposite way:
                 // RS-232 (A is active LOW and Speech (B) is active HIGH. <smdh>
                 _dmaChanSelect = ~value & 0x1;
-                Log.Info(Category.SIO, "EIO Speech Select now {0} (0x{1:x})", _dmaChanSelect, value);
+
+                Log.Debug(Category.SIO, "EIO Speech Select now {0} (0x{1:x})", _dmaChanSelect, value);
                 return;
             }
 
@@ -324,10 +322,26 @@ namespace PERQemu.IO.Z80
             return -1;          // Fail
         }
 
+        // Debugging
+        public void DumpRegisters()
+        {
+            Console.WriteLine($"SIO {_unit} status:");
+
+            if (_channels[0].Port != null) _channels[0].DumpRegs();
+            if (_channels[1].Port != null) _channels[1].DumpRegs();
+        }
 
         public void DumpPortStatus(int chan)
         {
             _channels[chan].Port?.Status();
+        }
+
+        public void Telemetry(int chan, bool enable)
+        {
+            if (enable)
+                _channels[chan].StartLog();
+            else
+                _channels[chan].StopLog();
         }
 
         // Extra EIO bits
@@ -343,7 +357,6 @@ namespace PERQemu.IO.Z80
         bool _isEIO;
         char _unit;
 
-        Scheduler _scheduler;
         Channel[] _channels;
     }
 }

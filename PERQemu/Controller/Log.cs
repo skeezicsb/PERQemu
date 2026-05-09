@@ -634,7 +634,7 @@ namespace PERQemu
             _colors.Add(Category.RTC, ConsoleColor.DarkBlue);
             _colors.Add(Category.GPIB, ConsoleColor.Blue);
             _colors.Add(Category.RS232, ConsoleColor.DarkBlue);
-            _colors.Add(Category.Speech, ConsoleColor.DarkBlue);
+            _colors.Add(Category.Speech, ConsoleColor.Blue);
 
             // Peripherals
             _colors.Add(Category.Tablet, ConsoleColor.Blue);

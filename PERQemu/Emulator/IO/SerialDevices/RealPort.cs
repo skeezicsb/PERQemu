@@ -1,5 +1,5 @@
 ﻿//
-// RealPort.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// RealPort.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -18,148 +18,55 @@
 //
 
 using System;
-using System.IO.Ports;
 
 using PERQemu.IO.Z80;
+using PERQemu.IO.Ports;
 
 namespace PERQemu.IO.SerialDevices
 {
     /// <summary>
-    /// Encapsulates a System.IO.Ports.SerialPort to talk to a real serial port,
-    /// or whatever USB hack passes for that nowadays.  Allows the emulator to
-    /// reach out and touch a connected serial device, handling flow control and
-    /// buffering to smooth data transmission with the PERQ.
+    /// "RealPort" encapsulates a PERQemu.IO.Ports.SerialPort to exchange data
+    /// between the Z80 SIO operating in "virtual time" and a real serial port
+    /// on the host (or an equivalent USB to serial bridge adapter/cable).
     /// </summary>
     /// <remarks>
-    /// NB:  To work around limitations of the SerialPort implementation, all of
-    /// the configurable port settings are shadowed in local variables.  Many of
-    /// the settings can only be applied prior to calling Open(), and will either
-    /// be ignored or throw exceptions otherwise.
+    /// See the file Docs/SerialPorts.txt for the gruesome implementation details.
     /// </remarks>
-    public class PhysicalPort : SerialDevice
+    public class RealPort : SerialDevice
     {
-        public PhysicalPort(Z80System sys, string portName, SerialSettings portSet, string id) : base(sys, portName)
+        public RealPort(Z80System sys, string id, string portName, SerialSettings portSet) : base(sys, portName)
         {
-            _name = id;                     // Distinguish RS232 "A" and "B"
-            _host = portSet;                // The user's host-side configuration
-            _perq = new SerialSettings();   // The PERQ's view (mostly ignored)
-            _port = new SerialPort();       // The host's actual port
+            _name = id;                                 // Distinguish RS-232 "A" and "B"
+            _host = portSet;                            // User's host-side configuration
+            _perq = SerialSettings.Defaults;            // PERQ's view (mostly ignored)
+            _port = new SerialPort(portName, portSet);  // The host's actual port
 
-            // Tune some things that should only need setting once?
-            _port.WriteBufferSize = 1024;
-            _port.ReadBufferSize = 1024;
+            // Tune some things that should only need setting once?  These may not
+            // even be exposed as user-settable once debugging and performance is
+            // characterized against the full range of baud rates.
+            _port.WriteBufferSize = 128;
+            _port.ReadBufferSize = 256;
+            _port.ReadTimeout = 0;
         }
 
-        public override void Reset()
-        {
-            if (PERQemu.HostIsUnix)
-            {
-                _system.Scheduler.Cancel(_recvPoll);
-                _recvPoll = null;
-                _polling = false;
-            }
-
-            if (IsOpen)
-            {
-                // Flush data (this may not actually work)
-                _port.DiscardInBuffer();
-                _port.DiscardOutBuffer();
-            }
-
-            // Reset to PERQ defaults
-            _perq.BaudRate = 9600;
-            _perq.DataBits = 8;
-            _perq.Parity = Parity.None;
-            _perq.StopBits = StopBits.One;
-            _dtr = true;
-            _rts = true;
-            _portChanged = false;
-
-            // Adjust the pacing rates for scheduling characters to the PERQ
-            _txRate = _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
-
-            Log.Info(Category.RS232, "Port {0} physical device reset", _name);
-        }
-
-        //
-        // ISerialDevice implementation
-        //
 
         /// <summary>
-        /// Open the host device and apply the user-configured settings.  This
-        /// runs at any rate they configure, while the PERQ side emulates/limits
-        /// the data flow to the PERQ's restricted range of speeds.
+        /// Check that the port is open by comparing our expected state (_isOpen)
+        /// with the actual port status (_port.IsOpen) because the bloody device
+        /// may suddenly disappear and throw IOExceptions if you unplug it.  Ugh.
         /// </summary>
-        public override void Open()
+        public override bool IsOpen
         {
-            // Most of the port's characteristics only take effect before calling
-            // Open();  If _portChanged is set the user wants to force a change
-            // so do a close and reopen to apply new settings.
-            if (!_isOpen || _portChanged)
+            get
             {
-                try
-                {
-                    if (_isOpen) Close();
-
-                    _port.PortName = _portName;
-                    _port.BaudRate = _host.BaudRate;
-                    _port.DataBits = _host.DataBits;
-                    _port.Parity = _host.Parity;
-                    _port.StopBits = _host.StopBits;
-                    _port.Handshake = Handshake.XOnXOff;
-                    _port.DtrEnable = _dtr;
-                    _port.RtsEnable = _rts;
-
-                    _port.DataReceived += OnDataReceived;
-                    _port.PinChanged += OnPinChange;
-                    _port.ErrorReceived += OnError;
-
-                    _port.Open();
-                    _portChanged = false;
-                }
-                catch (Exception e)
-                {
-                    Log.Error(Category.RS232, "Could not open physical port: {0}", e.Message);
-                }
+                _isOpen = _port?.IsOpen ?? false;
+                return _isOpen;
             }
-
-            _isOpen = _port.IsOpen;
-            Log.Info(Category.RS232, "Port {0} is {1}", _name, _isOpen ? "now open" : "still closed!");
         }
-
-        public override void Close()
-        {
-            _system.Scheduler.Cancel(_recvPoll);
-            _recvPoll = null;
-
-            // So apparently it's quite common to catch exceptions when trying
-            // to close the port; catch (and ignore) 'em just in case
-            try
-            {
-                _port.ErrorReceived -= OnError;
-                _port.PinChanged -= OnPinChange;
-                _port.DataReceived -= OnDataReceived;
-
-                _port.Close();
-            }
-            catch (Exception e)
-            {
-                Log.Error(Category.RS232, "Exception on close: {0}", e.Message);
-            }
-
-            _isOpen = _port.IsOpen;
-            Log.Info(Category.RS232, "Port {0} is {1}", _name, _isOpen ? "still open!" : "now closed");
-        }
-
 
         public override int BaudRate
         {
             get { return _perq.BaudRate; }
-        }
-
-        public override int ByteCount
-        {
-            get { return (_isOpen ? _port.BytesToRead : 0); }
         }
 
         public override int DataBits
@@ -180,22 +87,132 @@ namespace PERQemu.IO.SerialDevices
             set { _perq.StopBits = value; }
         }
 
+        //
+        // Virtual I/O pins
+        //
+
+        /// <summary>
+        /// DTR is set/cleared by register write when the SIO is enabled.  We
+        /// pass it straight through to the physical port.
+        /// </summary>
         public override bool DTR
         {
-            get { return (IsOpen ? _port.DtrEnable : _dtr); }
-            set { _dtr = value; _portChanged |= (_isOpen && _port.DtrEnable != _dtr); }
+            get { return _port.DataTerminalReady; }
+            set { _port.DataTerminalReady = value; }
         }
 
+        /// <summary>
+        /// The virtual RTS pin is set based on the register bit programming or
+        /// the state of the Tx FIFO (depending on Sync Mode/Auto Enables control
+        /// bits).  This is decoupled from the physical port, which will assert
+        /// RTS/CTS if set (by the user) to do "hardware flow control," but the
+        /// virtual machine doesn't touch the hardware directly.
+        /// </summary>
         public override bool RTS
         {
-            get { return (IsOpen ? _port.RtsEnable : _rts); }
-            set { _rts = value; _portChanged |= (_isOpen && _port.RtsEnable != _rts); }
+            get { return _rts; }
+            set { _rts = value; }
         }
 
-        public override bool DCD => (_isOpen && _port.CDHolding);
-        public override bool DSR => (_isOpen && _port.DsrHolding);
-        public override bool CTS => (_isOpen && _port.CtsHolding);
+        /// <summary>
+        /// Virtual CTS is set based on the physical port's read buffer state.
+        /// </summary>
+        public override bool CTS => _port.ReadPending < _port.ReadBufferSize;
 
+        /// <summary>
+        /// Virtual DCD is passed through from the physical port.  But because
+        /// the crazy SIO uses it as the Rx enable in AutoEnables mode, we allow
+        /// a software override to avoid the chicken & egg problem when talking
+        /// to uh, an actual modem.  <facepalm />
+        /// </summary>
+        public override bool DCD => (_host.Options == SerialOptions.DCDFollowDSR ? DSR :
+                                     _host.Options == SerialOptions.DCDForceOn ? true :
+                                     _port.CarrierDetect);
+
+        /// <summary>
+        /// Virtual DSR is passed through but the Z80 SIO doesn't actually use or
+        /// report this pin, so I could probably just yeet this entirely.  Hmmm.
+        /// </summary>
+        public override bool DSR => _port.DataSetReady;
+
+
+        public override bool WriteReady => _port.WritePending < _port.WriteBufferSize;
+        public override bool ReadReady => _port.ReadPending > 0;
+
+
+        public string SignalStatus
+        {
+            get
+            {
+                if (!_isOpen) return "[Port closed]";
+
+                return $"DCD: {DCD}  DTR: {DTR}  DSR: {DSR}  CTS: {CTS}  RTS: {_rts}";
+            }
+        }
+
+        public override void Reset()
+        {
+            // Flush the local buffers
+            _port.DiscardInBuffer();
+            _port.DiscardOutBuffer();
+
+            // Reset to PERQ defaults
+            _perq = SerialSettings.Defaults;
+
+            // Adjust the pacing rates for scheduling characters to the PERQ
+            _txRate = _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
+
+            // Adjust the polling rate of the physical interface
+            _pollRate = (_rxRate * 16);
+
+            Log.Info(Category.RS232, "{0} physical device reset", _name);
+        }
+
+        /// <summary>
+        /// Open the host device and apply the user-configured Settings.  This
+        /// runs at any rate they configure, while the PERQ side emulates/limits
+        /// the data flow to the PERQ's restricted range of speeds.
+        /// </summary>
+        public override void Open()
+        {
+            // Most of the port's characteristics only take effect before calling
+            // Open();  If _portChanged is set the user wants to force a change
+            // so do a close and reopen to apply new settings.
+
+            if (IsOpen) Close();
+
+            _port.PortName = _portName;
+            _port.BaudRate = _host.BaudRate;
+            _port.DataBits = _host.DataBits;
+            _port.Parity = _host.Parity;
+            _port.StopBits = _host.StopBits;
+            _port.FlowControl = _host.FlowControl;
+
+            _port.Open();
+
+            _isOpen = _port.IsOpen;
+            Log.Info(Category.RS232, "{0} is {1}", _name, _isOpen ? "now open" : "still closed!");
+        }
+
+        /// <summary>
+        /// If the port is open, call its Poll routine to move data between the
+        /// virtual machine and the host.
+        /// </summary>
+        public override bool Poll()
+        {
+            Log.Verbose(Category.RS232, "Polling {0}", _name);
+            return _port.Poll();
+        }
+
+        /// <summary>
+        /// Stop any active polling and close the host port.
+        /// </summary>
+        public override void Close()
+        {
+            _port.Close();
+
+            Log.Info(Category.RS232, "{0} is {1}", _name, IsOpen ? "still open!" : "now closed");
+        }
 
         /// <summary>
         /// Compute new baud rate from the timer tick rate provided by the CTC.
@@ -219,7 +236,7 @@ namespace PERQemu.IO.SerialDevices
                     else
                         throw new InvalidOperationException($"RS232 baud rate change from CTC chan {chan}?");
 
-                    Log.Info(Category.RS232, "Port {0} {1} baud rate changed to {2}", _name,
+                    Log.Info(Category.RS232, "{0} {1} baud rate changed to {2}", _name,
                                              (chan == 0) ? "receive" : "transmit", _perq.BaudRate);
                     return;
                 }
@@ -227,186 +244,76 @@ namespace PERQemu.IO.SerialDevices
                 // On IOB/CIO, no split rates
                 _txRate = _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
 
-                Log.Info(Category.RS232, "Port {0} baud rate changed to {1}", _name, _perq.BaudRate);
+                Log.Info(Category.RS232, "{0} baud rate changed to {1}", _name, _perq.BaudRate);
                 return;
             }
 
             // This is highly unlikely, but alert if it happens
-            Log.Warn(Category.RS232, "Port {0} bad baud rate {1} from the PERQ!", _name, newRate);
+            Log.Warn(Category.RS232, "{0} bad baud rate {1} from the PERQ!", _name, newRate);
         }
 
         /// <summary>
-        /// Start (or continue) data transmission FROM the port TO the PERQ.  The
-        /// system provides a huge buffer (4K by default!?) so we don't bother to
-        /// copy the data again; just transmit the first character and schedule a
-        /// callback to continue sending bytes at the proper pace until the buffer
-        /// empties.
+        /// If a byte is available from the host, send it to the PERQ.
         /// </summary>
-        void OnDataReceived(object sender, SerialDataReceivedEventArgs e)
+        public override byte Receive()
         {
-            ReceiveByte(0, null);
-        }
+            var result = _port.ReadByte();
 
-        public override void PollReceiver(bool enabled)
-        {
-            if (enabled)
+            if (result < 0)
             {
-                _polling = true;
-                ReceiveByte(0, null);       // Kick off the receiver loop
-            }
-            else
-            {
-                _system.Scheduler.Cancel(_recvPoll);
-                _recvPoll = null;
-                _polling = false;
+                Log.Warn(Category.RS232, "{0} read failed: {1}", _name,
+                                         result < 0 ? "device not open!" : "buffer empty");
+                return 0;
             }
 
-            Log.Info(Category.RS232, "Receive polling on {0} is {1}", _name, _polling);
-        }
+            Log.Debug(Category.RS232, "Read byte {0:x2} ({1} in input queue)", result, _port.ReadPending);
 
-        /// <summary>
-        /// If a byte is available from the host, send it to the PERQ.  On Windows
-        /// this is invoked by the DataReceived event, but on Unix we have to fake
-        /// it because that's not implemented (or is just broken) in Mono.  Sigh.
-        /// </summary>
-        void ReceiveByte(ulong skewNsec, object context)
-        {
-            if (ByteCount > 0)
-            {
-                // Fetch a byte from the physical device...
-                var data = _port.ReadByte();
-
-                // ...and send it to the PERQ
-                _rxDelegate((byte)data);
-
-                Log.Debug(Category.RS232, "Read byte {0:x2} ({1} in input queue)", data, ByteCount);
-            }
-
-            // If we're polling, schedule the next byte
-            if (PERQemu.HostIsUnix && _polling)
-            {
-                _recvPoll = _system.Scheduler.Schedule(ReceiveRate - skewNsec, ReceiveByte, null);
-            }
-        }
-
-        void OnPinChange(object sender, SerialPinChangedEventArgs e)
-        {
-            Log.Info(Category.RS232, "Pin changed! {0}", e.EventType);
-
-            PortStatus stat = PortStatus.None;
-
-            switch (e.EventType)
-            {
-                case SerialPinChange.DsrChanged:
-                    // The Z80 SIO doesn't handle this pin
-                    return;
-
-                case SerialPinChange.CDChanged:
-                case SerialPinChange.CtsChanged:
-                    // We poll 'em both when updating the SIO regs
-                    stat = PortStatus.PinChange;
-                    break;
-
-                case SerialPinChange.Ring:
-                    // This isn't wired up on the PERQ
-                    Console.WriteLine("One ringy dingy...");
-                    return;
-
-                case SerialPinChange.Break:
-                    stat = PortStatus.BreakDetected;
-                    break;
-
-                default:
-                    throw new InvalidOperationException($"Pin update {e.EventType}");
-            }
-
-            _errDelegate(stat);
-        }
-
-        void OnError(object sender, SerialErrorReceivedEventArgs e)
-        {
-            Log.Info(Category.RS232, "Serial port error! {0}", e.EventType);
-
-            PortStatus stat = PortStatus.None;
-
-            switch (e.EventType)
-            {
-                case SerialError.Frame:
-                    stat = PortStatus.FramingError;
-                    break;
-
-                case SerialError.Overrun:
-                case SerialError.RXOver:
-                    stat = PortStatus.RxOverrun;
-                    break;
-
-                case SerialError.TXFull:
-                    stat = PortStatus.TxOverrun;
-                    break;
-
-                case SerialError.RXParity:
-                    stat = PortStatus.ParityError;
-                    break;
-
-                default:
-                    throw new InvalidOperationException($"Port error {e.EventType}");
-            }
-
-            _errDelegate(stat);
+            return (byte)result;
         }
 
         /// <summary>
         /// Write a byte from the PERQ to the physical port.
         /// </summary>
-        /// <remarks>
-        /// ASSUMPTIONS:
-        /// 1.  The large default output buffer (2K) will accept characters to
-        ///     be queued even if flow control is in effect;
-        /// 2.  Writes to the port won't block unless/until the queue is full,
-        ///     which should rarely/never happen;
-        /// 3.  This is all wrong and System.IO.SerialPort is hopelessly busted.
-        ///     But we'll give it a go and see if it works at all...
-        /// </remarks>
         public override void Transmit(byte value)
         {
-            if (!_isOpen)
+            var result = _port.WriteByte(value);
+
+            if (result < 1)
             {
-                Log.Warn(Category.RS232, "Port {0} write ({1:x2}) failed, device not open!", _name, value);
+                Log.Warn(Category.RS232, "{0} write ({1:x2}) failed: {2}", _name, value,
+                                         result < 0 ? "device not open!" : "buffer full");
                 return;
             }
 
-            _port.Write(new byte[] { value }, 0, 1);
-            Log.Debug(Category.RS232, "Wrote byte {0:x2} ({1} in output queue)", value, _port.BytesToWrite);
+            Log.Debug(Category.RS232, "Wrote byte {0:x2} ({1} in output queue)", value, _port.WritePending);
         }
 
         /// <summary>
         /// Transmit a break.
         /// </summary>
-        public override void TransmitBreak()
+        public override void TransmitBreak(bool enable)
         {
-            if (!_isOpen) return;
-
-            // Cheeky.  Let the delay of the Log() call be the delay?  No idea if this works.
-            _port.BreakState = true;
-            Log.Info(Category.RS232, "Port {0} sending BREAK...", _name);
-            _port.BreakState = false;
+            _port.BreakState = enable;
         }
 
         // Debugging
         public override void Status()
         {
-            Console.WriteLine($"Serial port {Name}:  device is '{Port}', IsOpen={IsOpen}");
-            Console.WriteLine($"Host settings: {_host}");
-            Console.WriteLine($"PERQ settings: {_perq}");
+            Console.WriteLine($"Serial {Name}:  device '{Port}', IsOpen: {IsOpen}");
+            Console.WriteLine($"  Host settings: {_host}");
+            Console.WriteLine($"  PERQ settings: {_perq}");
 
-            Console.WriteLine($"Handshake: {_port.Handshake}  Break state: {_port.BreakState}");
-            Console.WriteLine($"Rx buffer: {ByteCount}/{_port.ReadBufferSize}  " +
-                              $"pacing {_rxRate * Conversion.NsecToMsec}ms");
-            Console.WriteLine($"Tx buffer: {_port.BytesToWrite}/{_port.WriteBufferSize}, " +
-                              $"pacing {_txRate * Conversion.NsecToMsec}ms");
-            Console.WriteLine($"Pins:  DCD={DCD} DTR={DTR} DSR={DSR} RTS={RTS} CTS={CTS}");
+            Console.WriteLine("  Pacing: Rx {0}ms  Tx {1}ms  Break state: {2}  RTS: {3}",
+                              _rxRate * Conversion.NsecToMsec,
+                              _txRate * Conversion.NsecToMsec,
+                              _port.BreakState, RTS);
+            Console.WriteLine("Physical state:");
+            Console.WriteLine("  " + _port.SignalStatus);
+            Console.WriteLine("  " + _port.StreamStatus);
         }
 
+        // Virtual pins
+        bool _rts;
 
         // Host side
         SerialPort _port;
@@ -414,51 +321,6 @@ namespace PERQemu.IO.SerialDevices
 
         // PERQ side
         SerialSettings _perq;
-
-        bool _dtr;
-        bool _rts;
-        bool _portChanged;
-        bool _polling;
-
-        // Polling event on Unix hosts
-        SchedulerEvent _recvPoll;
     }
 }
 
-/*
-    Baud rate clock notes:
-    
-    For IOB/CIO (Z80 @ 2.4576Mhz) the CTC is programmed with these values
-    (channel 0) to generate the RS232-A port baud rate clock:
-
-    Prescaler for timer: 16 (or 256)    2.4576Mhz = 407ns
-    SIO driven @ 16x freq, so delta * 16 = bit rate, * 10 = char/irq rate
-    
-    9600    TC 1    delta 6512      -> 104192ns/bit or 1.042ms/char
-    4800    TC 2    delta 13024     -> 208384ns/bit or 2.084ms/char
-    2400    TC 4    delta 26048     -> 406768ns/bit or 4.168ms/char
-    1200    TC 8    delta 52096     -> 833536ns/bit or 8.335ms/char
-     600    TC 16   delta 104192    -> 1667072ns/bit, 16.670ms/char
-     300    TC 32   delta 208384    -> 3334144ns/bit, 33.341ms/char
-     150    TC 64   delta 416768    -> 6668288ns/bit, 66.682ms/char
-     110    TC 87   delta 566544    -> 9064704ns/bit, 90.647ms/char
-
-    At 9600 baud, scheduling a serial event at 1.042ms intervals could
-    actually work; on the Z80 scheduler that's 256 clocks between chars,
-    a rate that wouldn't put an undue strain on the emulator if there
-    was a clean way to avoid polling... or make it "cheap" enough.
-
-    EIO (Z80 @ 4Mhz) uses an Intel i8254 timer, so the rate codes are
-    different but the interface is the same.  EIO allows for two ports
-    and for separate Tx and Rx clocks (including split external clocking
-    if the TC and RC pins are used) so that throws the "baud rate" into
-    question... but so far I don't see any standard utilities that let a
-    user set up a split baud clock.  IF there was ever a desire to find
-    and build the IBM 3270 client software or do some radically strange
-    serial device with SDLC, CRCs, split or external clocking, etc., the
-    C#/Mono serial port implementation wouldn't support it anyway.  So
-    for now, the only modification is to have the CTC inform the client
-    which channel has changed (so the _virtual_ interface can in theory
-    split the clock timing, but the physical port runs at the fixed rate
-    from the host Settings.  I've given this more thought than it needs.
- */
