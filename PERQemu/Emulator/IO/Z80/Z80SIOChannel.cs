@@ -86,7 +86,7 @@ namespace PERQemu.IO.Z80
             public SerialDevice Port => _device;
 
             public bool CanRead => _rxFifo.Count > 0;
-            public bool CanWrite => _txFifo.Count < 3;
+            public bool CanWrite => _txFifo.Count < 2;
 
             public bool InterruptLatched => _rxIntLatched || _txIntLatched || _extIntLatched;
             public bool StatusAffectsVector => _registers.StatusAffectsVector;
@@ -157,7 +157,6 @@ namespace PERQemu.IO.Z80
                             break;
 
                         case Command.ResetExtStatusInt:
-                            // FIXME: more to do here?
                             _extIntLatched = false;
                             break;
 
@@ -282,10 +281,11 @@ namespace PERQemu.IO.Z80
             /// </summary>
             public void WriteData(byte data)
             {
-                // Can't happen? The CanWrite flag shouldn't allow it
+                // The CanWrite flag shouldn't allow this; drop the byte?
                 if (_txFifo.Count > 1)
                 {
-                    // TODO: Overrun!!
+                    Log.Info(Category.SIO, "Channel {0} write to full FIFO ignored", _channelNum);
+                    return;
                 }
 
                 _txFifo.Enqueue(data);
@@ -354,8 +354,10 @@ namespace PERQemu.IO.Z80
                     _registers.CTSState = _device.CTS;
                 }
 
-                // TODO: we aren't detecting these (yet?)
-                // it's not clear termios/mono will even pass them to us?
+                // TODO: we aren't detecting breaks (yet?); it's not clear termios/mono
+                // will even pass them to us?  But they can be detected by watching the
+                // line status... can o' worms.  Also, handling them requires interrupts
+                // at each transition, so this is high effort for low/no reward...
                 //_readRegs[0] |= (byte)(_breakDetected ? RR0.BreakAbort : 0);
 
                 // If they changed, latch the external/status interrupt (if enabled)
@@ -483,36 +485,6 @@ namespace PERQemu.IO.Z80
             }
 
             /// <summary>
-            /// Update signal pin status bits in RR1 based on latest poll.
-            /// </summary>
-            void UpdateErrorFlags()
-            {
-                //    // Latch error bits in RR1
-                //    if ((status & PortStatus.RxOverrun) != 0)
-                //    {
-                //        _readRegs[1] |= (byte)RReg1.RxOverrun;
-                //    }
-
-                //    if ((status & PortStatus.ParityError) != 0)
-                //    {
-                //        _readRegs[1] |= (byte)RReg1.ParityError;
-                //    }
-
-                //    if ((status & PortStatus.FramingError) != 0)
-                //    {
-                //        _readRegs[1] |= (byte)RReg1.CrcFraming;
-                //    }
-
-                //    if ((status & PortStatus.BreakDetected) != 0)
-                //    {
-                //        // "The Break/Abort bit is not used in the Synchronous Receive mode."
-                //        _breakDetected = !SyncMode;
-                //    }
-
-                //    UpdateFlags();   // Update RR0
-            }
-
-            /// <summary>
             /// Start the polling event if a port device is attached, the loop is
             /// not already running, and one/both of the Rx/Tx enable bits are set.
             /// </summary>
@@ -555,96 +527,115 @@ namespace PERQemu.IO.Z80
                 }
 
                 byte data;
+                ulong delay = 0;
 
                 var updateNeeded = false;
                 var now = _scheduler.CurrentTimeNsec;
-                var delay = _device.PollRate;
 
                 // Poll the device first, if requested
                 if ((_device.PollRate > 0) && (_nextPoll <= now))
                 {
                     if (_logging) _log.WriteLine($"0,{now},Polling");
-                    updateNeeded = _device.Poll();          // Hack.  for now.
-                    _nextPoll = now + _device.PollRate;
+                    updateNeeded = _device.Poll();
+                    _nextPoll = now - skewNsec + _device.PollRate;
                 }
 
-                if (_registers.RxEnabled)
+                // Compute offset to next event
+                if (_nextPoll > now) delay = _nextPoll - now;
+
+                // Check the receiver
+                if ((_device.ReceiveRate > 0) && _registers.RxEnabled)
                 {
                     // Time to read another char?
-                    if ((_nextCharRx <= now) && _device.ReadReady && (_rxFifo.Count < 4))
+                    if (_nextCharRx <= now)
                     {
-                        data = _device.Receive();
-                        if (_logging) _log.WriteLine($"1,{now},{data:x2}");
-
-                        // Still in hunt mode?
-                        if (!_registers.SyncMode ||
-                            (_registers.SyncMode && !Hunting(data, _registers.RxSyncByte)))
+                        if (_device.ReadReady && (_rxFifo.Count < 4))
                         {
-                            // Async receive, or Sync mode (not in hunt mode)
-                            _rxFifo.Enqueue(data);
-                            _rxIntLatched = RxIntEnabled;
+                            data = _device.Receive();
+                            if (_logging) _log.WriteLine($"1,{now},{data:x2}");
 
-                            Log.Detail(Category.SIO, "Channel {0} Rx data: 0x{1:x2}, queue depth {2}",
-                                                     _channelNum, data, _rxFifo.Count);
+                            // Still in hunt mode?
+                            if (!_registers.SyncMode ||
+                                (_registers.SyncMode && !Hunting(data, _registers.RxSyncByte)))
+                            {
+                                // Async receive, or Sync mode (not in hunt mode)
+                                _rxFifo.Enqueue(data);
+                                _rxIntLatched = RxIntEnabled;
+
+                                Log.Detail(Category.SIO, "Channel {0} Rx data: 0x{1:x2}, queue depth {2}",
+                                                         _channelNum, data, _rxFifo.Count);
+                            }
+
+                            updateNeeded = true;
                         }
 
-                        updateNeeded = true;
-                        _nextCharRx = now + _device.ReceiveRate;
+                        // Delay 'til the next one
+                        _nextCharRx = now - skewNsec + _device.ReceiveRate;
                     }
 
-                    if ((delay == 0) || (_device.ReceiveRate > 0 && _device.ReceiveRate < delay))
-                        delay = _device.ReceiveRate;
+                    if (delay == 0 || ((_nextCharRx > now) && (_nextCharRx - now < delay)))
+                        delay = _nextCharRx - now;
                 }
 
-                if (_registers.TxEnabled)
+                // Check the transmitter
+                if ((_device.TransmitRate > 0) && _registers.TxEnabled)
                 {
-                    // Have a char? Time to send it?
-                    if ((_nextCharTx <= now) && _device.WriteReady && ((_txFifo.Count > 0) || _registers.SyncMode))
+                    // Time to send it?
+                    if (_nextCharTx <= now)
                     {
-                        if (_txFifo.Count > 0)
+                        // What to send?
+                        if (_device.WriteReady && ((_txFifo.Count > 0) || _registers.SyncMode))
                         {
-                            data = _txFifo.Dequeue();
+                            if (_txFifo.Count > 0)
+                            {
+                                data = _txFifo.Dequeue();
+                            }
+                            else
+                            {
+                                // In SyncMode (Speech) if there's no data, inject a sync byte
+                                // TODO: Assert the proper Underrun error status bits...
+                                data = _registers.TxSyncByte;
+                            }
+
+                            // Ship it
                             _device.Transmit(data);
-                        }
-                        else
-                        {
-                            // In SyncMode (Speech) if there's no data, inject a sync byte
-                            data = _registers.TxSyncByte;
-                        }
 
-                        if (_logging) _log.WriteLine($"2,{now},{data:x2}");
+                            if (_logging) _log.WriteLine($"2,{now},{data:x2}");
 
-                        Log.Detail(Category.SIO, "Channel {0} Tx data: 0x{1:x2}, queue depth {2}",
-                                                 _channelNum, data, _txFifo.Count);
+                            Log.Detail(Category.SIO, "Channel {0} Tx data: 0x{1:x2}, queue depth {2}",
+                                                     _channelNum, data, _txFifo.Count);
 
-                        // If the buffer just became empty, raise the Tx interrupt (if enabled)
-                        if (_txFifo.Count == 0)
-                        {
-                            _txIntLatched = _registers.TxIntEnabled;
-                            if (!_registers.SyncMode) _device.RTS = false;
+                            // If the buffer just became empty, raise the Tx interrupt (if enabled)
+                            if (_txFifo.Count == 0)
+                            {
+                                _txIntLatched = _registers.TxIntEnabled;
+                                if (!_registers.SyncMode) _device.RTS = false;
+                            }
+
+                            updateNeeded = true;
                         }
 
-                        updateNeeded = true;
-                        _nextCharTx = now + _device.TransmitRate;
+                        // Pace yourself
+                        _nextCharTx = now - skewNsec + _device.TransmitRate;
                     }
 
-                    if ((delay == 0) || (_device.TransmitRate > 0 && _device.TransmitRate < delay))
-                        delay = _device.TransmitRate;
+                    if (delay == 0 || ((_nextCharTx > now) && (_nextCharTx - now < delay)))
+                        delay = _nextCharTx - now;
                 }
 
                 // Update the registers if anything changed
                 if (updateNeeded) UpdateFlags();
 
                 // Reschedule if a positive poll rate
-                if (delay > skewNsec)
+                if (delay > 0)
                 {
-                    _pollEvent = _scheduler.Schedule(delay - skewNsec, PollDevice);
+                    Log.Info(Category.SIO, "Channel {0} rescheduled for {1}", _channelNum, delay);
+                    _pollEvent = _scheduler.Schedule(delay, PollDevice);
+                    return;
                 }
-                else
-                {
-                    Log.Debug(Category.SIO, "Channel {0} polling stopped (nothing active!)", _channelNum);
-                    _pollEvent = null;
-                }
+
+                Log.Info(Category.SIO, "Channel {0} polling stopped (nothing active!)", _channelNum);
+                _pollEvent = null;
             }
 
             // Debugging

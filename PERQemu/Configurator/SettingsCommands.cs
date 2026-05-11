@@ -481,7 +481,7 @@ namespace PERQemu.UI
             switch (opt.ToLower())
             {
                 case "none":
-                    if ((settings.FlowControl != Handshake.None) &&
+                    if ((settings.FlowControl != Handshake.None) ||
                         (settings.Options != SerialOptions.None))
                     {
                         settings.FlowControl = Handshake.None;

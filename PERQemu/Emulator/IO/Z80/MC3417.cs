@@ -190,6 +190,13 @@ namespace PERQemu.IO.Z80
             // If speech output is disabled, don't bother
             if (!_speaker.HaveAudio) return;
 
+            // Silence detect: count sync bytes sent by the SIO; several in a row
+            // likely means the sample is finished playing, so we stop sending
+            // samples to the speaker.  This should help reduce audible "pops"
+            _silence = (value == SyncByte) ? _silence + 1 : 0;
+
+            if (_silence > Threshold) return;
+
             // Debug
             if (_byteCount == 0)
             {
@@ -275,7 +282,7 @@ namespace PERQemu.IO.Z80
         public override void Status()
         {
             // How fast is the Z80 delivering bytes?
-            var interval = _byteCount > 0 ? ((_scheduler.CurrentTimeNsec - _startTime) / _byteCount) : 0.0;
+            var interval = _byteCount > 0 ? ((_lastTime - _startTime) / _byteCount) : 0.0;
 
             Console.WriteLine("MC3417/Speech status:");
             Console.WriteLine("  Tx pacing at {0:N4}ms/char, polling {1:N4}ms, avg. byte time {2:N4}ms",
@@ -296,6 +303,8 @@ namespace PERQemu.IO.Z80
 
         // Constants
         const short Mask = 0x7;         // 3417 is a 3-bit device (3418 is 4 bits)
+        const byte SyncByte = 0xaa;     // Silent byte, holy byte
+        const int Threshold = 32;       // Stop encoding after n sync bytes in a row
 
         // Tunables
         SpeechSettings _settings;
@@ -308,6 +317,7 @@ namespace PERQemu.IO.Z80
         int _shiftReg;
         int _frequency;
         int _nextFrequency;
+        int _silence;
 
         double _leak;
         double _decay;

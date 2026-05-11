@@ -421,10 +421,10 @@ Several serial devices are used in the PERQ.  The PERQemu implementation groups
 these into the Emulator/IO/SerialDevices folder.
 
     - The base "SerialDevice" class provides the base for RS-232 ports:
-      "RealPort" uses the System.IO.Ports.SerialPort class to access a host
-      serial device (including USB-to-serial adapters on modern PCs that lack
-      actual, physical COM ports), while "NullPort" provides a data sink when
-      the user hasn't configured one;
+      "RealPort" uses a local replacement for the System.IO.Ports.SerialPort
+      class to access a host serial device (including USB-to-serial adapters
+      on modern PCs that lack actual, physical COM ports), while "NullPort"
+      provides a data sink when the user hasn't configured one;
 
     - The POS "RSX:" pseudo device enables text file transfers to and from the
       host.  It's implemented as the "RSXFilePort" class;
@@ -790,7 +790,7 @@ PERQ info and lore.  More to come!
 
 Update history:
 
-v2.8 - 1/1/2026 - skeezics - v0.9.x experiments branch update
+v2.8 - 5/9/2026 - skeezics - v0.9.x experiments branch update
 v2.7 - 11/13/2025 - skeezics
 v2.6 - 4/22/2025 - skeezics - v0.7.5 release
 v2.5 - 3/28/2025 - skeezics

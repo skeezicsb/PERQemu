@@ -175,9 +175,6 @@ namespace PERQemu.UI
             // Nothing queued and parameters changed?
             if (DevBytes == 0 && ((_frequency != _devFrequency) || (_channels != _devChannels)))
             {
-                // Debug: should only do this when paused!
-                if (!_paused) Log.Warn(Category.Speech, "Settings change while not idle!");
-
                 // Close and reopen the device with the new settings
                 Shutdown();
                 Initialize();

@@ -131,7 +131,8 @@ namespace PERQemu.IO.SerialDevices
 
         /// <summary>
         /// Virtual DSR is passed through but the Z80 SIO doesn't actually use or
-        /// report this pin, so I could probably just yeet this entirely.  Hmmm.
+        /// report this pin.  However, to simplify cabling/interfacing to physical
+        /// devices, we can use it to enable DCD if configured in Settings.
         /// </summary>
         public override bool DSR => _port.DataSetReady;
 
@@ -176,8 +177,8 @@ namespace PERQemu.IO.SerialDevices
         public override void Open()
         {
             // Most of the port's characteristics only take effect before calling
-            // Open();  If _portChanged is set the user wants to force a change
-            // so do a close and reopen to apply new settings.
+            // Open(); if the user initiates a change, close and reopen to apply
+            // new settings.
 
             if (IsOpen) Close();
 
@@ -216,40 +217,40 @@ namespace PERQemu.IO.SerialDevices
 
         /// <summary>
         /// Compute new baud rate from the timer tick rate provided by the CTC.
-        /// See notes below for detailed information about baud calculation.
         /// </summary>
         public override void NotifyRateChange(int chan, int newRate)
         {
             var prescale = _system.IsEIO ? 1 : 16;
+            var checkRate = Conversion.TimerCountToBaudRate(newRate, prescale);
 
-            // Make sure it's valid, and assume in range for the port (9600 on
-            // PERQ-1, 19200 max on PERQ-2).  External clocking isn't supported.
-            if ((_perq.BaudRate = Conversion.TimerCountToBaudRate(newRate, prescale)) > 0)
+            // This is highly unlikely, but alert if it happens
+            if (checkRate == 0)
             {
-                // On EIO, ports A & B support separate Tx/Rx baud rates
-                if (_system.IsEIO)
-                {
-                    if (chan == 0)
-                        _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
-                    else if (chan == 2)
-                        _txRate = Conversion.BaudRateToNsec(_perq.BaudRate);
-                    else
-                        throw new InvalidOperationException($"RS232 baud rate change from CTC chan {chan}?");
-
-                    Log.Info(Category.RS232, "{0} {1} baud rate changed to {2}", _name,
-                                             (chan == 0) ? "receive" : "transmit", _perq.BaudRate);
-                    return;
-                }
-
-                // On IOB/CIO, no split rates
-                _txRate = _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
-
-                Log.Info(Category.RS232, "{0} baud rate changed to {1}", _name, _perq.BaudRate);
+                Log.Warn(Category.RS232, "{0} bad baud rate {1} from the PERQ!", _name, newRate);
                 return;
             }
 
-            // This is highly unlikely, but alert if it happens
-            Log.Warn(Category.RS232, "{0} bad baud rate {1} from the PERQ!", _name, newRate);
+            _perq.BaudRate = checkRate;
+
+            // On EIO, ports A & B support separate Tx/Rx baud rates
+            if (_system.IsEIO)
+            {
+                if (chan == 0)
+                    _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
+                else if (chan == 2)
+                    _txRate = Conversion.BaudRateToNsec(_perq.BaudRate);
+                else
+                    throw new InvalidOperationException($"RS232 baud rate change from CTC chan {chan}?");
+
+                Log.Info(Category.RS232, "{0} {1} baud rate changed to {2}", _name,
+                                         (chan == 0) ? "receive" : "transmit", _perq.BaudRate);
+                return;
+            }
+
+            // On IOB/CIO, no split rates
+            _txRate = _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
+
+            Log.Info(Category.RS232, "{0} baud rate changed to {1}", _name, _perq.BaudRate);
         }
 
         /// <summary>

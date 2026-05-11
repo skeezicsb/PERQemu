@@ -546,7 +546,7 @@ v0.9.0 - Experiments branch
     emulation accuracy and reliability of all serial devices
   - Dynamic reloading of RS-232 ports at runtime (host port device settings
     can be changed without restarting the VM) 
-  - Minor bug fixes, CLI changes, updated UserGuide
+  - Many bug fixes, CLI changes, updated UserGuide
 
 v0.8.5 - Main branch
   - Minor updates to Nuget package dependencies (now tested/verified against
@@ -720,7 +720,7 @@ v0.1 - First public release
 
 Update history:
 
-5/9/2026 - skeezicsb - v0.9.0 (experiments)
+5/11/2026 - skeezicsb - v0.9.0 (experiments)
 12/12/2025 - skeezicsb - v0.8.5 (main)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)

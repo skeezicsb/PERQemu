@@ -5,6 +5,22 @@ Summary of changes on the development branch since the v0.8.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+May, 2026:
+
+    2. Fixed up speech output to not stutter due to silly scheduling bug.  Some
+    testing on Linux/Windows serial ports yielding positive results; much more
+    to do.  Trying to push fixes in more manageable chunks, but this branch is
+    still very much in flux as debugging continues.  Version number bump and/or
+    interim release with User Guide update when stable again.
+
+    1. Side project writing diagnostic microcode to help a friend with hardware
+    debugging.  Pushed out the interim update just to "clear the decks" but do
+    NOT recommend building or running it as there are several minor incompatible
+    CLI changes that introduce minor errors in Settings or Configuration files;
+    next push should resolve numerous Speech and RS-232 issues and clean up a
+    ton of haphazard or purely extraneous debugging instrumentation.
+
+
 April, 2026:
 
     1. Updates to the User Guide and CLI to support new serial stuff.  Testing
@@ -100,4 +116,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Sat Apr 25 13:06:06 PDT 2026
+Last update: skeezics    Mon May 11 12:30:33 PDT 2026
