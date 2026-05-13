@@ -1,5 +1,5 @@
 ﻿//
-// Oki5832RTC.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Oki5832RTC.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -206,7 +206,7 @@ namespace PERQemu.IO.Z80
             _registers[11] = (byte)(dt.Year % 10);
             _registers[12] = (byte)((dt.Year - _yearOffset) / 10);
 
-            Log.Info(Category.RTC, "Current PERQ date/time: {0}", dt);
+            Log.Debug(Category.RTC, "Current PERQ date/time: {0}", dt);
         }
 
         /// <summary>

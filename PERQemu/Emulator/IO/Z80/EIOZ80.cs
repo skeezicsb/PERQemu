@@ -1,5 +1,5 @@
 //
-// EIOZ80.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// EIOZ80.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -71,9 +71,7 @@ namespace PERQemu.IO.Z80
 
         // For debugging mostly
         public Oki5832RTC RTC => _rtc;
-#if DEBUG
-        public int[] CPI => _buckets;
-#endif
+
 
         /// <summary>
         /// Initializes the EIO devices and attaches them to the bus.
@@ -163,6 +161,25 @@ namespace PERQemu.IO.Z80
                 throw new InvalidOperationException($"Bad port {port}");
         }
 
+        public override void SerialError(char port, string message)
+        {
+            Log.Warn(Category.All, "RS-232 port {0} has thrown an exception: {1}", port, message);
+
+            if (port == 'a' || port == 'A')
+            {
+                Log.Warn(Category.All, "Device '{0}' has been disabled.", Settings.RSADevice);
+                _system.Config.RSAEnabled = false;
+            }
+            else
+            {
+                Log.Warn(Category.All, "Device '{0}' has been disabled.", Settings.RSBDevice);
+                _system.Config.RSBEnabled = false;
+            }
+
+            // Detach the failed device, attach a NullPort
+            SerialReset(port);
+        }
+
         void SerialInitRSA()
         {
             // If enabled and configured, attach device to RS232 port A
@@ -177,6 +194,7 @@ namespace PERQemu.IO.Z80
                 else
                 {
                     var rsa = new RealPort(this, "Port A", Settings.RSADevice, Settings.RSASettings);
+                    rsa.SetErrorHandler(SerialError, 'A');
                     _z80sioA.AttachDevice(0, rsa);
                     _timerA.AttachDevice(0, rsa);
                     _timerA.AttachDevice(2, rsa);
@@ -195,6 +213,7 @@ namespace PERQemu.IO.Z80
             if (_system.Config.RSBEnabled && Settings.RSBDevice != string.Empty)
             {
                 var rsb = new RealPort(this, "Port B", Settings.RSBDevice, Settings.RSBSettings);
+                rsb.SetErrorHandler(SerialError, 'B');
                 _z80sioB.AttachDevice(0, rsb);
                 _timerB.AttachDevice(0, rsb);
                 _timerB.AttachDevice(2, rsb);
@@ -326,14 +345,6 @@ namespace PERQemu.IO.Z80
             // Clock the EIO DMA
             ticks += _dmac.Clock();
 
-#if DEBUG
-            // Debug - histogram of average # cycles per call
-            if (ticks >= _buckets.Length)
-                _buckets[_buckets.Length - 1]++;
-            else
-                _buckets[ticks]++;
-#endif
-
             // Run the scheduler
             _scheduler.Clock(ticks);
 
@@ -453,11 +464,6 @@ namespace PERQemu.IO.Z80
         Oki5832RTC _rtc;
         PERQToZ80FIFO _perqToZ80Fifo;
         Z80ToPERQFIFO _z80ToPerqFifo;
-
-#if DEBUG
-        // Z80 instruction profiling (debug support)
-        int[] _buckets = new int[32];
-#endif
     }
 }
 

@@ -1,5 +1,5 @@
 ﻿//
-// SerialMux.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// SerialMux.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -16,8 +16,6 @@
 // You should have received a copy of the GNU General Public License
 // along with PERQemu.  If not, see <http://www.gnu.org/licenses/>.
 //
-
-using System.IO;
 
 using PERQemu.IO.Z80;
 
@@ -36,7 +34,7 @@ namespace PERQemu.IO.SerialDevices
         public SerialMux(Z80System sys) : base(sys)
         {
             _name = "SIO mux device";
-            Log.Info(Category.SIO, "Created {0} mux device", IOBoard.Name);
+            Log.Debug(Category.SIO, "Created {0} mux device", IOBoard.Name);
         }
 
         public override bool ReadReady => _rxDevice?.ReadReady ?? false;
@@ -50,13 +48,13 @@ namespace PERQemu.IO.SerialDevices
         public void AttachRxDevice(SerialDevice rxDev)
         {
             _rxDevice = rxDev;
-            Log.Info(Category.SIO, "Attached Rx device {0}", rxDev);
+            Log.Debug(Category.SIO, "Attached Rx device {0}", rxDev);
         }
 
         public void AttachTxDevice(SerialDevice txDev)
         {
             _txDevice = txDev;
-            Log.Info(Category.SIO, "Attached Tx device {0}", txDev);
+            Log.Debug(Category.SIO, "Attached Tx device {0}", txDev);
         }
 
         public override void Reset()
@@ -86,11 +84,6 @@ namespace PERQemu.IO.SerialDevices
             _txDevice?.Status();
         }
 
-        public override void Telemetry(bool enable, ref StreamWriter file)
-        {
-            // Pass through to speech (no need for Kriz?)
-            _txDevice?.Telemetry(enable, ref file);
-        }
 
         SerialDevice _rxDevice;       // KrizTablet for mouse input
         SerialDevice _txDevice;       // MC3417 for audio output

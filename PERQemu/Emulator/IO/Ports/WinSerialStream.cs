@@ -412,6 +412,17 @@ namespace PERQemu.IO.Ports
             DiscardOutBuffer();
         }
 
+        /// <summary>
+        /// Register the error delegate to handle fatal exceptions.
+        /// </summary>
+        public void RegisterErrorDelegate(SerialErrorDelegate handler, char id)
+        {
+            _errorHandler = handler;
+            _portID = id;
+
+            Log.Info(Category.RS232, "Port {0} error handler set", id);
+        }
+
         //
         // Private methods
         //
@@ -476,7 +487,12 @@ namespace PERQemu.IO.Ports
                     break;
             }
 
-            throw new IOException(message);
+            var handler = _errorHandler;
+
+            if (handler == null)
+                throw new IOException(message);
+
+            handler.Invoke(_portID, message);
         }
 
 
@@ -514,6 +530,9 @@ namespace PERQemu.IO.Ports
         ManualResetEvent _readEvent;
         ManualResetEvent _writeEvent;
         Timeouts _timeouts;
+
+        static char _portID;
+        static SerialErrorDelegate _errorHandler;
     }
 
 

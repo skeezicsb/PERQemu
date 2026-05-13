@@ -1,5 +1,5 @@
 //
-// EIO.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// EIO.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -17,9 +17,8 @@
 // along with PERQemu.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System;
-
 using PERQmedia;
+
 using PERQemu.Config;
 using PERQemu.IO.Z80;
 using PERQemu.IO.Network;

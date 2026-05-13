@@ -1,5 +1,5 @@
 //
-// Settings.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Settings.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -71,7 +71,7 @@ namespace PERQemu
         TapeSpeed = 0x04,               // Is this a trick question?
         PrinterSpeed = 0x08,            // Realistic Canon printer delays?
         StartupDelay = 0x10,            // For the truly hardcore
-        FrameSkipping = 0x20            // Not implemented (yet?)
+        SpeechDelay = 0x20              // Do NOT adjust speech rate
     }
 
     public static class Settings

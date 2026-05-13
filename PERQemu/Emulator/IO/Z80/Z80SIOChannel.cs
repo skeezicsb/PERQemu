@@ -18,8 +18,6 @@
 //
 
 using System;
-using System.IO;
-using System.Diagnostics;
 using System.Collections.Generic;
 
 using PERQemu.IO.Ports;
@@ -46,7 +44,6 @@ namespace PERQemu.IO.Z80
                 _txFifo = new Queue<byte>(2);
 
                 _device = null;
-                _logging = false;
             }
 
             /// <summary>
@@ -110,20 +107,8 @@ namespace PERQemu.IO.Z80
             /// </summary>
             public void DetachDevice()
             {
-                if (_logging) StopLog();
                 _device?.Close();
                 _device = null;
-            }
-
-            // TODO/FIXME: move this up to SIO?
-            void DisablePort()
-            {
-                Log.Warn(Category.All, "Serial port {0} has thrown an exception; disabling it", _device.Name);
-                Log.Warn(Category.All, "Check that {0} is a valid port and restart the PERQ to reenable.", _device.Port);
-                DetachDevice();
-
-                // Replace with a null port
-                AttachDevice(new NullPort(PERQemu.Sys.IOB.Z80System));
             }
 
             /// <summary>
@@ -263,7 +248,6 @@ namespace PERQemu.IO.Z80
                 }
 
                 data = _rxFifo.Dequeue();
-                if (_logging) _log.WriteLine($"3,{_scheduler.CurrentTimeNsec},{data:x2}");
 
                 // Update interrupt status
                 _rxIntLatched = (_rxFifo.Count > 0 && RxIntEnabled);
@@ -290,7 +274,6 @@ namespace PERQemu.IO.Z80
 
                 _txFifo.Enqueue(data);
                 _txIntLatched = false;
-                if (_logging) _log.WriteLine($"4,{_scheduler.CurrentTimeNsec},{data:x2}");
 
                 // In async mode, RTS is asserted when there's data to send
                 if (!_registers.SyncMode) _device.RTS = true;
@@ -342,17 +325,8 @@ namespace PERQemu.IO.Z80
                 _registers.TxBufferEmpty = _txFifo.Count == 0;
 
                 // Update modem control pins
-                if (_registers.DCDState != _device.DCD)
-                {
-                    if (_logging) _log.WriteLine("6,{0},DCD,{1}", _scheduler.CurrentTimeNsec, _registers.DCDState);
-                    _registers.DCDState = _device.DCD;
-                }
-
-                if (_registers.CTSState != _device.CTS)
-                {
-                    if (_logging) _log.WriteLine("6,{0},CTS,{1}", _scheduler.CurrentTimeNsec, _registers.CTSState);
-                    _registers.CTSState = _device.CTS;
-                }
+                _registers.DCDState = _device.DCD;
+                _registers.CTSState = _device.CTS;
 
                 // TODO: we aren't detecting breaks (yet?); it's not clear termios/mono
                 // will even pass them to us?  But they can be detected by watching the
@@ -535,7 +509,6 @@ namespace PERQemu.IO.Z80
                 // Poll the device first, if requested
                 if ((_device.PollRate > 0) && (_nextPoll <= now))
                 {
-                    if (_logging) _log.WriteLine($"0,{now},Polling");
                     updateNeeded = _device.Poll();
                     _nextPoll = now - skewNsec + _device.PollRate;
                 }
@@ -552,7 +525,6 @@ namespace PERQemu.IO.Z80
                         if (_device.ReadReady && (_rxFifo.Count < 4))
                         {
                             data = _device.Receive();
-                            if (_logging) _log.WriteLine($"1,{now},{data:x2}");
 
                             // Still in hunt mode?
                             if (!_registers.SyncMode ||
@@ -600,8 +572,6 @@ namespace PERQemu.IO.Z80
                             // Ship it
                             _device.Transmit(data);
 
-                            if (_logging) _log.WriteLine($"2,{now},{data:x2}");
-
                             Log.Detail(Category.SIO, "Channel {0} Tx data: 0x{1:x2}, queue depth {2}",
                                                      _channelNum, data, _txFifo.Count);
 
@@ -629,12 +599,12 @@ namespace PERQemu.IO.Z80
                 // Reschedule if a positive poll rate
                 if (delay > 0)
                 {
-                    Log.Info(Category.SIO, "Channel {0} rescheduled for {1}", _channelNum, delay);
+                    Log.Verbose(Category.SIO, "Channel {0} rescheduled for {1}", _channelNum, delay);
                     _pollEvent = _scheduler.Schedule(delay, PollDevice);
                     return;
                 }
 
-                Log.Info(Category.SIO, "Channel {0} polling stopped (nothing active!)", _channelNum);
+                Log.Debug(Category.SIO, "Channel {0} polling stopped (nothing active!)", _channelNum);
                 _pollEvent = null;
             }
 
@@ -655,37 +625,6 @@ namespace PERQemu.IO.Z80
                                   _registers.TxEnabled, _txFifo.Count, _device.TransmitRate, _nextCharTx);
 
                 _registers.DumpStatus();
-            }
-
-            public void StartLog()
-            {
-                if (_logging) return;
-
-                var path = Paths.BuildOutputPath($"SIO{_channelNum}-telemetry.log");
-                _log = File.AppendText(path);
-                _log.WriteLine("0,{0},Logging started at {1}",
-                               _scheduler.CurrentTimeNsec, DateTime.Now.ToString());
-                _logging = true;
-
-                Console.WriteLine($"Opened {path} for SIO {_channelNum} telemetry logging.");
-
-                // Enable telemetry in the attached device (if implemented)
-                _device?.Telemetry(true, ref _log);
-            }
-
-            public void StopLog()
-            {
-                if (!_logging) return;
-
-                _device?.Telemetry(false, ref _log);
-
-                _logging = false;
-                _log.WriteLine($"0,{0},Logging stopped at {1}",
-                               _scheduler.CurrentTimeNsec, DateTime.Now.ToString());
-                _log.Flush();
-                _log.Close();
-
-                Console.WriteLine($"SIO {_channelNum} telemetry log closed.");
             }
 
 
@@ -714,10 +653,6 @@ namespace PERQemu.IO.Z80
             SchedulerEvent _pollEvent;
 
             SerialDevice _device;
-
-            // Detailed debugging - should use Log for this, but one off? :-/
-            bool _logging;
-            StreamWriter _log;
         }
     }
 }

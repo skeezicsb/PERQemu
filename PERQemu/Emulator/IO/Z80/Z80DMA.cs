@@ -132,9 +132,9 @@ namespace PERQemu.IO.Z80
             }
 
             // What direction is this going in
-            WR0 wr0 = (WR0)_wr[0];
-            WR1 wr1 = (WR1)_wr[1];
-            WR2 wr2 = (WR2)_wr[2];
+            var wr0 = (WR0)_wr[0];
+            var wr1 = (WR1)_wr[1];
+            var wr2 = (WR2)_wr[2];
 
             if ((wr0 & WR0.DirectionAtoB) != 0)
             {
@@ -249,7 +249,7 @@ namespace PERQemu.IO.Z80
                             _interruptActive = true;
                         }
 
-                        WR5 wr5 = (WR5)_wr[5];
+                        var wr5 = (WR5)_wr[5];
 
                         if ((wr5 & WR5.AutoRepeat) != 0)
                         {

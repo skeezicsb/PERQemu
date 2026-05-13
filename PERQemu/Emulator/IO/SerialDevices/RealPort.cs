@@ -297,6 +297,15 @@ namespace PERQemu.IO.SerialDevices
             _port.BreakState = enable;
         }
 
+        /// <summary>
+        /// Pass the error delegate down the chain.
+        /// </summary>
+        public void SetErrorHandler(SerialErrorDelegate handler, char port)
+        {
+            _port.SetErrorHandler(handler, port);
+        }
+
+
         // Debugging
         public override void Status()
         {
@@ -304,10 +313,11 @@ namespace PERQemu.IO.SerialDevices
             Console.WriteLine($"  Host settings: {_host}");
             Console.WriteLine($"  PERQ settings: {_perq}");
 
-            Console.WriteLine("  Pacing: Rx {0}ms  Tx {1}ms  Break state: {2}  RTS: {3}",
+            Console.WriteLine("  Pacing: Rx {0}ms  Tx {1}ms  Break state: {2}",
                               _rxRate * Conversion.NsecToMsec,
                               _txRate * Conversion.NsecToMsec,
-                              _port.BreakState, RTS);
+                              _port.BreakState);
+            Console.WriteLine("  " + SignalStatus);
             Console.WriteLine("Physical state:");
             Console.WriteLine("  " + _port.SignalStatus);
             Console.WriteLine("  " + _port.StreamStatus);

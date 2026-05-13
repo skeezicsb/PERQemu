@@ -1,5 +1,5 @@
 ﻿//
-// Z80DebugCommands.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80DebugCommands.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -100,7 +100,7 @@ namespace PERQemu
                     line.AppendFormat("{0:x4}: ", i);
                     chars.Clear();
 
-                    // Bytes in hex (Todo: add output radix support)
+                    // Bytes in hex (TODO: add output radix support)
                     for (var j = i; j < i + 16; j++)
                     {
                         var b = PERQemu.Sys.IOB.Z80System.Memory[j];
@@ -330,12 +330,6 @@ namespace PERQemu
             }
         }
 
-        [Command("debug z80 sio telemetry")]
-        void SIOTelemetry(int chan, bool enable)
-        {
-            if (CheckSys()) PERQemu.Sys.IOB.Z80System.SIOA.Telemetry(chan, enable);
-        }
-
         //[Conditional("DEBUG")]
         [Command("debug z80 dump rtc")]
         void DumpRTC()
@@ -354,32 +348,6 @@ namespace PERQemu
             eio.RTC.DumpRTC();
         }
 
-#if DEBUG
-        [Command("debug z80 dump cpi histogram")]
-        void CPIHistogram()
-        {
-            if (!CheckSys()) return;
-            if (PERQemu.Config.Current.IOBoard != Config.IOBoardType.EIO) return;
-
-            var eio = PERQemu.Sys.IOB.Z80System as EIOZ80;
-            var total = 0;
-
-            // Add up the instructions
-            for (var i = 0; i < eio.CPI.Length; i++) total += eio.CPI[i];
-
-            Console.WriteLine("Z80 cycle counts (including interrupts, DMA):");
-            for (var i = 0; i < eio.CPI.Length; i++)
-            {
-                if (eio.CPI[i] > 0)
-                {
-                    var pct = (double)eio.CPI[i] / total * 100.0;
-                    Console.WriteLine($"  Cycles: {i}\tCount: {eio.CPI[i]}\t{pct:N2}%");
-                }
-            }
-
-            Console.WriteLine($"  Total instructions: {total}");
-        }
-#endif
         #endregion
 
         [Command("debug z80 audio play")]
@@ -394,8 +362,5 @@ namespace PERQemu
             PERQemu.GUI.Audio.Pause();
         }
 
-        // Todo: ram disassembler, like the microcode disassembler?
-        // Todo: i/o port reads - and writes!?
-        // Todo: interrogate memory, fifos, peripheral controllers & registers, etc.
     }
 }

@@ -1,5 +1,5 @@
 //
-// ConfigCommands.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// ConfigCommands.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -21,7 +21,6 @@ using System;
 
 using PERQmedia;
 using PERQemu.Config;
-using PERQemu.IO.Ports;
 
 namespace PERQemu.UI
 {
@@ -120,7 +119,7 @@ namespace PERQemu.UI
         [Command("configure list", "List available machine configurations")]
         public void ListPrefabs()
         {
-            string[] prefabs = PERQemu.Config.GetPrefabs();
+            var prefabs = PERQemu.Config.GetPrefabs();
             Array.Sort(prefabs);
 
             Console.WriteLine("Standard configurations:");
@@ -780,7 +779,7 @@ namespace PERQemu.UI
                 {
                     PERQemu.Sys.IOB.Z80System.SIOA.DetachDevice(0);
                     PERQemu.Sys.IOB.Z80System.SerialReset('A');
-                    PERQemu.Sys.IOB.Z80System.SIOA.Reset();     // Fixme: redundant?
+                    PERQemu.Sys.IOB.Z80System.SIOA.Reset();     // FIXME: redundant?
                 }
             }
         }

@@ -7,6 +7,17 @@ Previous notes moved to ChangeLog-Old.txt.
 
 May, 2026:
 
+    4. Speech/audio output rate is dynamically adjusted based on host emulation
+    rate, centered on the 60fps real-time rate.  The range is clipped from a low
+    of 20fps to a high of 100fps (when CPU rate limiting is disabled).  A new
+    Settings option ("rate limit speechdelay") turns OFF this adjustment; the
+    unimplemented FrameSkipping rate limit has been removed.  UserGuide updated;
+    bump to v0.9.2.
+
+    3. Unwind extended debugging stuff and start turning down the logging noise
+    for serial/speech/Z80 stuff.  Some lint and fluff removal.  Push the changes
+    for RS-232 port reconfiguration.  Debugging continues.
+
     2. Fixed up speech output to not stutter due to silly scheduling bug.  Some
     testing on Linux/Windows serial ports yielding positive results; much more
     to do.  Trying to push fixes in more manageable chunks, but this branch is
@@ -116,4 +127,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Mon May 11 12:30:33 PDT 2026
+Last update: skeezics    Tue May 12 12:31:32 PDT 2026

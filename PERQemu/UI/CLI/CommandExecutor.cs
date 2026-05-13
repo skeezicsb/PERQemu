@@ -126,7 +126,7 @@ namespace PERQemu.UI
             }
 
             string[] args = null;
-            CommandNode command = GetCommandFromString(line, out args);
+            var command = GetCommandFromString(line, out args);
 
             if (command == null)
             {
@@ -196,7 +196,7 @@ namespace PERQemu.UI
             object[] invokeParams = null;
 
             // Go see if parameters exist, and if so extend invokeParams[]
-            ParameterInfo[] paramInfo = command.Method.Method.GetParameters();
+            var paramInfo = command.Method.Method.GetParameters();
             int paramLength = (paramInfo != null) ? paramInfo.Length : 0;
 
             if (paramLength > 0)
@@ -226,7 +226,7 @@ namespace PERQemu.UI
                 {
                     // This is an enumeration type; see if we can find an
                     // enumerant that matches the argument
-                    FieldInfo[] fields = p.ParameterType.GetFields();
+                    var fields = p.ParameterType.GetFields();
 
                     foreach (FieldInfo f in fields)
                     {
@@ -613,7 +613,7 @@ namespace PERQemu.UI
             // Now go discover our CommandAttributes!
             foreach (object commandObject in commandObjects)
             {
-                Type type = commandObject.GetType();
+                var type = commandObject.GetType();
 
                 foreach (MethodInfo info in type.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
                 {

@@ -133,6 +133,16 @@ namespace PERQemu.IO.Z80
             _z80sio.Reset(0);
         }
 
+        public override void SerialError(char port, string message)
+        {
+            Log.Warn(Category.All, "RS-232 port {0} has thrown an exception: {1}", port, message);
+            Log.Warn(Category.All, "Device '{0}' has been disabled.", Settings.RSADevice);
+            _system.Config.RSAEnabled = false;
+
+            // Detach the failed device, attach a NullPort
+            SerialReset(port);
+        }
+
         void SerialInit()
         {
             // If enabled and configured, attach device to RS232
@@ -147,6 +157,7 @@ namespace PERQemu.IO.Z80
                 else
                 {
                     var rsa = new RealPort(this, "Port A", Settings.RSADevice, Settings.RSASettings);
+                    rsa.SetErrorHandler(SerialError, 'A');
                     _z80sio.AttachDevice(0, rsa);
                     _z80ctc.AttachDevice(0, rsa);
                 }
@@ -396,6 +407,5 @@ namespace PERQemu.IO.Z80
         PERQToZ80Latch _perqToZ80Fifo;
         Z80ToPERQLatch _z80ToPerqFifo;
         HardDiskSeekControl _seekControl;
-
     }
 }

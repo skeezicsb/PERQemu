@@ -1,5 +1,5 @@
 ﻿//
-// Conversion.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Conversion.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -154,6 +154,11 @@ namespace PERQemu
         }
 
         public static ulong Clamp(ulong value, ulong min, ulong max)
+        {
+            return (value < min) ? min : (value > max) ? max : value;
+        }
+
+        public static double Clamp(double value, double min, double max)
         {
             return (value < min) ? min : (value > max) ? max : value;
         }

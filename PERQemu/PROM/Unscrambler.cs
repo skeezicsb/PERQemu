@@ -185,7 +185,7 @@ namespace PERQemu
         /// Read a string; returns "" if at end of file.  Stops on newline,
         /// and returns the string with any CRLFs removed.
         /// </summary>
-        private string ReadString(FileStream fs)
+        string ReadString(FileStream fs)
         {
             var sb = new StringBuilder();
 

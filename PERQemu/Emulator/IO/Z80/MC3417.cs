@@ -1,5 +1,5 @@
 ﻿//
-// MC3417.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// MC3417.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -18,7 +18,6 @@
 //
 
 using System;
-using System.IO;
 
 using PERQemu.UI;
 using PERQemu.IO.SerialDevices;
@@ -104,7 +103,7 @@ namespace PERQemu.IO.Z80
             _speaker.Enabled = PERQemu.Config.Current.SpeechEnabled;
             _speaker.Reset();
 
-            Log.Info(Category.Speech, "MC3417 reset");
+            Log.Debug(Category.Speech, "MC3417 reset");
         }
 
         public void ResetFilter()
@@ -131,28 +130,24 @@ namespace PERQemu.IO.Z80
             // Compute sync mode rate (8 bits per char)
             _txRate = Conversion.BaudRateToNsec(_frequency, 8);
 
-            // Now cheat the transfer rate based on our emulation speed :-)
-            // Todo: make the cheat a Settings/RateLimit option
+            // Cheat the transfer rate based on our emulation speed :-)
             var offset = PERQemu.Sys.Display.AverageFPS / 60.0;
 
-            // Too slow?  For now, ignore if too fast :-)
-            if (offset < 1.0)
+            // Apply the adjustment? (yes by default)
+            if (offset > 0.0 && !Settings.Performance.HasFlag(RateLimit.SpeechDelay))
             {
+                // Limit to ~20fps to 100fps
+                offset = Conversion.Clamp(offset, 0.3334, 1.6667);
                 _txRate = (ulong)(_txRate * offset);
-                Log.Info(Category.Speech, "Adjusting tx pacing by {0:N4}", offset);
+                Log.Debug(Category.Speech, "Adjusting tx pacing by {0:N4}", offset);
             }
 
             // Poll every 1/10th of a second (fixed for now)
             _pollRate = 100 * Conversion.MsecToNsec;
 
-            Log.Info(Category.Speech, "Tx pacing at {0:N4}ms/char, polling {1:N4}ms",
-                                      _txRate * Conversion.NsecToMsec,
-                                      _pollRate * Conversion.NsecToMsec);
-
-            // Debug
-            _byteCount = 0;
-            _startTime = 0;
-            _lastTime = 0;
+            Log.Debug(Category.Speech, "Tx pacing at {0:N4}ms/char, polling {1:N4}ms",
+                                       _txRate * Conversion.NsecToMsec,
+                                       _pollRate * Conversion.NsecToMsec);
 
             // Prime for playback
             _sylFilter = _intFilter = 0.0;
@@ -196,14 +191,6 @@ namespace PERQemu.IO.Z80
             _silence = (value == SyncByte) ? _silence + 1 : 0;
 
             if (_silence > Threshold) return;
-
-            // Debug
-            if (_byteCount == 0)
-            {
-                _startTime = _scheduler.CurrentTimeNsec;
-            }
-            _byteCount++;
-            _lastTime = _scheduler.CurrentTimeNsec;
 
             Log.Verbose(Category.Speech, "CVSD input byte 0x{0:x2}", value);
             ConvertCVSDtoPCM(value);
@@ -281,25 +268,15 @@ namespace PERQemu.IO.Z80
         // Debugging
         public override void Status()
         {
-            // How fast is the Z80 delivering bytes?
-            var interval = _byteCount > 0 ? ((_lastTime - _startTime) / _byteCount) : 0.0;
-
             Console.WriteLine("MC3417/Speech status:");
-            Console.WriteLine("  Tx pacing at {0:N4}ms/char, polling {1:N4}ms, avg. byte time {2:N4}ms",
-                                 _txRate * Conversion.NsecToMsec,
-                                 _pollRate * Conversion.NsecToMsec,
-                                 interval * Conversion.NsecToMsec);
+            Console.WriteLine("  Dynamic pacing {0}, rate {1:N4}ms/char, polling {2:N2}ms, enabled {3}",
+                              !Settings.Performance.HasFlag(RateLimit.SpeechDelay),
+                              _txRate * Conversion.NsecToMsec,
+                              _pollRate * Conversion.NsecToMsec,
+                              _speaker.Enabled);
             Console.WriteLine("  Filter: " + _settings.ToString());
         }
 
-        // Extended debugging
-        public override void Telemetry(bool enable, ref StreamWriter file)
-        {
-            base.Telemetry(enable, ref file);
-            if (_logging) _log.WriteLine($"0,{_scheduler.CurrentTimeNsec},MC3417 telemetry enabled");
-
-            _speaker.Telemetry(enable);
-        }
 
         // Constants
         const short Mask = 0x7;         // 3417 is a 3-bit device (3418 is 4 bits)
@@ -324,10 +301,6 @@ namespace PERQemu.IO.Z80
         double _charge;
         double _sylFilter;
         double _intFilter;
-
-        ulong _byteCount;
-        ulong _startTime;
-        ulong _lastTime;
 
         // Save typing
         Speaker _speaker;

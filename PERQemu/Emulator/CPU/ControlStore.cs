@@ -1,5 +1,5 @@
 ﻿//
-// ControlStore.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// ControlStore.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -165,7 +165,7 @@ namespace PERQemu.Processor
             /// very frequently (usually only at OS load) so I'm going to leave it
             /// alone for now.
             /// </summary>
-            private ulong UnscrambleControlStoreWord(ulong current, ControlStoreWord word, ushort data)
+            ulong UnscrambleControlStoreWord(ulong current, ControlStoreWord word, ushort data)
             {
                 // We write the inverse of the data (outputs are active low)
                 data = (ushort)(~data);

@@ -1,5 +1,5 @@
 ﻿//
-// Keymapper.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Keymapper.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -213,15 +213,24 @@ namespace PERQemu.Config
                     //
                     for (var cap = KeyCap.None; cap < last; cap++)
                     {
-                        // Add some comments to enhance readability
-                        if (cap == KeyCap.A)
-                            sw.WriteLine("\n# Common alphanumerics");
-                        else if (cap == KeyCap.Help)
-                            sw.WriteLine("\n# Special keys (common)");
-                        else if (cap == KeyCap.Setup)
-                            sw.WriteLine("\n# Special keys (PERQ-2 only)");
-                        else if (cap == KeyCap.PadPlus)
-                            sw.WriteLine("\n# Pseudo keys");
+                        switch (cap)
+                        {
+                            case KeyCap.A:
+                                sw.WriteLine("\n# Common alphanumerics");
+                                break;
+
+                            case KeyCap.Help:
+                                sw.WriteLine("\n# Special keys (common)");
+                                break;
+
+                            case KeyCap.Setup:
+                                sw.WriteLine("\n# Special keys (PERQ-2 only)");
+                                break;
+
+                            case KeyCap.PadPlus:
+                                sw.WriteLine("\n# Pseudo keys");
+                                break;
+                        }
 
                         // Find SDL keys that point to this cap!
                         var mapped = _current.Map.GetMappingsFor(cap);

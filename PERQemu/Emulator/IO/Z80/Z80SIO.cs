@@ -336,13 +336,6 @@ namespace PERQemu.IO.Z80
             _channels[chan].Port?.Status();
         }
 
-        public void Telemetry(int chan, bool enable)
-        {
-            if (enable)
-                _channels[chan].StartLog();
-            else
-                _channels[chan].StopLog();
-        }
 
         // Extra EIO bits
         const int RSASel = 0;

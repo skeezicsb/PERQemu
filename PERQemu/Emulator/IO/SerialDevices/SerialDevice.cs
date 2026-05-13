@@ -1,5 +1,5 @@
 ﻿//
-// NullPort.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// SerialDevice.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -18,7 +18,6 @@
 //
 
 using System;
-using System.IO;
 
 using PERQemu.IO.Z80;
 using PERQemu.IO.Ports;
@@ -40,7 +39,6 @@ namespace PERQemu.IO.SerialDevices
             _name = "Generic serial device";
             _portName = string.Empty;
             _isOpen = false;
-            _logging = false;
 
             _txRate = 0;
             _rxRate = 0;
@@ -166,13 +164,6 @@ namespace PERQemu.IO.SerialDevices
             Console.WriteLine($"No status available for this {Name}.");
         }
 
-        // Extended debugging
-        public virtual void Telemetry(bool enable, ref StreamWriter file)
-        {
-            _logging = enable;
-            _log = file;
-        }
-
         protected Z80System _system;
         protected Scheduler _scheduler;
 
@@ -183,9 +174,5 @@ namespace PERQemu.IO.SerialDevices
         protected ulong _txRate;
         protected ulong _rxRate;
         protected ulong _pollRate;
-
-        // Extended debugging
-        protected bool _logging;
-        protected StreamWriter _log;
     }
 }

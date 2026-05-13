@@ -85,6 +85,7 @@ namespace PERQemu.IO.Z80
         public abstract void QueueKeyboardInput(byte keyCode);
 
         public abstract void SerialReset(char port);
+        public abstract void SerialError(char port, string message);
 
         protected abstract void DeviceReset();
         protected abstract void DeviceShutdown();
@@ -214,6 +215,9 @@ namespace PERQemu.IO.Z80
             }
         }
 
+        /// <summary>
+        /// Perform an orderly final shutdown.
+        /// </summary>
         public void Shutdown()
         {
             // Just in case

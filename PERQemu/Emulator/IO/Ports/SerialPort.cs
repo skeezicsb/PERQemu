@@ -297,12 +297,14 @@ namespace PERQemu.IO.Ports
             {
                 _rxBuffer = new Queue<byte>(_readBufSize);
                 _txBuffer = new Queue<byte>(_writeBufSize);
+                _devBuffer = new byte[16];
 
                 if (PERQemu.HostIsUnix)
                     _stream = new UnixSerialStream(_portName, _settings, _dtrEnable, _rtsEnable, 0, 0);
                 else
                     _stream = new WinSerialStream(_portName, _settings, _dtrEnable, _rtsEnable, 0, 0);
 
+                _stream.RegisterErrorDelegate(_errorHandler, _portID);
                 _isOpen = true;
             }
             catch (Exception e)
@@ -327,7 +329,6 @@ namespace PERQemu.IO.Ports
         {
             if (!_isOpen) return false;
 
-            var temp = new byte[16];
             var count = 0;
 
             if (_rxBuffer.Count < _readBufSize)
@@ -340,23 +341,23 @@ namespace PERQemu.IO.Ports
 
                 if (count > 0)
                 {
-                    var bytesRead = _stream.Read(temp, count);
+                    var bytesRead = _stream.Read(_devBuffer, count);
 
                     if (bytesRead < count)
                         Log.Info(Category.RS232, "Read {0} bytes, expected {1}!", bytesRead, count);
 
                     // Queue up what we did get
                     for (var i = 0; i < bytesRead; i++)
-                        _rxBuffer.Enqueue(temp[i]);
+                        _rxBuffer.Enqueue(_devBuffer[i]);
                 }
             }
 
             while (_txBuffer.Count > 0)
             {
-                temp[0] = _txBuffer.Peek();
-                if (_stream.Write(temp, 1) != 1)
+                _devBuffer[0] = _txBuffer.Peek();
+                if (_stream.Write(_devBuffer, 1) != 1)
                 {
-                    Log.Info(Category.RS232, "Failed to write, buffer full?");
+                    Log.Info(Category.RS232, "Failed to write, device buffer full?");
                     break;
                 }
 
@@ -421,6 +422,15 @@ namespace PERQemu.IO.Ports
             if (_isOpen) _txBuffer.Clear();
         }
 
+        /// <summary>
+        /// Save the error delegate info.  Due to lazy initialization, this gets
+        /// applied only when the device is opened and the stream instantiated.
+        /// </summary>
+        public void SetErrorHandler(SerialErrorDelegate handler, char port)
+        {
+            _errorHandler = handler;
+            _portID = port;
+        }
 
         /// <summary>
         /// Gets the names of serial port devices for this host.  For PERQemu,
@@ -477,11 +487,16 @@ namespace PERQemu.IO.Ports
         Queue<byte> _rxBuffer;
         Queue<byte> _txBuffer;
 
-        SerialSettings _settings;
+        byte[] _devBuffer;
+
         SerialSignal _signals;
         ISerialStream _stream;
 
+        SerialSettings _settings;
+        SerialErrorDelegate _errorHandler;
+
         string _portName;
+        char _portID;
 
         bool _isOpen;
         bool _breakState;

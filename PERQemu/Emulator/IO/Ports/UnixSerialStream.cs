@@ -350,6 +350,17 @@ namespace PERQemu.IO.Ports
             DiscardOutBuffer();
         }
 
+        /// <summary>
+        /// Register the error delegate to handle fatal exceptions.
+        /// </summary>
+        public void RegisterErrorDelegate(SerialErrorDelegate handler, char id)
+        {
+            _errorHandler = handler;
+            _portID = id;
+
+            Log.Info(Category.RS232, "Port {0} error handler set", id);
+        }
+
         //
         // Private methods
         //
@@ -378,9 +389,14 @@ namespace PERQemu.IO.Ports
         static void ThrowIOException()
         {
             int errnum = Marshal.GetLastWin32Error();
-            string error_message = Marshal.PtrToStringAnsi(strerror(errnum));
+            string errmsg = Marshal.PtrToStringAnsi(strerror(errnum));
 
-            throw new IOException(error_message);
+            var handler = _errorHandler;
+
+            if (handler == null)
+                throw new IOException(errmsg);
+
+            handler.Invoke(_portID, errmsg);
         }
 
 
@@ -388,5 +404,8 @@ namespace PERQemu.IO.Ports
         int _readTimeout;
         int _writeTimeout;
         bool _isDisposed;
+
+        static char _portID;
+        static SerialErrorDelegate _errorHandler;
     }
 }

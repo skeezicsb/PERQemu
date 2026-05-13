@@ -20,7 +20,6 @@
 using SDL2;
 
 using System;
-using System.IO;
 
 namespace PERQemu.UI
 {
@@ -41,7 +40,6 @@ namespace PERQemu.UI
 
             _paused = true;
             _enabled = true;
-            _logging = false;
 
             // Allocate once and set fixed params
             _desired = new SDL.SDL_AudioSpec();
@@ -111,9 +109,9 @@ namespace PERQemu.UI
                     return;
                 }
 
-                Log.Info(Category.Speech, "Requested: format {0}, freq {1}, chan {2}, samples {3}",
+                Log.Debug(Category.Speech, "Requested: format {0}, freq {1}, chan {2}, samples {3}",
                                             _desired.format, _desired.freq, _desired.channels, _desired.samples);
-                Log.Info(Category.Speech, "Obtained:  format {0}, freq {1}, chan {2}, samples {3}, size {4}",
+                Log.Debug(Category.Speech, "Obtained:  format {0}, freq {1}, chan {2}, samples {3}, size {4}",
                                            _spec.format, _spec.freq, _spec.channels, _spec.samples, _spec.size);
 
                 if (_spec.format != _desired.format) Log.Warn(Category.Speech, "Audio device cannot match requested format!");
@@ -131,7 +129,6 @@ namespace PERQemu.UI
                 _idleThreshold = 100;
             }
 
-            if (_logging) _log.WriteLine($"0,{HighResolutionTimer.ElapsedHiRes()},Initialize called");
             Log.Info(Category.UI, "Audio device ID {0} open for playback", _devId);
 
             Reset();
@@ -148,7 +145,7 @@ namespace PERQemu.UI
                 SDL.SDL_PauseAudioDevice(_devId, 1);
                 _paused = true;
 
-                Log.Info(Category.Speech, "Audio PAUSED");    // debug
+                Log.Debug(Category.Speech, "Audio PAUSED");
             }
         }
 
@@ -162,7 +159,7 @@ namespace PERQemu.UI
                 SDL.SDL_PauseAudioDevice(_devId, 0);
                 _paused = false;
 
-                Log.Info(Category.Speech, "Audio RESUMED");   // debug
+                Log.Debug(Category.Speech, "Audio RESUMED");
             }
         }
 
@@ -199,8 +196,6 @@ namespace PERQemu.UI
                 }
             }
 
-            if (_logging) _log.WriteLine($"1,{_lastSampleRcvd},{DevBytes}");
-
             Log.Debug(Category.Speech, "Queued {0} samples @ time {1}", samples.Length, _lastSampleRcvd);
         }
 
@@ -213,8 +208,6 @@ namespace PERQemu.UI
             var now = HighResolutionTimer.ElapsedHiRes();
             var delta = now - _lastSampleRcvd;
             var buffered = DevBytes;
-
-            if (_logging) _log.WriteLine($"2,{now},{buffered},{(_paused ? 1 : 0)}");
 
             // Resume playback?
             if (_paused && (((delta > _idleThreshold) && (buffered > 0)) || (buffered > _startDelay)))
@@ -239,8 +232,6 @@ namespace PERQemu.UI
         /// </summary>
         public void Shutdown()
         {
-            if (_logging) _log.WriteLine($"0,{HighResolutionTimer.ElapsedHiRes()},Shutdown called");
-
             if (HaveAudio)
             {
                 SDL.SDL_ClearQueuedAudio(_devId);
@@ -268,40 +259,12 @@ namespace PERQemu.UI
             Console.WriteLine("Audio status:");
             Console.WriteLine("  Device: ID: {0}  Frequency: {1:N1}kHz  Channels: {2}  Status: {3}",
                               _devId, _devFrequency / 1000.0, _devChannels, stat);
-            Console.WriteLine("   Input: {0:N1}kHz  Last sample: {1}ms  Late threshold: {2:N3}ms",
+            Console.WriteLine("   Input: {0:N1}kHz  Last sample: {1:N4}ms  Late threshold: {2:N2}ms",
                               _frequency / 1000.0, delta, _idleThreshold);
             Console.WriteLine("  Output: Queued: {0} bytes ({1} samples)  Paused: {2}",
                               bytes, samples, _paused);
         }
 
-        // Extended debugging
-        public void Telemetry(bool enable)
-        {
-            if (enable)
-            {
-                if (_logging) return;
-
-                var path = Paths.BuildOutputPath("Speech-telemetry.log");
-                _log = File.AppendText(path);
-                _log.WriteLine("0,{0},Logging started at {1}",
-                               HighResolutionTimer.ElapsedHiRes(), DateTime.Now.ToString());
-                _logging = true;
-
-                Console.WriteLine($"Opened {path} for Speech telemetry logging.");
-                return;
-            }
-
-            // Disable
-            if (!_logging) return;
-
-            _logging = false;
-            _log.WriteLine("0,{0},Logging stopped at {1}",
-                           HighResolutionTimer.ElapsedHiRes(), DateTime.Now.ToString());
-            _log.Flush();
-            _log.Close();
-
-            Console.WriteLine("Speech telemetry log closed.");
-        }
 
         uint _devId;
 
@@ -320,9 +283,5 @@ namespace PERQemu.UI
 
         SDL.SDL_AudioSpec _desired;
         SDL.SDL_AudioSpec _spec;
-
-        // Extended debugging
-        protected bool _logging;
-        protected StreamWriter _log;
     }
 }

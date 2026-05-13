@@ -89,7 +89,7 @@ namespace PERQemu.IO.Z80
 
             public bool IntPending
             {
-                get { return _channel == 1 ? false : (_read[0] & (byte)RR0.IntPending) != 0; }
+                get { return _channel != 1 && (_read[0] & (byte)RR0.IntPending) != 0; }
                 set { _read[0] = SetBit(_read[0], (byte)RR0.IntPending, value); }
             }
 

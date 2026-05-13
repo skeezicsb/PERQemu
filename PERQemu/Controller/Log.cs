@@ -1,5 +1,5 @@
 ﻿//
-// Log.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Log.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -478,7 +478,7 @@ namespace PERQemu
         static int GetFileNum(string filename)
         {
             // For now, assume the fixed pattern "debugNN.log".  Yuck...
-            return Convert.ToInt32(Path.GetFileName(_currentFile).Substring(5, 2));
+            return Convert.ToInt32(Path.GetFileName(filename).Substring(5, 2));
         }
 
         /// <summary>

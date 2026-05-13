@@ -27,11 +27,12 @@
 // along with PERQemu.  If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System;
 using System.Runtime.InteropServices;
 
 namespace PERQemu.IO.Ports
 {
+    public delegate void SerialErrorDelegate(char portID, string errorMessage);
+
     interface ISerialStream
     {
         int Read([Out] byte[] buffer, int count);
@@ -49,6 +50,8 @@ namespace PERQemu.IO.Ports
 
         int ReadTimeout { get; set; }
         int WriteTimeout { get; set; }
+
+        void RegisterErrorDelegate(SerialErrorDelegate handler, char id = 'A');
 
         void Flush();
         void Dispose();
