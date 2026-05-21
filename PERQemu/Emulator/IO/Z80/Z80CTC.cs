@@ -83,6 +83,11 @@ namespace PERQemu.IO.Z80
             _channels[channel].TimerClient = null;
         }
 
+        public void Notify(int channel)
+        {
+            _channels[channel].Start();
+        }
+
         public byte Read(byte portAddress)
         {
             throw new NotImplementedException("Z80 CTC read");

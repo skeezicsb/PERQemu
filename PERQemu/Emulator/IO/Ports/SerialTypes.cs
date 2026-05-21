@@ -62,21 +62,6 @@ namespace PERQemu.IO.Ports
         RTS = 16    // Request to send
     }
 
-    [Flags]
-    public enum PortStatus : byte
-    {
-        None = 0x0,
-        InvalidChar = 0x1,
-        PinChange = 0x2,
-        ParityError = 0x4,
-        FramingError = 0x8,
-        RxOverrun = 0x10,
-        TxOverrun = 0x20,
-        BreakDetected = 0x40,
-        DeviceError = 0x80
-    }
-
-
     public struct SerialSettings
     {
         public SerialSettings(int baud, int data, Parity parity, StopBits stop,

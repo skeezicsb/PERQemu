@@ -96,18 +96,15 @@ namespace PERQemu.IO.Z80
                 _speechMux.AttachRxDevice(new KrizTablet(this, _system));
             }
 
-            // If enabled, attach the CVSD chip
-            if (_system.Config.SpeechEnabled)
-            {
-                _speechMux.AttachTxDevice(_cvsd);
-                _z80ctc.AttachDevice(1, _cvsd);
-            }
-
-            // Attach the RS232 device to SIO channel A
-            SerialReset('a');
+            // Attach the CVSD chip
+            _speechMux.AttachTxDevice(_cvsd);
+            _z80ctc.AttachDevice(1, _cvsd);
 
             // Attach the mux device to SIO channel B
             _z80sio.AttachDevice(1, _speechMux);
+
+			// Attach the RS232 device to SIO channel A
+			SerialInit();
 
             // Everybody get on the bus!
             _bus.RegisterDevice(_fdc);
@@ -130,7 +127,8 @@ namespace PERQemu.IO.Z80
             _z80ctc.DetachDevice(0);
             _z80sio.DetachDevice(0);
             SerialInit();
-            _z80sio.Reset(0);
+            _z80sio.Reinitialize(0);
+            _z80ctc.Notify(0);
         }
 
         public override void SerialError(char port, string message)

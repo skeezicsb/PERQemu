@@ -541,11 +541,14 @@ v1.0 - TBD
   - Remaining items from the "What's Not" list above
 
 v0.9.2 - Experiments branch
-  - Speech output proof-of-concept is now working!  Mostly!
+  - Speech output proof-of-concept is now working!  Mostly!  Can also enable
+    or disable playback and tune the decoder in real-time
   - Full rewrite of the SerialPort and updates to the SIO emulation increase
     emulation accuracy and reliability of all serial devices
   - Dynamic reloading of RS-232 ports at runtime (host port device settings
-    can be changed without restarting the VM) 
+    can be changed without restarting the VM)
+  - Add limited (fake) support for forcing and reporting memory parity errors
+    so that certain diagnostics/confidence tests can run
   - Many bug fixes, CLI changes, updated UserGuide
 
 v0.8.5 - Main branch
@@ -720,7 +723,7 @@ v0.1 - First public release
 
 Update history:
 
-5/12/2026 - skeezicsb - v0.9.0 (experiments)
+5/20/2026 - skeezicsb - v0.9.2 (experiments)
 12/12/2025 - skeezicsb - v0.8.5 (main)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)

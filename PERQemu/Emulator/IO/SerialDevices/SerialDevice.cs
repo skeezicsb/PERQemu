@@ -85,6 +85,18 @@ namespace PERQemu.IO.SerialDevices
             set { Log.Detail(Category.SIO, "Ignoring stop bits set to {0}", value); }
         }
 
+        public virtual Handshake FlowControl
+        {
+            get { return Handshake.None; }
+            set { Log.Detail(Category.SIO, "Ignoring flow control {0}", value); }
+        }
+
+        public virtual SerialOptions Options
+        {
+            get { return SerialOptions.None; }
+            set { Log.Detail(Category.SIO, "Ignoring serial option {0}", value); }
+        }
+
         public virtual bool DTR
         {
             get { return false; }
@@ -157,6 +169,11 @@ namespace PERQemu.IO.SerialDevices
         public virtual void Close()
         {
             _isOpen = false;
+        }
+
+        public virtual void NotifySettingsChange(SerialSettings settings)
+        {
+            Log.Detail(Category.SIO, "Settings change notification ignored for {0}", Name);
         }
 
         public virtual void Status()

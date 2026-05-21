@@ -129,8 +129,8 @@ namespace PERQemu.IO.Z80
 
             public bool AutoEnables => (_write[3] & (byte)WR3.AutoEnables) != 0;
 
-            public bool RxEnabled => AutoEnables ? DCDState : (_write[3] & (byte)WR3.RxEnable) != 0;
-            public bool TxEnabled => AutoEnables ? CTSState : (_write[5] & (byte)WR5.TxEnable) != 0;
+            public bool RxEnabled => (_write[3] & (byte)WR3.RxEnable) != 0;
+            public bool TxEnabled => (_write[5] & (byte)WR5.TxEnable) != 0;
 
             public bool SyncMode => _syncMode;
             public byte RxSyncByte => _write[7];
@@ -154,6 +154,8 @@ namespace PERQemu.IO.Z80
             public bool ExtIntEnabled => (_write[1] & (byte)WR1.ExtIntEnable) != 0;
             public bool StatusAffectsVector => (_write[1] & (byte)WR1.StatusAffectsVector) != 0;
 
+            // Ugh. For reconfiguration, read back the raw write registers
+            public byte[] RawWriteRegisters => _write;
 
             /// <summary>
             /// Read the raw contents of the currently selected register.

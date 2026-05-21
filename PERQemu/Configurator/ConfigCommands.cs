@@ -777,9 +777,7 @@ namespace PERQemu.UI
                 // Apply to the running system?
                 if (PERQemu.Controller.State > RunState.Off)
                 {
-                    PERQemu.Sys.IOB.Z80System.SIOA.DetachDevice(0);
                     PERQemu.Sys.IOB.Z80System.SerialReset('A');
-                    PERQemu.Sys.IOB.Z80System.SIOA.Reset();     // FIXME: redundant?
                 }
             }
         }
@@ -810,9 +808,7 @@ namespace PERQemu.UI
 
                 if (PERQemu.Controller.State > RunState.Off)
                 {
-                    PERQemu.Sys.IOB.Z80System.SIOB.DetachDevice(0);
                     PERQemu.Sys.IOB.Z80System.SerialReset('B');
-                    PERQemu.Sys.IOB.Z80System.SIOB.Reset();
                 }
             }
         }
@@ -883,8 +879,15 @@ namespace PERQemu.UI
                     Console.WriteLine("Speech enabled.");
 
                 PERQemu.Config.Current.SpeechEnabled = true;
+                PERQemu.Config.Changed = true;
 
-                // Change picked up automatically if running
+                if (PERQemu.Controller.State > RunState.Off)
+                {
+                    // Give it a poke to restart polling
+                    PERQemu.Sys.IOB.Z80System.SIOA.Reinitialize(1);
+                    PERQemu.Sys.IOB.Z80System.Speech.ResetFilter();
+                    PERQemu.GUI.Audio.Initialize();
+                }
             }
         }
 
@@ -897,6 +900,13 @@ namespace PERQemu.UI
                     Console.WriteLine("Speech disabled.");
 
                 PERQemu.Config.Current.SpeechEnabled = false;
+                PERQemu.Config.Changed = true;
+
+                if (PERQemu.Controller.State > RunState.Off)
+                {
+                    PERQemu.Sys.IOB.Z80System.Speech.ResetFilter();
+                    PERQemu.GUI.Audio.Shutdown();
+                }
             }
         }
 

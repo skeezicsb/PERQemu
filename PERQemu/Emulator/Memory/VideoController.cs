@@ -1,5 +1,5 @@
 //
-// VideoController.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// VideoController.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -110,6 +110,7 @@ namespace PERQemu.Memory
         bool DisplayEnabled => (_videoStatus & StatusRegister.EnableDisplay) != 0;
         bool CursorEnabled => (_videoStatus & StatusRegister.EnableCursor) != 0;
         bool VSyncEnabled => (_videoStatus & StatusRegister.EnableVSync) != 0;
+        bool BadParity => (_videoStatus & StatusRegister.WriteBadParity) != 0;
 
         public bool HandlesPort(byte ioPort)
         {
@@ -130,14 +131,6 @@ namespace PERQemu.Memory
                     UpdateSignals();
                     Log.Debug(Category.Display, "Read CRT signals, returned {0}", _crtSignals);
                     return (int)_crtSignals;
-
-                case 0x66:   // Read Hi address parity (unimplemented)
-                    Log.Debug(Category.Memory, "STUB: Read Hi address parity, returned 0");
-                    return 0x0;
-
-                case 0x67:   // Read Low address parity (unimplemented)
-                    Log.Debug(Category.Memory, "STUB: Read Low address parity, returned 0");
-                    return 0x0;
 
                 default:
                     throw new UnhandledIORequestException(ioPort);
@@ -248,6 +241,11 @@ namespace PERQemu.Memory
 
                     Log.Debug(Category.Display, "Video status port set to {0} (0x{1:x}) @ line {2}",
                                                 _videoStatus, value, _scanLine);
+
+                    if (BadParity)
+                    {
+                        _system.Memory.IOWrite(0xe3, value);
+                    }
 
                     if (CursorEnabled)
                     {
@@ -638,11 +636,12 @@ namespace PERQemu.Memory
         {
             UpdateSignals();
 
-            Console.WriteLine("counterInit={0}, count={1}, overflow={2}, scanline={3}, startOver={4}",
+            Console.WriteLine("Video status:");
+            Console.WriteLine("  Init={0}, count={1}, overflow={2}, scanline={3}, startOver={4}",
                               _lineCounterInit, _lineCounter, _lineCountOverflow, _scanLine, _startOver);
-            Console.WriteLine("screen @ 0x{0:x}, cursor @ 0x{1:x}, intrEnabled={2}",
+            Console.WriteLine("  Screen @ 0x{0:x}, cursor @ 0x{1:x}, intrEnabled={2}",
                               _displayAddress, _cursorAddress, InterruptEnabled);
-            Console.WriteLine("state={0}, crt={1}", _state, _crtSignals);
+            Console.WriteLine("  State={0}, crt={1}", _state, _crtSignals);
         }
 
 
@@ -697,8 +696,6 @@ namespace PERQemu.Memory
         byte[] _handledPorts =
         {
             0x65,               // Read CRT signals
-            0x66,               // Read Hi address parity
-            0x67,               // Read Low address parity
             0xe0,               // Load Line counter
             0xe1,               // Load Display address
             0xe2,               // Load Cursor address

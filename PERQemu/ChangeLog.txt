@@ -7,6 +7,27 @@ Previous notes moved to ChangeLog-Old.txt.
 
 May, 2026:
 
+    7. Whoops.  The Zilog SIO "Auto Enables" stuff (and that chip in general) is
+    just bonkers.  Rework the serial Tx/Rx routines to properly test/use the bit
+    when set (as the PERQ generally does enable it).  Also refactor the dynamic
+    reconfiguration stuff so all programming registers are properly restored
+    when Speech or RS232 devices are re-enabled; it sort of all actually works
+    now, mostly, kind of.  Checkpoint for more debugging.
+
+    6. The "force bad parity" diagnostic function is now implemented, sort of.
+    There are at least three different ways a parity error is reported based on
+    the type of memory board, and I'm just doing the most straightforward one
+    for now.  Of course this isn't documented at all, except in some extremely
+    obscure microcode source, with additional clues in fuzzy scans of the old
+    schematics.  As this mainly adds overhead and really isn't useful for normal
+    operations, it's currently #ifdef'ed out.
+
+    5. Running the ICL confidence test microcode and finding obscure - and very
+    questionable - corner cases.  May have to actually implement memory parity
+    error reporting, which apparently differs according to board peculiarities
+    that are only "documented" in microcode source?  Of course.  Nothing is EVER
+    easy.
+
     4. Speech/audio output rate is dynamically adjusted based on host emulation
     rate, centered on the 60fps real-time rate.  The range is clipped from a low
     of 20fps to a high of 100fps (when CPU rate limiting is disabled).  A new
@@ -127,4 +148,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Tue May 12 12:31:32 PDT 2026
+Last update: skeezics    Wed May 20 19:55:04 PDT 2026

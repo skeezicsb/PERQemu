@@ -91,6 +91,12 @@ namespace PERQemu.IO.Z80
             _channels[channel].TimerClient = null;
         }
 
+        public void Notify(int channel)
+        {
+            // Push out a rate notification (to reset baud rate after dynamic reconfig)
+            _channels[channel].TimerClient?.NotifyRateChange(channel, _channels[channel].Counter);
+        }
+
         public byte Read(byte portAddress)
         {
             // The chip can latch and return a status byte or the latched value
@@ -170,6 +176,8 @@ namespace PERQemu.IO.Z80
 
                 Log.Debug(Category.CTC, _ID + "reset");
             }
+
+            public ushort Counter => _counter;
 
             /// <summary>
             /// Sets the operating mode for the channel.

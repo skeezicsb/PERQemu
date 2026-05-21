@@ -1,5 +1,5 @@
 //
-// MemoryController.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// MemoryController.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -187,7 +187,7 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Request(int startAddr, MemoryCycle cycleType)
         {
-            // fixme: whoops, we aren't actually checking the bookmark Start bit!
+            // FIXME: whoops, we aren't actually checking the bookmark Start bit!
             // if pending is *already* active, we've screwed up!?
             if (_pending.Active)
                 Log.Write(Category.MemCycle, "Request {0} while {1} already pending!?",

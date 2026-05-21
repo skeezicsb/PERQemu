@@ -1,5 +1,5 @@
 ﻿//
-// SerialPort.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// SerialPort.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -184,17 +184,17 @@ namespace PERQemu.IO.Ports
 
         public bool CarrierDetect
         {
-            get { return _isOpen && (_signals & SerialSignal.DCD) != 0; }
+            get { return _isOpen && ((_signals & SerialSignal.DCD) != 0); }
         }
 
         public bool ClearToSend
         {
-            get { return _isOpen && (_signals & SerialSignal.CTS) != 0; }
+            get { return _isOpen && ((_signals & SerialSignal.CTS) != 0); }
         }
 
         public bool DataSetReady
         {
-            get { return _isOpen && (_signals & SerialSignal.DSR) != 0; }
+            get { return _isOpen && ((_signals & SerialSignal.DSR) != 0); }
         }
 
         public bool DataTerminalReady

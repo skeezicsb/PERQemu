@@ -87,6 +87,26 @@ namespace PERQemu.IO.SerialDevices
             set { _perq.StopBits = value; }
         }
 
+        /// <summary>
+        /// We can dynamically update the handshaking at runtime; buffer the
+        /// latest Settings change and pass it through to the device.
+        /// </summary>
+        public override Handshake FlowControl
+        {
+            get { return _host.FlowControl; }
+            set { _host.FlowControl = value; }
+            // Todo: set _port.FlowControl; does this affect SIO's view of RTS/CTS?
+        }
+
+        /// <summary>
+        /// The option flags are synthetic, managed on the PERQ side.
+        /// </summary>
+        public override SerialOptions Options
+        {
+            get { return _perq.Options; }
+            set { _perq.Options = value; }
+        }
+
         //
         // Virtual I/O pins
         //
@@ -125,8 +145,8 @@ namespace PERQemu.IO.SerialDevices
         /// a software override to avoid the chicken & egg problem when talking
         /// to uh, an actual modem.  <facepalm />
         /// </summary>
-        public override bool DCD => (_host.Options == SerialOptions.DCDFollowDSR ? DSR :
-                                     _host.Options == SerialOptions.DCDForceOn ? true :
+        public override bool DCD => (_perq.Options == SerialOptions.DCDFollowDSR ? DSR :
+                                     _perq.Options == SerialOptions.DCDForceOn ? true :
                                      _port.CarrierDetect);
 
         /// <summary>
@@ -182,6 +202,7 @@ namespace PERQemu.IO.SerialDevices
 
             if (IsOpen) Close();
 
+            // Copy out the physical port settings
             _port.PortName = _portName;
             _port.BaudRate = _host.BaudRate;
             _port.DataBits = _host.DataBits;
@@ -189,6 +210,10 @@ namespace PERQemu.IO.SerialDevices
             _port.StopBits = _host.StopBits;
             _port.FlowControl = _host.FlowControl;
 
+            // This one's virtual... Hmmm
+            _perq.Options = _host.Options;
+
+            // Try it and hope we don't explode
             _port.Open();
 
             _isOpen = _port.IsOpen;
@@ -236,11 +261,18 @@ namespace PERQemu.IO.SerialDevices
             if (_system.IsEIO)
             {
                 if (chan == 0)
+                {
                     _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
+                    _pollRate = (_rxRate * 16);
+                }
                 else if (chan == 2)
+                {
                     _txRate = Conversion.BaudRateToNsec(_perq.BaudRate);
+                }
                 else
+                {
                     throw new InvalidOperationException($"RS232 baud rate change from CTC chan {chan}?");
+                }
 
                 Log.Info(Category.RS232, "{0} {1} baud rate changed to {2}", _name,
                                          (chan == 0) ? "receive" : "transmit", _perq.BaudRate);
@@ -249,9 +281,11 @@ namespace PERQemu.IO.SerialDevices
 
             // On IOB/CIO, no split rates
             _txRate = _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);
+            _pollRate = (_rxRate * 16);
 
             Log.Info(Category.RS232, "{0} baud rate changed to {1}", _name, _perq.BaudRate);
         }
+
 
         /// <summary>
         /// If a byte is available from the host, send it to the PERQ.

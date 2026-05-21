@@ -131,7 +131,7 @@ namespace PERQemu.UI
 
             Log.Info(Category.UI, "Audio device ID {0} open for playback", _devId);
 
-            Reset();
+            Pause();
         }
 
         /// <summary>
@@ -247,7 +247,7 @@ namespace PERQemu.UI
         {
             if (!HaveAudio)
             {
-                Console.WriteLine("Audio device is not " + (_enabled ? "available." : "enabled."));
+                Console.WriteLine("Audio device is not available.");
                 return;
             }
 
@@ -261,8 +261,8 @@ namespace PERQemu.UI
                               _devId, _devFrequency / 1000.0, _devChannels, stat);
             Console.WriteLine("   Input: {0:N1}kHz  Last sample: {1:N4}ms  Late threshold: {2:N2}ms",
                               _frequency / 1000.0, delta, _idleThreshold);
-            Console.WriteLine("  Output: Queued: {0} bytes ({1} samples)  Paused: {2}",
-                              bytes, samples, _paused);
+            Console.WriteLine("  Output: Queued: {0} bytes ({1} samples)  Enabled: {2}  Paused: {3}",
+                              bytes, samples, _enabled, _paused);
         }
 
 

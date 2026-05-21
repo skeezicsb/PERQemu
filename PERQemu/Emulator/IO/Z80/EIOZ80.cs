@@ -89,12 +89,9 @@ namespace PERQemu.IO.Z80
                 _speechMux.AttachRxDevice(new KrizTablet(this, _system));
             }
 
-            // If enabled, attach the CVSD chip
-            if (_system.Config.SpeechEnabled)
-            {
-                _speechMux.AttachTxDevice(_cvsd);
-                _timerA.AttachDevice(1, _cvsd);
-            }
+            // Attach the CVSD chip
+            _speechMux.AttachTxDevice(_cvsd);
+            _timerA.AttachDevice(1, _cvsd);
 
             // Attach the fixed devices (audio/tablet & keyboard)
             _z80sioA.AttachDevice(1, _speechMux);
@@ -146,7 +143,9 @@ namespace PERQemu.IO.Z80
 
                 // Initialize and reset new one
                 SerialInitRSA();
-                _z80sioA.Reset(0);
+                _z80sioA.Reinitialize(0);
+                _timerA.Notify(0);
+                _timerA.Notify(2);
             }
             else if (port == 'b' || port == 'B')
             {
@@ -155,7 +154,9 @@ namespace PERQemu.IO.Z80
                 _z80sioB.DetachDevice(0);
 
                 SerialInitRSB();
-                _z80sioB.Reset(0);
+                _z80sioB.Reinitialize(0);
+                _timerB.Notify(0);
+                _timerB.Notify(2);
             }
             else
                 throw new InvalidOperationException($"Bad port {port}");

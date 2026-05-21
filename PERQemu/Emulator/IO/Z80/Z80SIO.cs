@@ -19,6 +19,7 @@
 
 using System;
 
+using PERQemu.IO.Ports;
 using PERQemu.IO.SerialDevices;
 
 namespace PERQemu.IO.Z80
@@ -75,21 +76,13 @@ namespace PERQemu.IO.Z80
         /// </summary>
         public void Reset()
         {
-            Reset(0);
-            Reset(1);
+            _channels[0].Reset();
+            _channels[1].Reset();
 
             _dmaChanSelect = SpeechSel;
             _dmaAcknowledged = false;
 
             Log.Debug(Category.SIO, "Unit {0} reset", _unit);
-        }
-
-        /// <summary>
-        /// Reset only the specified channel; used to re-open the serial device(s).
-        /// </summary>
-        public void Reset(int chan)
-        {
-            _channels[chan].Reset();
         }
 
         public char Unit => _unit;
@@ -200,6 +193,16 @@ namespace PERQemu.IO.Z80
         public void DetachDevice(int channel)
         {
             _channels[channel].DetachDevice();
+        }
+
+        public void Reinitialize(int channel)
+        {
+            _channels[channel].Reinitialize();
+        }
+
+        public void NotifySettingsChange(int channel, SerialSettings settings)
+        {
+            _channels[channel].UpdateSettings(settings);
         }
 
         /// <summary>

@@ -112,6 +112,42 @@ namespace PERQemu.IO.Z80
             }
 
             /// <summary>
+            /// Reopen and reinitialize the register programming when a device is
+            /// reattached.  Will also restart the polling event as appropriate.
+            /// </summary>
+            /// <remarks>
+            /// Rewrites the registers in the order recommended by Zilog so the
+            /// newly recreated device inherits the current programming state:
+            ///     WR2: Interrupt vector (chan B only)
+            ///     WR6: Tx sync byte
+            ///     WR7: Rx sync byte
+            ///     WR4: Async mode, parity, stop bits, clock
+            ///     WR3: Rx/Auto enables, Rx char bits
+            ///     WR5: RTS, DTR, Tx enable, Tx char bits
+            ///     WR1: Interrupt enables and flags
+            /// </remarks>
+            public void Reinitialize()
+            {
+                int[] writeOrder = { 6, 7, 4, 3, 5, 1 };
+                var regs = _registers.RawWriteRegisters;
+
+                // If this blows up...
+                _device.Open();
+
+                if (_channelNum == 1)
+                {
+                    _registers.Selected = 2;
+                    WriteRegister(regs[2]);
+                }
+
+                foreach (int r in writeOrder)
+                {
+                    _registers.Selected = r;
+                    WriteRegister(regs[r]);
+                }
+            }
+
+            /// <summary>
             /// Read the currently selected Read register.
             /// </summary>
             public byte ReadRegister()
@@ -459,21 +495,38 @@ namespace PERQemu.IO.Z80
             }
 
             /// <summary>
+            /// Check for changes in the device settings that aren't programmed
+            /// by the PERQ/Z80.  This allows changing the synthetic DCD Option
+            /// or Handshaking flags; other changes should be done (for now) by
+            /// disabling and re-enabling the port...
+            /// </summary>
+            public void UpdateSettings(SerialSettings settings)
+            {
+                // Todo: push other device changes and/or just assign the struct
+                // and do a forced Close()/Open() to reinit?
+                _device.FlowControl = settings.FlowControl;
+                _device.Options = settings.Options;
+            }
+
+
+            /// <summary>
             /// Start the polling event if a port device is attached, the loop is
             /// not already running, and one/both of the Rx/Tx enable bits are set.
             /// </summary>
-            void CheckPollEnable()
+            public void CheckPollEnable()
             {
                 // Have a device?
                 if (_device == null) return;
 
+                // Already polling?
+                if (_pollEvent != null) return;
+
+                // Let 'er rip
                 Log.Detail(Category.SIO, "Channel {0} check: polling={1} rate={2} rx={3}/{4} tx={5}/{6}",
                                          _channelNum, (_pollEvent != null), _device.PollRate,
                                          _registers.RxEnabled, _device.ReceiveRate,
                                          _registers.TxEnabled, _device.TransmitRate);
-
-                // If not already polling, start the loop
-                if (_pollEvent == null) PollDevice(0, null);
+                PollDevice(0, null);
             }
 
             /// <summary>
@@ -522,7 +575,10 @@ namespace PERQemu.IO.Z80
                     // Time to read another char?
                     if (_nextCharRx <= now)
                     {
-                        if (_device.ReadReady && (_rxFifo.Count < 4))
+                        // Apply Auto Enables logic here
+                        if (_device.ReadReady &&
+                            (!_registers.AutoEnables || (_registers.AutoEnables && _device.DCD)) &&
+                            (_rxFifo.Count < 4))
                         {
                             data = _device.Receive();
 
@@ -555,9 +611,12 @@ namespace PERQemu.IO.Z80
                     // Time to send it?
                     if (_nextCharTx <= now)
                     {
-                        // What to send?
-                        if (_device.WriteReady && ((_txFifo.Count > 0) || _registers.SyncMode))
+                        // Can we send it?
+                        if (_device.WriteReady &&
+                           (!_registers.AutoEnables || (_registers.AutoEnables && _device.CTS)) &&
+                           ((_txFifo.Count > 0) || _registers.SyncMode))
                         {
+                            // What to send?
                             if (_txFifo.Count > 0)
                             {
                                 data = _txFifo.Dequeue();

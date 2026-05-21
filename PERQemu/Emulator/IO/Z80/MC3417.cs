@@ -99,8 +99,6 @@ namespace PERQemu.IO.Z80
         public override void Reset()
         {
             ResetFilter();
-
-            _speaker.Enabled = PERQemu.Config.Current.SpeechEnabled;
             _speaker.Reset();
 
             Log.Debug(Category.Speech, "MC3417 reset");
@@ -108,6 +106,10 @@ namespace PERQemu.IO.Z80
 
         public void ResetFilter()
         {
+            // Allow dynamic updates
+            _enabled = PERQemu.Config.Current.SpeechEnabled;
+            _speaker.Enabled = _enabled;
+
             // Pick up tuning changes
             _settings = Settings.AudioSettings;
 
@@ -136,7 +138,7 @@ namespace PERQemu.IO.Z80
             // Apply the adjustment? (yes by default)
             if (offset > 0.0 && !Settings.Performance.HasFlag(RateLimit.SpeechDelay))
             {
-                // Limit to ~20fps to 100fps
+                // Limit range from ~20fps to ~100fps
                 offset = Conversion.Clamp(offset, 0.3334, 1.6667);
                 _txRate = (ulong)(_txRate * offset);
                 Log.Debug(Category.Speech, "Adjusting tx pacing by {0:N4}", offset);
@@ -273,7 +275,7 @@ namespace PERQemu.IO.Z80
                               !Settings.Performance.HasFlag(RateLimit.SpeechDelay),
                               _txRate * Conversion.NsecToMsec,
                               _pollRate * Conversion.NsecToMsec,
-                              _speaker.Enabled);
+                              _enabled);
             Console.WriteLine("  Filter: " + _settings.ToString());
         }
 
@@ -290,6 +292,8 @@ namespace PERQemu.IO.Z80
         short[] _samples;
 
         byte _channels;
+
+        bool _enabled;
 
         int _shiftReg;
         int _frequency;

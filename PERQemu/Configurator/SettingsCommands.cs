@@ -463,12 +463,22 @@ namespace PERQemu.UI
         public void SetRSAOptions([KeywordMatch("SerialFlags")] string opt)
         {
             SetRS232Options('A', opt, ref Settings.RSASettings);
+
+            if (PERQemu.Controller.State > RunState.Off)
+            {
+                PERQemu.Sys.IOB.Z80System.SIOA.NotifySettingsChange(0, Settings.RSASettings);
+            }
         }
 
         [Command("settings assign rs232b option", "Set or clear options for serial port B")]
         public void SetRSBOptions([KeywordMatch("SerialFlags")] string opt)
         {
             SetRS232Options('B', opt, ref Settings.RSBSettings);
+
+            if (PERQemu.Controller.State > RunState.Off)
+            {
+                PERQemu.Sys.IOB.Z80System.SIOB.NotifySettingsChange(0, Settings.RSBSettings);
+            }
         }
 
         /// <summary>
