@@ -84,8 +84,11 @@ namespace PERQemu.IO.DiskDevices
             {
                 _driveSelect = value;
 
-                // The Disk Change signal is reset when Drive Select goes low
-                _diskChange &= _driveSelect;
+                // Reset the Disk Change signal when the drive is selected
+                if (_driveSelect && _diskChange)
+                {
+                    _diskChange = false;
+                }
             }
         }
 

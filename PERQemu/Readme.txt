@@ -540,7 +540,7 @@ v1.0 - TBD
   - See if CIO Micropolis has any real software support?
   - Remaining items from the "What's Not" list above
 
-v0.9.2 - Experiments branch
+v0.9.3 - Experiments branch
   - Speech output proof-of-concept is now working!  Mostly!  Can also enable
     or disable playback and tune the decoder in real-time
   - Full rewrite of the SerialPort and updates to the SIO emulation increase
@@ -723,7 +723,7 @@ v0.1 - First public release
 
 Update history:
 
-5/20/2026 - skeezicsb - v0.9.2 (experiments)
+5/29/2026 - skeezicsb - v0.9.3 (experiments)
 12/12/2025 - skeezicsb - v0.8.5 (main)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)

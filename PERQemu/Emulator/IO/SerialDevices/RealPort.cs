@@ -179,6 +179,7 @@ namespace PERQemu.IO.SerialDevices
 
             // Reset to PERQ defaults
             _perq = SerialSettings.Defaults;
+            _perq.Options = _host.Options;
 
             // Adjust the pacing rates for scheduling characters to the PERQ
             _txRate = _rxRate = Conversion.BaudRateToNsec(_perq.BaudRate);

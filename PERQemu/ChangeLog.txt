@@ -7,6 +7,11 @@ Previous notes moved to ChangeLog-Old.txt.
 
 May, 2026:
 
+    8. So few rabbits, so many rabbit holes.  Fix a regression in the floppy
+    controller after recent changes to the scheduler and how resets are handled.
+    Was preventing floppy boots from working reliably.  Bump to v0.9.3 for debug
+    and testing push before next release.
+    
     7. Whoops.  The Zilog SIO "Auto Enables" stuff (and that chip in general) is
     just bonkers.  Rework the serial Tx/Rx routines to properly test/use the bit
     when set (as the PERQ generally does enable it).  Also refactor the dynamic
@@ -148,4 +153,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Wed May 20 19:55:04 PDT 2026
+Last update: skeezics    Fri May 29 20:13:39 PDT 2026
