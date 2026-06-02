@@ -7,6 +7,13 @@ Previous notes moved to ChangeLog-Old.txt.
 
 May, 2026:
 
+    9. Call it good enough to push out the v0.9.5 release.  The final push to a
+    heralded v1.0.0 will mostly involve debugging and usability fixes.  I've so
+    many plans and projects, with so little time/energy/brains left to get to
+    them all!  Updated the bundled POS F.15 hard disk images to Amendment 3, the
+    final update for F.15 before F.16 rolls out (full release media and notes
+    have been posted to the PERQmedia repo).
+
     8. So few rabbits, so many rabbit holes.  Fix a regression in the floppy
     controller after recent changes to the scheduler and how resets are handled.
     Was preventing floppy boots from working reliably.  Bump to v0.9.3 for debug
@@ -153,4 +160,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Fri May 29 20:13:39 PDT 2026
+Last update: skeezics    Sun May 31 13:15:16 PDT 2026

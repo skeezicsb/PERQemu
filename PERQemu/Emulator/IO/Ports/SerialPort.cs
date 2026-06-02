@@ -203,10 +203,8 @@ namespace PERQemu.IO.Ports
 
             set
             {
-                if (_isOpen && value != _dtrEnable)
-                    _stream.SetSignal(SerialSignal.DTR, value);
-
                 _dtrEnable = value;
+                if (_isOpen) _stream.SetSignal(SerialSignal.DTR, _dtrEnable);
             }
         }
 
@@ -216,10 +214,8 @@ namespace PERQemu.IO.Ports
 
             set
             {
-                if (_isOpen && value != _rtsEnable)
-                    _stream.SetSignal(SerialSignal.RTS, value);
-
                 _rtsEnable = value;
+                if (_isOpen) _stream.SetSignal(SerialSignal.RTS, _rtsEnable);
             }
         }
 

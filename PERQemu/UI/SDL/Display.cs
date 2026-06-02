@@ -271,9 +271,9 @@ namespace PERQemu.UI
         {
             if (enabled != _enabled)
             {
-                Log.Info(Category.UI, "Screen is now {0}, DDS @ {1} (clocks {2})",
-                                  enabled ? "ON" : "OFF",
-                                  PERQemu.Sys.CPU.DDS, PERQemu.Sys.CPU.Clocks);
+                Log.Debug(Category.UI, "Screen is now {0}, DDS @ {1} (clocks {2})",
+                                       enabled ? "ON" : "OFF",
+                                       PERQemu.Sys.CPU.DDS, PERQemu.Sys.CPU.Clocks);
 
                 _visibleRect.y = 0;     // reset to top!
                 _enabled = enabled;

@@ -539,6 +539,9 @@ namespace PERQemu.IO.Z80
             // Clear drive "Busy" bit
             _status &= ~((Status)(1 << _unitSelect));
 
+            // Turn off activity light
+            PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, false);
+
             Log.Debug(Category.FloppyDisk, "Unit {0} seek to cyl {1} completed", _unitSelect, _pcn[_unitSelect]);
             FinishCommand(true);
         }

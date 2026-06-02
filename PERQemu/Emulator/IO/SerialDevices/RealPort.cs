@@ -145,8 +145,8 @@ namespace PERQemu.IO.SerialDevices
         /// a software override to avoid the chicken & egg problem when talking
         /// to uh, an actual modem.  <facepalm />
         /// </summary>
-        public override bool DCD => (_perq.Options == SerialOptions.DCDFollowDSR ? DSR :
-                                     _perq.Options == SerialOptions.DCDForceOn ? true :
+        public override bool DCD => (_perq.Options == SerialOptions.DCDForceOn ? true :
+                                     _perq.Options == SerialOptions.DCDFollowDSR ? DSR :
                                      _port.CarrierDetect);
 
         /// <summary>

@@ -121,8 +121,8 @@ namespace PERQemu.UI
 
                 _numIds = (uint)howMany;
 
-                Log.Info(Category.UI, "Allocated {0} SDL events, base = {1}",
-                                      _numIds, _baseId);
+                Log.Debug(Category.UI, "Allocated {0} SDL events, base = {1}",
+                                       _numIds, _baseId);
             }
         }
 
@@ -146,7 +146,7 @@ namespace PERQemu.UI
             e.type = _baseId + code;
             e.user.code = (int)code;
 
-            Log.Info(Category.UI, "Assigned ID {0} to {1} event", e.type, t);
+            Log.Debug(Category.UI, "Assigned ID {0} to {1} event", e.type, t);
         }
 
         /// <summary>
@@ -160,7 +160,7 @@ namespace PERQemu.UI
                 SDL.SDL_FlushEvents(_baseId, _baseId + _numIds);
                 _dispatch.Clear();
 
-                Log.Info(Category.UI, "Custom events flushed");
+                Log.Debug(Category.UI, "Custom events flushed");
             }
 
             _baseId = SDL.SDL_EventType.SDL_USEREVENT;
