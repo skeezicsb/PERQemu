@@ -1,5 +1,5 @@
 ﻿//
-// NullPort.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// SerialDevice.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -18,66 +18,36 @@
 //
 
 using System;
-using System.IO.Ports;
 
 using PERQemu.IO.Z80;
+using PERQemu.IO.Ports;
 
 namespace PERQemu.IO.SerialDevices
 {
-    [Flags]
-    public enum CharStatus : byte
-    {
-        None = 0x0,
-        InvalidChar = 0x1,
-        PinChange = 0x2,
-        ParityError = 0x4,
-        FramingError = 0x8,
-        Overrun = 0x10,
-        Underrun = 0x20,
-        BreakDetected = 0x40,
-        DeviceError = 0x80
-    }
-
-    /// <summary>
-    /// For "real" devices, this extended delegate allows hardware status changes
-    /// to be sent to the SIO with a recieved character, or asynchronously.
-    /// </summary>
-    public delegate void ReceiveStatusDelegate(byte rxValue, CharStatus rxStatus);
-
-
     /// <summary>
     /// Provide the basis for implementation of serial devices that can exchange
-    /// data with the SIO chip, and receive baud rate updates from the timer chip.
+    /// data between a real/host device and the SIO chip, and receive baud rate
+    /// updates from the timer chip.  Replaces the ISIODevice interface.
     /// </summary>
-    public abstract class SerialDevice : ICTCDevice, ISIODevice
+    public abstract class SerialDevice : ICTCDevice
     {
         protected SerialDevice(Z80System sys)
         {
             _system = sys;
+            _scheduler = _system.Scheduler;
+
             _name = "Generic serial device";
             _portName = string.Empty;
-            _rxDelegate = null;
-            _errDelegate = null;
+            _isOpen = false;
+
+            _txRate = 0;
+            _rxRate = 0;
+            _pollRate = 0;
         }
 
         protected SerialDevice(Z80System sys, string port) : this(sys)
         {
             _portName = port;
-        }
-
-        public virtual void Reset()
-        {
-            Log.Debug(Category.RS232, "Device reset");
-        }
-
-        public virtual void Open()
-        {
-            _isOpen = true;
-        }
-
-        public virtual void Close()
-        {
-            _isOpen = false;
         }
 
         public virtual string Name
@@ -92,44 +62,65 @@ namespace PERQemu.IO.SerialDevices
             set { _portName = value; }
         }
 
-        public virtual bool IsOpen => _isOpen;
-        public virtual int ByteCount => 0;
-        public virtual int BaudRate => 9600;
+        public virtual int BaudRate
+        {
+            get { return 9600; }
+        }
 
         public virtual int DataBits
         {
             get { return 8; }
-            set { Log.Detail(Category.RS232, "Ignoring data bits set to {0}", value); }
+            set { Log.Detail(Category.SIO, "Ignoring data bits set to {0}", value); }
         }
 
         public virtual Parity Parity
         {
             get { return Parity.None; }
-            set { Log.Detail(Category.RS232, "Ignoring parity set to {0}", value); }
+            set { Log.Detail(Category.SIO, "Ignoring parity set to {0}", value); }
         }
 
         public virtual StopBits StopBits
         {
             get { return StopBits.One; }
-            set { Log.Detail(Category.RS232, "Ignoring stop bits set to {0}", value); }
+            set { Log.Detail(Category.SIO, "Ignoring stop bits set to {0}", value); }
+        }
+
+        public virtual Handshake FlowControl
+        {
+            get { return Handshake.None; }
+            set { Log.Detail(Category.SIO, "Ignoring flow control {0}", value); }
+        }
+
+        public virtual SerialOptions Options
+        {
+            get { return SerialOptions.None; }
+            set { Log.Detail(Category.SIO, "Ignoring serial option {0}", value); }
         }
 
         public virtual bool DTR
         {
             get { return false; }
-            set { Log.Detail(Category.RS232, "Ignoring DTR pin set to {0}", value); }
+            set { Log.Detail(Category.SIO, "Ignoring DTR pin set to {0}", value); }
         }
 
         public virtual bool RTS
         {
             get { return false; }
-            set { Log.Detail(Category.RS232, "Ignoring RTS pin set to {0}", value); }
+            set { Log.Detail(Category.SIO, "Ignoring RTS pin set to {0}", value); }
         }
 
         public virtual bool DCD => false;
         public virtual bool CTS => false;
         public virtual bool DSR => false;
 
+        public virtual bool IsOpen => _isOpen;
+
+        public virtual bool WriteReady => false;
+        public virtual bool ReadReady => false;
+
+        public virtual ulong TransmitRate => _txRate;
+        public virtual ulong ReceiveRate => _rxRate;
+        public virtual ulong PollRate => _pollRate;
 
         //
         // ICTCDevice implementation
@@ -137,36 +128,52 @@ namespace PERQemu.IO.SerialDevices
 
         public virtual void NotifyRateChange(int chan, int newRate)
         {
-            Log.Detail(Category.RS232, "Clock rate change to {0} ignored for {1}", newRate, Name);
+            Log.Detail(Category.SIO, "Clock rate change to {0} ignored for {1}", newRate, Name);
         }
 
         //
-        // ISIODevice implementation
+        // SerialDevice
         //
 
-        public virtual void RegisterReceiveDelegate(ReceiveDelegate rxDelegate)
+        public virtual void Reset()
         {
-            _rxDelegate = rxDelegate;
+            Log.Debug(Category.SIO, "{0} reset", _name);
         }
 
-        public virtual void RegisterStatusDelegate(ReceiveStatusDelegate rxDelegate)
+        public virtual void Open()
         {
-            _errDelegate = rxDelegate;
+            _isOpen = true;
+        }
+
+        public virtual bool Poll()
+        {
+            Log.Info(Category.SIO, "Polling on {0} ignored", Name);
+            return false;
+        }
+
+        public virtual byte Receive()
+        {
+            throw new NotImplementedException($"Receive on {Name}");
         }
 
         public virtual void Transmit(byte value)
         {
-            Log.Detail(Category.RS232, "Transmit byte 0x{0:x2} on {1} ignored", value, Name);
+            throw new NotImplementedException($"Transmit on {Name}");
         }
 
-        public virtual void TransmitAbort()
-        {
-            throw new NotImplementedException($"TransmitAbort on {Name}");
-        }
-
-        public virtual void TransmitBreak()
+        public virtual void TransmitBreak(bool enable)
         {
             throw new NotImplementedException($"TransmitBreak on {Name}");
+        }
+
+        public virtual void Close()
+        {
+            _isOpen = false;
+        }
+
+        public virtual void NotifySettingsChange(SerialSettings settings)
+        {
+            Log.Detail(Category.SIO, "Settings change notification ignored for {0}", Name);
         }
 
         public virtual void Status()
@@ -174,13 +181,15 @@ namespace PERQemu.IO.SerialDevices
             Console.WriteLine($"No status available for this {Name}.");
         }
 
-
         protected Z80System _system;
-        protected ReceiveDelegate _rxDelegate;
-        protected ReceiveStatusDelegate _errDelegate;
+        protected Scheduler _scheduler;
 
         protected bool _isOpen;
         protected string _name;
         protected string _portName;
+
+        protected ulong _txRate;
+        protected ulong _rxRate;
+        protected ulong _pollRate;
     }
 }

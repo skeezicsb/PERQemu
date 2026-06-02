@@ -1,5 +1,5 @@
 ﻿//
-// Z80DebugCommands.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80DebugCommands.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -100,7 +100,7 @@ namespace PERQemu
                     line.AppendFormat("{0:x4}: ", i);
                     chars.Clear();
 
-                    // Bytes in hex (Todo: add output radix support)
+                    // Bytes in hex (TODO: add output radix support)
                     for (var j = i; j < i + 16; j++)
                     {
                         var b = PERQemu.Sys.IOB.Z80System.Memory[j];
@@ -117,6 +117,13 @@ namespace PERQemu
             {
                 Console.WriteLine($"Couldn't read {address}: {e.Message}");
             }
+        }
+
+        [Conditional("DEBUG")]
+        [Command("debug z80 poke")]
+        void PokeZ80Mem(ushort addr = 0x6800, byte val = 0)
+        {
+            PERQemu.Sys.IOB.Z80System.Memory[addr] = val;
         }
 
         #region Breakpoints
@@ -262,12 +269,7 @@ namespace PERQemu
 #endif
         #endregion
 
-        [Conditional("DEBUG")]
-        [Command("debug z80 poke")]
-        void PokeZ80Mem(ushort addr = 0x6800, byte val = 0)
-        {
-            PERQemu.Sys.IOB.Z80System.Memory[addr] = val;
-        }
+        #region Dump commands
 
         //[Conditional("DEBUG")]
         [Command("debug dump fifos")]
@@ -298,6 +300,37 @@ namespace PERQemu
             if (CheckSys()) PERQemu.Sys.IOB.Z80System.Scheduler.DumpEvents("Z80");
         }
 
+        [Command("debug z80 dump rs232a")]
+        void ShowRS232Status()
+        {
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.SIOA.DumpPortStatus(0);
+        }
+
+        [Command("debug z80 dump rs232b")]
+        void ShowRS232BStatus()
+        {
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.SIOB?.DumpPortStatus(0);
+        }
+
+        [Command("debug z80 dump sio mux")]
+        void ShowMuxStatus()
+        {
+            // Show Speech/Kriz tablet mux status
+            if (CheckSys()) PERQemu.Sys.IOB.Z80System.SIOA.DumpPortStatus(1);
+        }
+
+        [Command("debug z80 dump sio registers")]
+        void ShowSIOStatus()
+        {
+            // Show SIO internals
+            if (CheckSys())
+            {
+                PERQemu.Sys.IOB.Z80System.SIOA.DumpRegisters();
+                PERQemu.Sys.IOB.Z80System.SIOB?.DumpRegisters();
+            }
+        }
+
+        //[Conditional("DEBUG")]
         [Command("debug z80 dump rtc")]
         void DumpRTC()
         {
@@ -315,35 +348,19 @@ namespace PERQemu
             eio.RTC.DumpRTC();
         }
 
-#if DEBUG
-        [Command("debug z80 dump cpi histogram")]
-        void CPIHistogram()
+        #endregion
+
+        [Command("debug z80 audio play")]
+        void PlayAudio()
         {
-            if (!CheckSys()) return;
-            if (PERQemu.Config.Current.IOBoard != Config.IOBoardType.EIO) return;
-
-            var eio = PERQemu.Sys.IOB.Z80System as EIOZ80;
-            var total = 0;
-
-            // Add up the instructions
-            for (var i = 0; i < eio.CPI.Length; i++) total += eio.CPI[i];
-
-            Console.WriteLine("Z80 cycle counts (including interrupts, DMA):");
-            for (var i = 0; i < eio.CPI.Length; i++)
-            {
-                if (eio.CPI[i] > 0)
-                {
-                    var pct = (double)eio.CPI[i] / total * 100.0;
-                    Console.WriteLine($"  Cycles: {i}\tCount: {eio.CPI[i]}\t{pct:N2}%");
-                }
-            }
-
-            Console.WriteLine($"  Total instructions: {total}");
+            PERQemu.GUI.Audio.Resume();
         }
-#endif
 
-        // todo: ram & rom disassembler, like the perq microcode disassembler?
-        // todo: i/o port reads - and writes!?
-        // todo: interrogate memory, fifos, peripheral controllers & registers, etc.
+        [Command("debug z80 audio pause")]
+        void PauseAudio()
+        {
+            PERQemu.GUI.Audio.Pause();
+        }
+
     }
 }

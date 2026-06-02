@@ -27,15 +27,15 @@ namespace PERQemu.IO
     /// </summary>
     public class UnhandledIORequestException : Exception
     {
-        public UnhandledIORequestException(byte addr) : base($"Unhandled IO Read from port {addr:x2}")
+        public UnhandledIORequestException(byte addr) : base($"Unhandled IO Read from port 0x{addr:x2}")
         {
         }
 
-        public UnhandledIORequestException(byte addr, byte val) : base($"Unhandled IO Write 0x{val:x2} to port {addr:x2}")
+        public UnhandledIORequestException(byte addr, byte val) : base($"Unhandled IO Write 0x{val:x2} to port 0x{addr:x2}")
         {
         }
 
-        public UnhandledIORequestException(byte addr, int val) : base($"Unhandled IO Write 0x{val:x4} to port {addr:x2}")
+        public UnhandledIORequestException(byte addr, int val) : base($"Unhandled IO Write 0x{val:x4} to port 0x{addr:x2}")
         {
         }
     }

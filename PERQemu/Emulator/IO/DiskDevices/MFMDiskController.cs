@@ -906,7 +906,7 @@ namespace PERQemu.IO.DiskDevices
             /// </summary>
             /// <remarks>
             /// The Shugart uses the Z80 to count pulses; the MFM DIB generates a
-            /// 100KHz clock to count off the step count (buffered by the drive).
+            /// 100kHz clock to count off the step count (buffered by the drive).
             /// Per adap.doc, by design the microcode should never change the unit
             /// selection or write to the count/direction registers during a seek.
             /// </remarks>
@@ -1175,7 +1175,7 @@ namespace PERQemu.IO.DiskDevices
                 WaitingForSeekComplete
             }
 
-            // MFM DIB has a 100KHz step function (555 timer)
+            // MFM DIB has a 100kHz step function (555 timer)
             readonly ulong StepRate = 10 * Conversion.UsecToNsec;
 
             byte _selected;

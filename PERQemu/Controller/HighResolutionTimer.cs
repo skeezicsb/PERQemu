@@ -427,9 +427,6 @@ namespace PERQemu
 
             if (found) return next;
 
-            // Hack so we don't just loop crazily - wut? we're exiting here, why would it matter?
-            //Thread.Yield();
-
             _runTimers = false;
             return now;
         }

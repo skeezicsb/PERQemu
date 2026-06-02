@@ -1,5 +1,5 @@
 ﻿//
-// Conversion.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Conversion.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -22,29 +22,24 @@ namespace PERQemu
     public static class Conversion
     {
         /// <summary>
-        /// Conversion from millseconds to nanoseconds
-        /// </summary>
-        public static readonly ulong MsecToNsec = 1000000;
-
-        /// <summary>
         /// Conversion from nanoseconds to milliseconds
         /// </summary>
         public static readonly double NsecToMsec = 0.000001;
 
         /// <summary>
+        /// Conversion from milliseconds to seconds
+        /// </summary>
+        public static readonly double MsecToSec = 0.001;
+
+        /// <summary>
+        /// Conversion from millseconds to nanoseconds
+        /// </summary>
+        public static readonly ulong MsecToNsec = 1000000;
+
+        /// <summary>
         /// Conversion from microseconds to nanoseconds
         /// </summary>
         public static readonly ulong UsecToNsec = 1000;
-
-        /// <summary>
-        /// Conversion from microseconds to seconds
-        /// </summary>
-        public static readonly double UsecToSec = 0.000001;
-
-        /// <summary>
-        /// Conversion from seconds to milliseconds
-        /// </summary>
-        public static readonly double MsecToSec = 0.001;
 
         /// <summary>
         /// Convert disk revolutions to nanoseconds for scheduling index pulses.
@@ -112,6 +107,18 @@ namespace PERQemu
                     baud = 110;
                     break;
 
+                // Deep end here. See if we're setting the 16kHz speech rate
+                case 9:
+                case 250:
+                    baud = 16000;
+                    break;
+
+                // Or back to the 32kHz Kriz tablet rate
+                case 5:
+                case 125:
+                    baud = 32000;
+                    break;
+
                 default:
                     Log.Error(Category.RS232, "Could not decode baud rate from timer value {0}", rate);
                     break;
@@ -130,11 +137,11 @@ namespace PERQemu
         /// clock period used by the hardware, but it doesn't have to be that
         /// accurate.  We just want to "pace" data from the virtual machine so
         /// that the Z80/PERQ see realistic interrupt rates for serial transfers.
-        /// Assume 10 bits per character (8-N-1).
+        /// Assume 10 bits per character (8-N-1 for async modes).
         /// </remarks>
-        public static ulong BaudRateToNsec(int baud)
+        public static ulong BaudRateToNsec(int baud, int bits = 10)
         {
-            return (ulong)(1000000000 / (baud / 10));
+            return (ulong)(1000000000 / (baud / bits));
         }
 
         /// <summary>
@@ -142,6 +149,16 @@ namespace PERQemu
         /// upgrade to a newer toolchain and can use Math.Clamp().  Sigh.
         /// </summary>
         public static int Clamp(int value, int min, int max)
+        {
+            return (value < min) ? min : (value > max) ? max : value;
+        }
+
+        public static ulong Clamp(ulong value, ulong min, ulong max)
+        {
+            return (value < min) ? min : (value > max) ? max : value;
+        }
+
+        public static double Clamp(double value, double min, double max)
         {
             return (value < min) ? min : (value > max) ? max : value;
         }

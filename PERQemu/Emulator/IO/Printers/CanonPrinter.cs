@@ -1,5 +1,5 @@
 ﻿//
-// CanonPrinter.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// CanonPrinter.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -194,14 +194,14 @@ namespace PERQemu.IO
             {
                 case PaperCode.USLetter:
                     _pageArea.W = (uint)(8.5 * _resolution);
-                    _pageArea.H = (uint)(11 * _resolution);
+                    _pageArea.H = (uint)(11.0 * _resolution);
                     _printableArea.W = (uint)(8.19 * _resolution);
                     _printableArea.H = (uint)(10.86 * _resolution);
                     break;
 
                 case PaperCode.USLegal:
                     _pageArea.W = (uint)(8.5 * _resolution);
-                    _pageArea.H = (uint)(14 * _resolution);
+                    _pageArea.H = (uint)(14.0 * _resolution);
                     _printableArea.W = (uint)(8.19 * _resolution);
                     _printableArea.H = (uint)(13.82 * _resolution);
                     break;
@@ -209,7 +209,7 @@ namespace PERQemu.IO
                 case PaperCode.A4:
                     _pageArea.W = (uint)(8.27 * _resolution);
                     _pageArea.H = (uint)(11.69 * _resolution);
-                    _printableArea.W = (uint)(8 * _resolution);
+                    _printableArea.W = (uint)(8.0 * _resolution);
                     _printableArea.H = (uint)(11.38 * _resolution);
                     break;
 

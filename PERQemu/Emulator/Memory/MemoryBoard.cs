@@ -1,5 +1,5 @@
 //
-// MemoryBoard.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// MemoryBoard.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -17,9 +17,13 @@
 // along with PERQemu.  If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+
+using PERQemu.IO;
+using PERQemu.Processor;
 
 namespace PERQemu.Memory
 {
@@ -65,18 +69,20 @@ namespace PERQemu.Memory
     /// attaches the video controller (which is connected to the IO bus).
     /// </summary>
     /// <remarks>
-    /// Rather than split hairs, the VideoController class handles all of the
-    /// IO bus interaction for the MemoryBoard.  The only non-video-related IO
-    /// registers would be the parity error read/clear, and that's not really
-    /// implemented anyway.
+    /// The VideoController class handles most of the IO bus interaction for the
+    /// MemoryBoard directly, since that's more efficient.  The only non-video-
+    /// related IO registers are the parity error read/clear, which (as of 0.9.x)
+    /// are only used by diagnostics; we don't actually compute and check the
+    /// parity on every memory transaction, which would be nutso bananacakes.
     /// </remarks>
-    public sealed class MemoryBoard
+    public sealed class MemoryBoard : IIODevice
     {
         public MemoryBoard(PERQSystem system)
         {
             _system = system;
             _memSize = _system.Config.MemorySizeInBytes / 2;  // KB -> KW
             _memSizeMask = _memSize - 1;
+            _quadSizeMask = _memSizeMask >> 2;
 
             _memory = new Core();
             _memory.Words = new ushort[_memSize];
@@ -94,10 +100,19 @@ namespace PERQemu.Memory
             _wait = false;
             _hold = false;
 
+            _parityErrorAddress = NoError;
+            _parityErrorOnNextWrite = false;
+            _parityIntRaised = false;
+
             _mdiQueue.Reset();
             _mdoQueue.Reset();
 
             Log.Info(Category.Memory, "Board reset");
+        }
+
+        public void Shutdown()
+        {
+            // Nothing to do
         }
 
         public int MemSize => _memSize;
@@ -147,6 +162,15 @@ namespace PERQemu.Memory
             {
                 _madr = _mdiQueue.Address;
                 _mdi = FetchWord(_madr);
+
+#if PARITY
+                if ((_madr & 0xfffffc) == _parityErrorAddress && !_parityIntRaised)
+                {
+                    Log.Info(Category.Memory, "Parity error @ 0x{0:x6}!", _parityErrorAddress);
+                    _system.CPU.RaiseInterrupt(InterruptSource.Parity);
+                    _parityIntRaised = true;
+                }
+#endif
             }
 
             // Set the wait flag if we need to abort the current instruction.
@@ -179,6 +203,14 @@ namespace PERQemu.Memory
             if (_mdoQueue.Valid)
             {
                 StoreWord(_mdoQueue.Address, input);
+#if PARITY
+                if (_parityErrorOnNextWrite)
+                {
+                    _parityErrorAddress = _mdoQueue.Address & 0xfffffc;
+                    _parityErrorOnNextWrite = false;
+                    Log.Info(Category.Memory, "Write bad parity @ 0x{0:x6}!", _parityErrorAddress);
+                }
+#endif
             }
         }
 
@@ -230,7 +262,9 @@ namespace PERQemu.Memory
         public ulong FetchQuad(int address)
         {
             // Fast and furious: does not clip or bounds check!
-            ulong data = _memory.Quads[address];
+            // Change in v0.9.2: wrap using the quad mask; ICL ConWTest torture
+            // tests the display and cursor addressing, found a corner case. :-(
+            ulong data = _memory.Quads[address & _quadSizeMask];
 
             // Buuuuut... to be useful, it has to be byte swapped.
             // Welp, there goes our salvage, guys.
@@ -286,27 +320,118 @@ namespace PERQemu.Memory
             return (((int)c & 0x1) == 0);
         }
 
+        /// <summary>
+        /// Handle the parity error address registers.
+        /// </summary>
+        public int IORead(byte ioPort)
+        {
+            int addr;
+
+            switch (ioPort)
+            {
+                // Read parity error address (high bits)
+                case 0x66:
+                    //
+                    // According to ICL (backed up by the 2Meg Landscape schematics),
+                    // the PQSLayout returns address bits <21:18> as IOD <3:0>.
+                    //
+                    addr = (_parityErrorAddress >> 18) & 0x000f;
+                    Log.Info(Category.Memory, "Read parity error address (Hi): {0:x2}", addr);
+                    return addr;
+
+                // Read parity error address (low word)
+                case 0x67:
+                    //
+                    // For now, assume "PQSLayout" and return bits <17:2> as <15:0>.
+                    // This should work for the T2 or T4 landscape boards; other types
+                    // may be supported in the future.
+                    //
+                    addr = (_parityErrorAddress >> 2) & 0xffff;
+                    Log.Info(Category.Memory, "Read parity error address (Lo): {0:x4}", addr);
+
+                    // "Clear" the address register
+                    _parityErrorAddress = NoError;
+
+                    // Also clears the interrupt!
+                    if (_parityIntRaised)
+                    {
+                        _system.CPU.ClearInterrupt(InterruptSource.Parity);
+                        _parityIntRaised = false;
+                    }
+                    return addr;
+
+                default:
+                    throw new UnhandledIORequestException(ioPort);
+            }
+        }
+
+        /// <summary>
+        /// Handle the "Force bad parity" bit to signal the next memory write
+        /// should trigger a parity error interrupt.
+        /// </summary>
+        /// <remarks>
+        /// VideoController still handles the register directly for efficiency.
+        /// It calls us directly only when the bit is set.
+        /// </remarks>
+        public void IOWrite(byte ioPort, int value)
+        {
+            if (ioPort != 0xe3)
+                throw new UnhandledIORequestException(ioPort, value);
+
+            _parityErrorOnNextWrite = ((value & 0x1000) != 0);
+            _parityIntEnabled = ((value & 0x0800) != 0);
+
+            Log.Info(Category.Memory, "Force bad parity enabled {0}, irq enabled {1}",
+                                       _parityErrorOnNextWrite, _parityIntEnabled);
+        }
+
+        public bool HandlesPort(byte ioPort)
+        {
+            // Lazy slow routine to indicate whether this device handles the given port
+            for (int i = 0; i < _handledPorts.Length; i++)
+            {
+                if (ioPort == _handledPorts[i]) { return true; }
+            }
+
+            return false;
+        }
+
         //[Conditional("DEBUG")]
         public void DumpQueues()
         {
+            if (_parityErrorAddress != NoError)
+            {
+                Console.WriteLine($"[Memory parity error at 0x{0:x6}!]", _parityErrorAddress);
+            }
+
             _mdiQueue.DumpQueue();
             _mdoQueue.DumpQueue();
         }
 
 
-        Core _memory;
-        MemoryController _mdiQueue;         // Queue for Fetch requests
-        MemoryController _mdoQueue;         // Queue for Store requests
-        VideoController _videoController;
+        const int NoError = 0x01000000;         // Reads back as 0 if no parity error
 
         int _memSize;
         int _memSizeMask;
+        int _quadSizeMask;
 
         int _Tstate;
         int _madr;
         ushort _mdi;
         bool _wait;
         bool _hold;
+
+        int _parityErrorAddress;
+        bool _parityErrorOnNextWrite;
+        bool _parityIntEnabled;
+        bool _parityIntRaised;
+
+        byte[] _handledPorts = { 0x66, 0x67 };  // Parity error regs
+
+        Core _memory;
+        MemoryController _mdiQueue;             // Queue for Fetch requests
+        MemoryController _mdoQueue;             // Queue for Store requests
+        VideoController _videoController;
 
         PERQSystem _system;
     }
@@ -329,4 +454,10 @@ namespace PERQemu.Memory
     accurately emulate the real PERQ which must give up processor cycles for
     DMA. Thus, the "Hold" field of the microinstruction is basically ignored.
 
+    Update for v0.9.2: To handle forced parity errors (used by extended diags)
+    MemoryBoard now implements IIODevice and handles the parity error address
+    registers directly.  For efficiency, the VideoController still maps the
+    control port, but calls IOWrite here if the "ForceBadParity" bit is set.
+    The next Store latches the error address; a Fetch from that address then
+    triggers a parity interrupt.  Reading the error registers clears both.
 */

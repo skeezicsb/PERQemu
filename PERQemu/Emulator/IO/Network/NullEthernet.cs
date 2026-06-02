@@ -1,5 +1,5 @@
 ﻿//
-// NullEthernet.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// NullEthernet.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -401,7 +401,7 @@ namespace PERQemu.IO.Network
             // whether the net or timer raised it
             SetInterrupt();
 
-            Log.Debug(Category.Ethernet, "Read status: 0x{0:x} ({1})", (int)retVal, retVal);
+            Log.Debug(Category.Ethernet, "Read status: 0x{0:x} ({1})", retVal, retVal);
             return retVal;
         }
 

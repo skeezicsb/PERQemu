@@ -1,5 +1,5 @@
 //
-// Z80System.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80System.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -23,6 +23,7 @@ using System.Threading;
 using Konamiman.Z80dotNet;
 
 using PERQemu.Debugger;
+using PERQemu.IO.SerialDevices;
 
 namespace PERQemu.IO.Z80
 {
@@ -68,8 +69,10 @@ namespace PERQemu.IO.Z80
 
         public NECuPD765A FDC => _fdc;
         public TMS9914A GPIB => _tms9914a;
+        public MC3417 Speech => _cvsd;
 
         public abstract Z80SIO SIOA { get; }
+        public abstract Z80SIO SIOB { get; }
         public abstract Z80CTC CTC { get; }
 
         public abstract void WriteStatus(int status);
@@ -81,13 +84,14 @@ namespace PERQemu.IO.Z80
         public abstract void Run();
         public abstract void QueueKeyboardInput(byte keyCode);
 
+        public abstract void SerialReset(char port);
+        public abstract void SerialError(char port, string message);
+
         protected abstract void DeviceReset();
         protected abstract void DeviceShutdown();
 
         // Debugging access
         public abstract void DumpFifos();
-        public abstract void DumpPortAStatus();
-        public abstract void DumpPortBStatus();
         public abstract void DumpIRQStatus();
         public abstract void DumpDMAStatus();
 
@@ -104,12 +108,13 @@ namespace PERQemu.IO.Z80
         /// </remarks>
         public void Reset(bool soft = false)
         {
-            // Synchronize our scheduler to the main processor!
-            _scheduler.Reset(_system.Scheduler.CurrentTimeNsec);
             _cpu.Reset();
 
             if (soft)
             {
+                // Synchronize our scheduler to the main processor!
+                _scheduler.Reset(_system.Scheduler.CurrentTimeNsec);
+
                 // A software-initiated reset may not do all devices...
                 DeviceReset();
                 Log.Debug(Category.Z80, "System (soft) reset");
@@ -117,6 +122,7 @@ namespace PERQemu.IO.Z80
             else
             {
                 // ...while a power-on or "hard" reset does everything
+                _scheduler.Reset();
                 _bus.Reset();
                 Log.Debug(Category.Z80, "System reset");
             }
@@ -209,6 +215,9 @@ namespace PERQemu.IO.Z80
             }
         }
 
+        /// <summary>
+        /// Perform an orderly final shutdown.
+        /// </summary>
         public void Shutdown()
         {
             // Just in case
@@ -233,6 +242,7 @@ namespace PERQemu.IO.Z80
             _stopAsyncThread = (s.State != RunState.Running);
         }
 
+        // Debugging
         public void ShowThreadStatus()
         {
             if (_asyncThread != null)
@@ -242,6 +252,7 @@ namespace PERQemu.IO.Z80
                                   _asyncThread.ThreadState);
             }
         }
+
 
         // FIXME: should move this to PERQsystem or DebugCommands?
         // FIXME: this massively expensive routine has to be rewritten...
@@ -260,7 +271,7 @@ namespace PERQemu.IO.Z80
             ushort offset = 0;
             var symbol = _z80Debugger.GetSymbolForAddress(regs.PC, out offset);
             var source = _z80Debugger.GetSourceLineForAddress(regs.PC);
-            
+
             Console.WriteLine("Z80 {0}\n    {1}+{2}: {3}", state, symbol, offset, source);
         }
 
@@ -289,6 +300,8 @@ namespace PERQemu.IO.Z80
 
         protected NECuPD765A _fdc;
         protected TMS9914A _tms9914a;
+        protected MC3417 _cvsd;
+        protected SerialMux _speechMux;
 
         protected Z80Debugger _z80Debugger;
         protected Scheduler _scheduler;

@@ -61,7 +61,8 @@ namespace PERQemu.IO.Network
 
             // Initialize statistics
             _probed = _hasFCS = false;
-            _pktsSent = _pktsRecvd = _pktsIgnored = _pktsQueued = _pktsDropped = 0;
+            _pktsSent = _pktsRecvd = _pktsLocal = 0;
+            _pktsIgnored = _pktsQueued = _pktsDropped = 0;
 
             Log.Info(Category.NetAdapter, "Device opened [Host MAC: {0}]", _adapter.MacAddress);
         }
@@ -321,6 +322,7 @@ namespace PERQemu.IO.Network
                 raw = (EthernetPacket)Packet.ParsePacket(e.Packet.LinkLayerType, e.Packet.Data);
                 if (raw == null)
                 {
+                    _pktsIgnored++;
                     Log.Warn(Category.NetAdapter, "Failed to parse packet: {0}", e.Packet);
                     return;
                 }
@@ -334,8 +336,11 @@ namespace PERQemu.IO.Network
                 // multicasts every 2 seconds... there's MUCH more we could add
                 // but it might be simpler to just set a filter for what we can
                 // safely accept?
-                if (raw.Type == EthernetType.IPv6) return;
-                if ((ushort)raw.Type == 0x0026) return;
+                if (raw.Type == EthernetType.IPv6 || (ushort)raw.Type == 0x0026)
+                {
+                    _pktsIgnored++;
+                    return;
+                }
 
                 // Log it
                 Log.Debug(Category.NetAdapter, "Received from {0} to {1} (type 0x{2:x}) [{3}]",
@@ -387,11 +392,13 @@ namespace PERQemu.IO.Network
             }
             catch (PcapException ex)
             {
+                _pktsIgnored++;
                 Log.Warn(Category.NetAdapter, "(Pcap) Failed to receive packet: {0}", ex.Message);
                 return;
             }
             catch (Exception ex)
             {
+                _pktsIgnored++;
                 Log.Warn(Category.Network, "Failed to receive packet: {0}", ex.Message);
                 return;
             }
@@ -448,6 +455,7 @@ namespace PERQemu.IO.Network
                         // do RARP (even under Accent).  HOWEVER, Accent's "new"
                         // message server (in S6+) will do actual IP ARPs, so we
                         // don't want to get in the way of those.
+                        _pktsLocal++;
                         Log.Debug(Category.Network, "Local RARP handling complete");
                         return;
                     }
@@ -457,13 +465,13 @@ namespace PERQemu.IO.Network
             catch (PcapException ex)
             {
                 Log.Debug(Category.Network, "Failed to parse RARP packet: {0}", ex.Message);
-                // No biggie, just continue?
+                // No biggie, just continue
             }
 
             //
             // Does the PERQ want this packet?
             //
-            if (!_controller.WantReceive(raw.DestinationHardwareAddress))
+            if (!_probed || !_controller.WantReceive(raw.DestinationHardwareAddress))
             {
                 _pktsIgnored++;
                 return;
@@ -680,13 +688,27 @@ namespace PERQemu.IO.Network
         }
 
         /// <summary>
-        /// Find the adapter that matches the interface name.  The C# runtime
-        /// gives back completely different names than the list SharpPcap (or
-        /// its underlying LibPcap/WinPcap/AirPcap library) gives back, so this
-        /// is going to require further consideration and way more testing! :-/
+        /// Find the adapter that matches the interface name.
         /// </summary>
+        /// <remarks>
+        /// The C# runtime gives back completely different names than the list
+        /// SharpPcap (or its underlying LibPcap/WinPcap/AirPcap library) gives
+        /// back, so here we map names based on platform type.
+        /// 
+        /// On Windows:
+        ///     adapter.Id ~= dev.Name, without the rpcap:\\blah
+        ///     adapter.Name can be assigned, is typ "Ethernet", "Ethernet 2", etc.
+        ///     dev.Description has extra crap added by SharpPcap
+        /// On Linux, Mac:
+        ///     adapter.Id == dev.Name == adapter.Name == adapter.Description
+        ///     dev.Description is blank; SharpPcap can't/doesn't get that info
+        /// 
+        /// To reconcile the two lists, we do OS-specific matching.  It's not
+        /// pretty, but better than before.
+        /// </remarks>
         public static ICaptureDevice GetAdapter(string name)
         {
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
             var devices = CaptureDeviceList.Instance;
 
             // Run through the list and try to match exactly...
@@ -694,8 +716,23 @@ namespace PERQemu.IO.Network
             {
                 foreach (var dev in devices)
                 {
-                    if (dev.Name.ToLowerInvariant() == name.ToLowerInvariant())
-                        return dev;
+                    if (PERQemu.HostIsUnix)
+                    {
+                        // The runtime name should match the SharpPcap name exactly
+                        if (dev.Name.ToLowerInvariant() == name.ToLowerInvariant())
+                            return dev;
+                    }
+                    else
+                    {
+                        foreach (var intf in interfaces)
+                        {
+                            // Use the runtime name find the interface, then loosely
+                            // match the Ids
+                            if (intf.Name.ToLowerInvariant() == name.ToLowerInvariant() &&
+                                dev.Name.EndsWith(intf.Id, StringComparison.Ordinal))
+                                return dev;
+                        }
+                    }
                 }
             }
 
@@ -704,53 +741,32 @@ namespace PERQemu.IO.Network
         }
 
         /// <summary>
-        /// Display the available host interfaces.  The SharpPcap view differs
-        /// from the MS/Mono runtime system's list, which is damned annoying,
-        /// but it's what we have to use to correctly bind the interface at
-        /// startup.
+        /// Display the available host Ethernet interfaces.
         /// </summary>
         public static void ShowInterfaceSummary()
         {
-            // Show the C# runtime's view
-            //var interfaces = NetworkInterface.GetAllNetworkInterfaces();
-            //
-            //foreach (NetworkInterface adapter in interfaces)
-            //{
-            //    if (!IsEthernet(adapter.NetworkInterfaceType)) continue;
-            //
-            //    Console.WriteLine("ID: {0}  Name: {1}", adapter.Id, adapter.Name);
-            //    Console.WriteLine(adapter.Description);
-            //    Console.WriteLine(string.Empty.PadLeft(adapter.Description.Length, '='));
-            //    Console.WriteLine("  Interface type ......... : {0}", adapter.NetworkInterfaceType);
-            //    Console.WriteLine("  Operational status ..... : {0}", adapter.OperationalStatus);
-            //    Console.WriteLine("  Hardware address ....... : {0}", adapter.GetPhysicalAddress());
-            //    Console.WriteLine();
-            //}
-            //Console.WriteLine();
+            // Get the C# runtime's interface list
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
 
-            // Let's see what Pcap gives us...
-            var ver = SharpPcap.Version.VersionString;
-            Console.WriteLine("SharpPcap {0} devices:", ver);
-
-            // Retrieve the device list
-            var devices = CaptureDeviceList.Instance;
-
-            // If no devices were found print an error
-            if (devices.Count < 1)
+            foreach (NetworkInterface adapter in interfaces)
             {
-                Console.WriteLine("No host Ethernet adapters were found (or no privileges)");
-                return;
-            }
+                if (!IsEthernet(adapter.NetworkInterfaceType)) continue;
 
-            int i = 0;
+                Console.WriteLine($"ID: {adapter.Id}  Name: {adapter.Name}");
+                if (adapter.Description != adapter.Name)
+                    Console.WriteLine(adapter.Description);
+                Console.WriteLine(string.Empty.PadLeft(adapter.Description.Length, '='));
+                Console.WriteLine($"  Interface type:     {adapter.NetworkInterfaceType}");
+                Console.WriteLine($"  Operational status: {adapter.OperationalStatus}");
+                Console.WriteLine($"  Hardware address:   {adapter.GetPhysicalAddress()}");
 
-            // Print out the devices
-            foreach (var dev in devices)
-            {
-                Console.WriteLine("{0}) {1} - {2}", i, dev.Name, dev.Description);
-                i++;
+                // Find and print the matching SharpPcap device
+                var dev = GetAdapter(adapter.Name);
+                Console.WriteLine("  SharpPcap device:   {0}", dev != null ? dev.Name : "[Not found!]");
+                Console.WriteLine();
             }
         }
+
 
         // Debugging
         public void DumpStatus()
@@ -767,8 +783,8 @@ namespace PERQemu.IO.Network
             Console.WriteLine($"  Address: {Address}\tRunning: {Running}\tPending: {_pending.Count}");
 
             Console.WriteLine("\nInterface statistics:");
-            Console.WriteLine($"  Total sent: {_pktsSent}\tReceived: {_pktsRecvd}\tIgnored: {_pktsIgnored}");
-            Console.WriteLine($"  Deferred:   {_pktsQueued}\tDropped: {_pktsDropped}");
+            Console.WriteLine($"  Total sent: {_pktsSent}\tReceived: {_pktsRecvd}\tLocal: {_pktsLocal}");
+            Console.WriteLine($"  Ignored: {_pktsIgnored}\tDeferred: {_pktsQueued}\tDropped: {_pktsDropped}");
 
             _nat.DumpTable();
         }
@@ -799,7 +815,7 @@ namespace PERQemu.IO.Network
 
         ulong _pktsRecvd, _pktsSent;                // Some basic statistics,
         ulong _pktsQueued, _pktsDropped;            // for debugging/curiosity
-        ulong _pktsIgnored;
+        ulong _pktsIgnored, _pktsLocal;
     }
 }
 

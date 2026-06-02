@@ -1,5 +1,5 @@
 ﻿//
-// i8254PIT.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// i8254PIT.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -44,7 +44,7 @@ namespace PERQemu.IO.Z80
     /// </remarks>
     public class i8254PIT : IZ80Device
     {
-        public i8254PIT(byte baseAddress, string unit)
+        public i8254PIT(byte baseAddress, char unit)
         {
             _unit = unit;
             _baseAddress = baseAddress;
@@ -64,8 +64,8 @@ namespace PERQemu.IO.Z80
             };
         }
 
+        public char Unit => _unit;
         public string Name => $"i8254 PIT {_unit}";
-        public string Unit => _unit;
         public byte[] Ports => _ports;
 
         public bool IntLineIsActive => false;       // Doesn't interrupt on EIO
@@ -84,6 +84,17 @@ namespace PERQemu.IO.Z80
         public void AttachDevice(int channel, ICTCDevice dev)
         {
             _channels[channel].TimerClient = dev;
+        }
+
+        public void DetachDevice(int channel)
+        {
+            _channels[channel].TimerClient = null;
+        }
+
+        public void Notify(int channel)
+        {
+            // Push out a rate notification (to reset baud rate after dynamic reconfig)
+            _channels[channel].TimerClient?.NotifyRateChange(channel, _channels[channel].Counter);
         }
 
         public byte Read(byte portAddress)
@@ -138,7 +149,7 @@ namespace PERQemu.IO.Z80
 
         Channel[] _channels;
 
-        string _unit;
+        char _unit;
         byte _baseAddress;
         byte[] _ports;
 
@@ -165,6 +176,8 @@ namespace PERQemu.IO.Z80
 
                 Log.Debug(Category.CTC, _ID + "reset");
             }
+
+            public ushort Counter => _counter;
 
             /// <summary>
             /// Sets the operating mode for the channel.

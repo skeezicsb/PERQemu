@@ -32,9 +32,8 @@ namespace PERQemu.IO.SerialDevices
     {
         public NullPort(Z80System sys) : base(sys)
         {
+            _name = "Unassigned RS232 port";
         }
-
-        public override string Name => "Unassigned RS232 port";
 
         public override void Status()
         {

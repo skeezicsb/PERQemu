@@ -1,5 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
+﻿<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="4.0">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
@@ -10,10 +9,8 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>PERQemu</RootNamespace>
     <AssemblyName>PERQemu</AssemblyName>
-    <FileUpgradeFlags>
-    </FileUpgradeFlags>
-    <UpgradeBackupLocation>
-    </UpgradeBackupLocation>
+    <FileUpgradeFlags></FileUpgradeFlags>
+    <UpgradeBackupLocation></UpgradeBackupLocation>
     <OldToolsVersion>3.5</OldToolsVersion>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <IsWebBootstrapper>false</IsWebBootstrapper>
@@ -46,14 +43,12 @@
     <CodeAnalysisRuleSet></CodeAnalysisRuleSet>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <UseVSHostingProcess>true</UseVSHostingProcess>
-    <DocumentationFile>
-    </DocumentationFile>
+    <DocumentationFile></DocumentationFile>
     <Prefer32Bit>false</Prefer32Bit>
     <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>
-    </DebugType>
+    <DebugType></DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
     <DefineConstants></DefineConstants>
@@ -162,6 +157,11 @@
     <Compile Include="Emulator\IO\OIO.cs" />
     <Compile Include="Emulator\IO\OptionBoard.cs" />
     <Compile Include="Emulator\IO\PERQLink.cs" />
+    <Compile Include="Emulator\IO\Ports\SerialPort.cs" />
+    <Compile Include="Emulator\IO\Ports\WinSerialStream.cs" />
+    <Compile Include="Emulator\IO\Ports\UnixSerialStream.cs" />
+    <Compile Include="Emulator\IO\Ports\ISerialStream.cs" />
+    <Compile Include="Emulator\IO\Ports\SerialTypes.cs" />
     <Compile Include="Emulator\IO\Printers\CanonController.cs" />
     <Compile Include="Emulator\IO\Printers\CanonFormatter.cs" />
     <Compile Include="Emulator\IO\Printers\CanonPrinter.cs" />
@@ -171,7 +171,7 @@
     <Compile Include="Emulator\IO\SerialDevices\RealPort.cs" />
     <Compile Include="Emulator\IO\SerialDevices\SerialDevice.cs" />
     <Compile Include="Emulator\IO\SerialDevices\SerialKeyboard.cs" />
-    <Compile Include="Emulator\IO\SerialDevices\Speech.cs" />
+    <Compile Include="Emulator\IO\SerialDevices\SerialMux.cs" />
     <Compile Include="Emulator\IO\TapeDevices\BlockBuffer.cs" />
     <Compile Include="Emulator\IO\TapeDevices\CartridgeTape.cs" />
     <Compile Include="Emulator\IO\TapeDevices\QICTapeController.cs" />
@@ -184,9 +184,9 @@
     <Compile Include="Emulator\IO\Z80\ICTCDevice.cs" />
     <Compile Include="Emulator\IO\Z80\IDMADevice.cs" />
     <Compile Include="Emulator\IO\Z80\IOReg3.cs" />
-    <Compile Include="Emulator\IO\Z80\ISIODevice.cs" />
     <Compile Include="Emulator\IO\Z80\IZ80Device.cs" />
     <Compile Include="Emulator\IO\Z80\Keyboard.cs" />
+    <Compile Include="Emulator\IO\Z80\MC3417.cs" />
     <Compile Include="Emulator\IO\Z80\NECuPD765A.cs" />
     <Compile Include="Emulator\IO\Z80\Oki5832RTC.cs" />
     <Compile Include="Emulator\IO\Z80\PERQDMA.cs" />
@@ -199,6 +199,7 @@
     <Compile Include="Emulator\IO\Z80\Z80MemoryBus.cs" />
     <Compile Include="Emulator\IO\Z80\Z80SIO.cs" />
     <Compile Include="Emulator\IO\Z80\Z80SIOChannel.cs" />
+    <Compile Include="Emulator\IO\Z80\Z80SIORegisters.cs" />
     <Compile Include="Emulator\IO\Z80\Z80System.cs" />
     <Compile Include="Emulator\IO\Z80\Z80ToPERQFIFO.cs" />
     <Compile Include="Emulator\IO\Z80\Z80ToPERQLatch.cs" />
@@ -225,18 +226,19 @@
     <Compile Include="UI\SDL\EventLoop.cs" />
     <Compile Include="UI\SDL\InputDevices.cs" />
     <Compile Include="UI\SDL\KeyboardMap.cs" />
+    <Compile Include="UI\SDL\EventList.cs" />
+    <Compile Include="UI\SDL\Speaker.cs" />
   </ItemGroup>
   <!-- Content items included in build output -->
   <ItemGroup>
     <None Include="COPYING.txt" />
-    <None Include="SDL2.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Include="SDL2_image.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="..\packages\SDL2-CS.dll.2.0.0.0\lib\net48\SDL2-CS.dll.config">
-      <Link>SDL2-CS.dll.config</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="SDL2.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="SharpPcap.dll.config">
@@ -381,8 +383,6 @@
     <None Include="app.config" />
     <None Include="Readme-source.txt" />
     <None Include="ChangeLog-Old.txt" />
-    <None Include="ChangeLog-Older.txt" />
-    <!-- Reference ROM images -->
     <None Include="PROM\rds00.rom" />
     <None Include="PROM\rsc03.rom" />
     <None Include="PROM\rsh00.rom" />
@@ -400,6 +400,8 @@
   </ItemGroup>
   <!-- Documentation -->
   <ItemGroup>
+    <None Include="Docs\ChangeLog-Oldest.txt" />
+    <None Include="Docs\ChangeLog-Older.txt" />
     <None Include="Docs\Configuration.txt" />
     <None Include="Docs\Configurator.png" />
     <None Include="Docs\Controller.txt" />
@@ -410,6 +412,7 @@
     <None Include="Docs\Network.txt" />
     <None Include="Docs\NewIOPorts.txt" />
     <None Include="Docs\PERQ_Chart.png" />
+    <None Include="Docs\SerialPorts.txt" />
     <None Include="Docs\Streamer.txt" />
     <None Include="Docs\Video.txt" />
     <None Include="Docs\Hardware References\Am9517A.pdf" />
@@ -779,6 +782,7 @@
     <Folder Include="Emulator\IO\DiskDevices\" />
     <Folder Include="Emulator\IO\TapeDevices\" />
     <Folder Include="Emulator\IO\Network\" />
+    <Folder Include="Emulator\IO\Ports\" />
     <Folder Include="Emulator\IO\Printers\" />
     <Folder Include="Resources\" />
     <Folder Include="UI\" />
@@ -808,3 +812,4 @@
     </MonoDevelop>
   </ProjectExtensions>
 </Project>
+

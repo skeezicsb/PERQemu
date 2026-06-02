@@ -1,5 +1,5 @@
 //
-// Settings.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Settings.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -19,12 +19,15 @@
 
 using System;
 using System.IO;
-using System.IO.Ports;
 using System.Net.NetworkInformation;
 using System.Collections.Generic;
 
+using SDL2;
+
 using PERQemu.IO;
+using PERQemu.IO.Ports;
 using PERQemu.IO.Network;
+using PERQemu.IO.Z80;
 
 namespace PERQemu
 {
@@ -50,8 +53,6 @@ namespace PERQemu
         Hidden
     }
 
-    // Temporary:  remove dependency on System.Drawing since that's not
-    // present on Linux (Mint, anyway) mono by default?
     public enum ImageFormat
     {
         None = 0,
@@ -65,33 +66,12 @@ namespace PERQemu
     public enum RateLimit
     {
         None = 0,                       // 110% on the reactor!
-        CPUSpeed = 0x1,                 // Strive for accuracy
-        DiskSpeed = 0x2,                // Feel the pain
-        TapeSpeed = 0x4,                // Is this a trick question?
+        CPUSpeed = 0x01,                // Strive for accuracy
+        DiskSpeed = 0x02,               // Feel the pain
+        TapeSpeed = 0x04,               // Is this a trick question?
+        PrinterSpeed = 0x08,            // Realistic Canon printer delays?
         StartupDelay = 0x10,            // For the truly hardcore
-        FrameSkipping = 0x20,           // Not implemented (yet?)
-        PrinterSpeed = 0x40             // Realistic Canon printer delays?
-    }
-
-    public struct SerialSettings
-    {
-        public SerialSettings(int baud, int data, Parity parity, StopBits stop)
-        {
-            BaudRate = baud;
-            DataBits = data;
-            Parity = parity;
-            StopBits = stop;
-        }
-
-        public override string ToString()
-        {
-            return $"{BaudRate} {DataBits} {Parity} {StopBits}";
-        }
-
-        public int BaudRate;
-        public int DataBits;
-        public Parity Parity;
-        public StopBits StopBits;
+        SpeechDelay = 0x20              // Do NOT adjust speech rate
     }
 
     public static class Settings
@@ -126,12 +106,16 @@ namespace PERQemu
             CanonPaperSize = PaperCode.USLetter;        // Set to A4 based on locale? :-)
             CanonResolution = 300;                      // CX is probably more popular
 
-            RSADevice = string.Empty;
-            RSBDevice = string.Empty;
             EtherDevice = string.Empty;
 
-            RSASettings = new SerialSettings(9600, 8, Parity.None, StopBits.One);
-            RSBSettings = new SerialSettings(9600, 8, Parity.None, StopBits.One);
+            RSADevice = string.Empty;
+            RSASettings = SerialSettings.Defaults;
+
+            RSBDevice = string.Empty;
+            RSBSettings = SerialSettings.Defaults;
+
+            AudioDevice = PERQemu.HostIsUnix ? string.Empty : "dsound";
+            AudioSettings = SpeechSettings.Defaults;
 
             RTCYearOffset = 1980;
             Keymap = string.Empty;
@@ -179,8 +163,10 @@ namespace PERQemu
         public static SerialSettings RSASettings;
         public static SerialSettings RSBSettings;
 
+        public static string AudioDevice;
+        public static SpeechSettings AudioSettings;
+
         public static string EtherDevice;
-        //public static string AudioDevice;
 
         // Customizations
         public static int RTCYearOffset;
@@ -197,9 +183,11 @@ namespace PERQemu
         /// </summary>
         public static void Load()
         {
-            // Set the list of COM ports for the "assign rs232 device" command
+            // Set the list of host ports for the "assign x device" commands
             PERQemu.CLI.UpdateKeywordMatchHelpers("ComPorts", GetHostSerialPorts());
             PERQemu.CLI.UpdateKeywordMatchHelpers("NICs", GetHostEthernetNICs());
+            PERQemu.CLI.UpdateKeywordMatchHelpers("AudioDrivers", GetAudioDrivers());
+            PERQemu.CLI.UpdateKeywordMatchHelpers("SerialFlags", GetSerialOptionFlags());
 
             try
             {
@@ -272,16 +260,59 @@ namespace PERQemu
                     }
 
                     // Device mappings
-                    if (!string.IsNullOrEmpty(RSADevice))
+                    if (!string.IsNullOrEmpty(AudioDevice))
                     {
-                        sw.Write("assign rs232 device a ");
-                        sw.WriteLine(RSADevice == "RSX:" ? "RSX:" : $"{RSADevice} {RSASettings}");
+                        sw.WriteLine($"assign audio device {AudioDevice}");
                     }
 
-                    if (!string.IsNullOrEmpty(RSBDevice))
+                    // Todo: write out tunings -- either update CLI to understand float/double
+                    // or will have to store scaled integer values (would make for easier comparisons)
+                    // for now, just save the channels setting, since that's the only one likely to change
+                    if (AudioSettings.Channels != 1)
                     {
-                        sw.Write("assign rs232 device b ");
-                        sw.WriteLine(RSBDevice == "RSX:" ? "RSX:" : $"{RSBDevice} {RSBSettings}");
+                        sw.WriteLine($"assign audio option channels {AudioSettings.Channels}");
+                    }
+
+                    // Syntax change in v0.9.0
+                    if (!string.IsNullOrEmpty(RSADevice))
+                    {
+                        sw.Write("assign rs232a device ");
+                        sw.WriteLine(RSADevice == "RSX:" ? "RSX:" : $"{RSADevice} {RSASettings}");
+
+                        // Write out handshaking, option flags separately
+                        if (RSASettings.FlowControl != Handshake.None)
+                        {
+                            if (RSASettings.FlowControl == Handshake.XOnXOff || RSASettings.FlowControl == Handshake.Both)
+                                sw.WriteLine($"assign rs232a option {Handshake.XOnXOff}");
+
+                            if (RSASettings.FlowControl == Handshake.RTSCTS || RSASettings.FlowControl == Handshake.Both)
+                                sw.WriteLine($"assign rs232a option {Handshake.RTSCTS}");
+                        }
+
+                        if (RSASettings.Options != SerialOptions.None)
+                        {
+                            sw.WriteLine($"assign rs232a option {RSASettings.Options}");
+                        }
+                    }
+
+                    // New in v0.9.0; RSX: on port B never worked; quietly drop it if set
+                    if (!string.IsNullOrEmpty(RSBDevice) && RSBDevice != "RSX:")
+                    {
+                        sw.WriteLine($"assign rs232b device {RSBDevice} {RSBSettings}");
+
+                        if (RSBSettings.FlowControl != Handshake.None)
+                        {
+                            if (RSBSettings.FlowControl == Handshake.XOnXOff || RSBSettings.FlowControl == Handshake.Both)
+                                sw.WriteLine($"assign rs232b option {Handshake.XOnXOff}");
+
+                            if (RSBSettings.FlowControl == Handshake.RTSCTS || RSBSettings.FlowControl == Handshake.Both)
+                                sw.WriteLine($"assign rs232b option {Handshake.RTSCTS}");
+                        }
+
+                        if (RSBSettings.Options != SerialOptions.None)
+                        {
+                            sw.WriteLine($"assign rs232b option {RSBSettings.Options}");
+                        }
                     }
 
                     if (!string.IsNullOrEmpty(EtherDevice))
@@ -304,7 +335,7 @@ namespace PERQemu
                     // New in v0.8.4; save custom keymap, if set
                     if (!string.IsNullOrEmpty(Keymap))
                         sw.WriteLine($"keymap {Keymap}");
-                                       
+
                     sw.WriteLine("#");
                     sw.WriteLine("# These options are not yet implemented:");
                     sw.WriteLine($"# debug radix {DebugRadix}");
@@ -393,6 +424,32 @@ namespace PERQemu
             }
 
             return nics.ToArray();
+        }
+
+        /// <summary>
+        /// Gets a list of available audio drivers.
+        /// </summary>
+        public static string[] GetAudioDrivers()
+        {
+            var numDrivers = SDL.SDL_GetNumAudioDrivers();
+            var drivers = new string[numDrivers + 1];
+
+            drivers[0] = "default";
+
+            for (var i = 0; i < numDrivers; i++)
+            {
+                drivers[i + 1] = SDL.SDL_GetAudioDriver(i);
+            }
+
+            return drivers;
+        }
+
+        /// <summary>
+        /// Helper strings for parsing serial port option flags.
+        /// </summary>
+        public static string[] GetSerialOptionFlags()
+        {
+            return new string[] { "none", "xonxoff", "rtscts", "dcdforceon", "dcdfollowdsr" };
         }
     }
 }

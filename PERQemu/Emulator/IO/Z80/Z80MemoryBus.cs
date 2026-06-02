@@ -1,5 +1,5 @@
 //
-// Z80MemoryBus.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80MemoryBus.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -54,8 +54,13 @@ namespace PERQemu.IO.Z80
         }
 
         public int Size => 0x10000;             // 64K address space
-        public bool ReadDataReady => true;      // Always ready
-        public bool WriteDataReady => true;     // Always ready
+
+        public bool DMAReadReady => true;       // Always ready
+        public bool DMAWriteReady => true;      // Always ready
+
+        public AcknowledgeDelegate DMAAcknowledge => null;  // No ACKs needed
+
+        public void DMATerminate() { }          // Nothing to do
 
         public byte[] GetContents(int startAddress, int length) { return null; }
         public void SetContents(int startAddress, byte[] contents, int startIndex = 0, int? length = null) { }
@@ -106,10 +111,6 @@ namespace PERQemu.IO.Z80
 
             // Draw attention to scribbles outside the lines
             throw new InvalidOperationException($"Unexpected memory write at address 0x{address:x} of 0x{value:x}");
-        }
-
-        public void DMATerminate()
-        {
         }
 
         public void LoadROM(string path)

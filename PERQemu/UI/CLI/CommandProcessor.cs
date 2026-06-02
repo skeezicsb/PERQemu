@@ -120,7 +120,7 @@ namespace PERQemu
             // return so we can check the Console for a keystroke.  Studies show
             // that the fastest typists in the world can't go much faster than
             // 50-60ms between keystrokes.  Yep.  I checked. :-)
-            var consoleTimerHandle = HighResolutionTimer.Register(50d, null, "Console");
+            var consoleTimerHandle = HighResolutionTimer.Register(48d, null, "Console");
             HighResolutionTimer.Enable(consoleTimerHandle, true);
 
             // Sign up for controller events
@@ -241,7 +241,7 @@ namespace PERQemu
 
         /// <summary>
         /// Cache DDS changes (CPU StackReset calls) and check for rollover.
-        /// <remarks>
+        /// </summary>
         void OnDDSChange(MachineStateChangeEventArgs a)
         {
             _dds = (int)a.Args[0];
@@ -255,21 +255,22 @@ namespace PERQemu
         {
             var state = a.State;
 
-            // Add or remove the DDS change hook when the machine powers up or down
-            if (state == RunState.WarmingUp)
+            switch (state)
             {
-                PERQemu.Sys.DDSChanged += OnDDSChange;
-                Console.Title = "DDS 000";
-            }
-            else if (state == RunState.Reset)
-            {
-                InitDDS();
-                _lastDDS = -1;      // Force initial update :-)
-            }
-            else if (state == RunState.ShuttingDown)
-            {
-                PERQemu.Sys.DDSChanged -= OnDDSChange;
-                Console.Title = "PERQemu";
+                case RunState.WarmingUp:
+                    PERQemu.Sys.DDSChanged += OnDDSChange;
+                    Console.Title = "DDS 000";
+                    break;
+
+                case RunState.Reset:
+                    InitDDS();
+                    _lastDDS = -1;      // Force initial update :-)
+                    break;
+
+                case RunState.ShuttingDown:
+                    PERQemu.Sys.DDSChanged -= OnDDSChange;
+                    Console.Title = "PERQemu";
+                    break;
             }
         }
 
@@ -344,6 +345,12 @@ namespace PERQemu
             PERQemu.PrintBanner();
         }
 
+        [Command("about libraries", "Show versions of loaded libraries")]
+        void AboutLibs()
+        {
+            PERQemu.PrintVersions();
+        }
+
         [Command("commands", "Show console commands and their descriptions")]
         public void ShowCommands()
         {
@@ -369,13 +376,6 @@ namespace PERQemu
 
             // build path OutputDir/cmdhistory.txt
             // open output stream and dump it
-        }
-
-        [Command("gui", "Start the graphical interface")]
-        void LaunchGUI()
-        {
-            // Sigh.  Maybe by v2.0?
-            Console.WriteLine("Nope.  No cross-platform GUI available yet.");
         }
 
         [Command("done", Discreet = true)]

@@ -1,5 +1,5 @@
 ﻿//
-// RSXFilePort.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// RSXFilePort.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -30,8 +30,8 @@ namespace PERQemu.IO.SerialDevices
     /// PERQ's simulated serial port.
     /// </summary>
     /// <remarks>
-    /// In doing so, it provides a crude way to copy a file from the host to the
-    /// emulated PERQ.  Under POS, one can do:
+    /// In doing so, it provides a crude way to copy a text file from the host to
+    /// the emulated PERQ.  Under POS, one can do:
     /// 
     ///     "copy RSX:remoteFileName localFileName"
     /// 
@@ -45,7 +45,8 @@ namespace PERQemu.IO.SerialDevices
     /// file.  This is a pretty nifty way to allow the PERQ limited access to the
     /// filesystem on the emulation host.  (Alas, no directory support...)
     /// 
-    /// Unfortunately it only supports text files.
+    /// Unfortunately it only supports text files; binaries will be corrupted.
+    /// This is a limitation of the protocol itself, not the implementation.
     ///         
     /// The RSX: file copy protocol from the PERQ is as follows (from stream.pas):
     /// 
@@ -72,10 +73,7 @@ namespace PERQemu.IO.SerialDevices
     /// It depends on specific (badly documented) behaviors of both POS and
     /// RSX-11.  In particular, the ^Q/^S bookending for the RSX: input device
     /// is basically enforcing flow control over a serial line that doesn't
-    /// implement it (^S pauses the RSX-11's output, ^Q resumes it).  This code
-    /// does not pay attention to the ^Q/^S, instead relying on some hackery in
-    /// the RS232 class to pace the data such that the PERQ won't lose anything.
-    /// (It makes things a lot simpler here at the cost of a bit of throughput.)
+    /// implement it (^S pauses the RSX-11's output, ^Q resumes it).
     /// 
     /// I've tried to comment up all of the oddities I've encountered.  This is
     /// very much a hack, but it is fairly useful to have (makes uploading source
@@ -86,41 +84,10 @@ namespace PERQemu.IO.SerialDevices
         public RSXFilePort(Z80System sys) : base(sys)
         {
             _system = sys;
+            _name = "RSX port";
             _inputQueue = new Queue<byte>(128);
             _fileStream = null;
-            _sendEvent = null;
         }
-
-        public override void Reset()
-        {
-            _system.Scheduler.Cancel(_sendEvent);
-            _sendEvent = null;
-
-            if (_fileStream != null)
-            {
-                _fileStream.Close();
-                _fileStream = null;
-            }
-
-            _isOpen = false;
-            _isPaused = false;
-            _transferState = TransferState.WaitingForCtrlQ;
-            _fileName = string.Empty;
-            _rsxCommand = string.Empty;
-
-            // Run at the fastest rate supported by the model :-)
-            _charRateInNsec = Conversion.BaudRateToNsec(BaudRate);
-
-            _inputQueue.Clear();
-
-            Log.Debug(Category.RS232, "RSX: port reset");
-        }
-
-        //
-        // ISerialDevice implementation
-        //
-
-        public override string Name => "RSX port";
 
         public override int BaudRate => _system.IsEIO ? 19200 : 9600;
 
@@ -146,11 +113,30 @@ namespace PERQemu.IO.SerialDevices
         public override bool CTS => true;
         public override bool DSR => true;
 
-        public override int ByteCount => _inputQueue.Count;
+        public override bool ReadReady => _inputQueue.Count > 0 && !_isPaused;
+        public override bool WriteReady => true;
 
-        public override void Transmit(byte value)
+
+        public override void Reset()
         {
-            SendData(value);
+            if (_fileStream != null)
+            {
+                _fileStream.Close();
+                _fileStream = null;
+            }
+
+            _isOpen = false;
+            _isPaused = false;
+            _fileName = string.Empty;
+            _rsxCommand = string.Empty;
+            _transferState = TransferState.WaitingForCtrlQ;
+
+            // Run at the fastest rate supported by the model :-)
+            _txRate = _rxRate = Conversion.BaudRateToNsec(BaudRate);
+
+            _inputQueue.Clear();
+
+            Log.Debug(Category.RS232, "RSX: port reset");
         }
 
         void ResetState()
@@ -161,40 +147,26 @@ namespace PERQemu.IO.SerialDevices
 
         /// <summary>
         /// "Receives" data from the host and sends it in a byte stream to the
-        /// PERQ, as if it were being sent over the serial port.  Rate limited
-        /// to a fixed 9600 baud (for now).
+        /// PERQ, as if it were being sent over the serial port.
         /// </summary>
-        void ReceiveData(ulong skewNsec, object context)
+        public override byte Receive()
         {
-            if (_inputQueue.Count > 0)
-            {
-                if (!_isPaused)
-                {
-                    var b = _inputQueue.Dequeue();
+            // We're only called if ReadReady is true, so if there's no byte
+            // available something has gone wrong...
+            var b = _inputQueue.Dequeue();
 
-                    _rxDelegate(b);
-
-                    // Do it again in a millisecond or so
-                    _sendEvent = _system.Scheduler.Schedule(_charRateInNsec, ReceiveData, null);
-                }
-                else
-                {
-                    // Clear it so the ^Q in SendData restarts the receiver
-                    _sendEvent = null;
-                }
-            }
-            else
+            // In Read mode an empty queue means we're done; close it up
+            if (_inputQueue.Count == 0)
             {
-                // In Read mode an empty queue means we're done; close it up
                 if (_transferState == TransferState.Transferring && _fileAccess == FileAccess.Read)
                 {
                     Log.Write("File '{0}' transfer from host is complete.", _fileName);
 
                     TransferComplete();
                 }
-
-                _sendEvent = null;
             }
+
+            return b;
         }
 
         /// <summary>
@@ -202,18 +174,18 @@ namespace PERQemu.IO.SerialDevices
         /// When sending a file to the host, writes the data bytes into the output
         /// file; when reading, kicks off the receiver.
         /// </summary>
-        public void SendData(byte b)
+        public override void Transmit(byte value)
         {
             //
             // POS implicitly uses Xon/Xoff for flow control for RSX transfers.
             // Check for those characters but do not echo them back.
             //
-            if (b == CtrlS)
+            if (value == CtrlS)
             {
                 _isPaused = true;
                 Log.Detail(Category.RS232, "[Paused on ^S]");
             }
-            else if (b == CtrlQ)
+            else if (value == CtrlQ)
             {
                 _isPaused = false;
                 Log.Detail(Category.RS232, "[Resumed on ^Q]");
@@ -227,13 +199,13 @@ namespace PERQemu.IO.SerialDevices
                 // data during the command input phase and during RSX-as-output.
                 // Additionally, it expects that if CR is sent an LF is echoed back.
                 // 
-                if (b == CR)
+                if (value == CR)
                 {
                     _inputQueue.Enqueue(LF);
                 }
                 else
                 {
-                    _inputQueue.Enqueue(b);
+                    _inputQueue.Enqueue(value);
                 }
             }
 
@@ -241,7 +213,7 @@ namespace PERQemu.IO.SerialDevices
             switch (_transferState)
             {
                 case TransferState.WaitingForCtrlQ:
-                    if (b == CtrlQ)
+                    if (value == CtrlQ)
                     {
                         _rsxCommand = string.Empty;
                         _errorString = string.Empty;
@@ -250,12 +222,12 @@ namespace PERQemu.IO.SerialDevices
                     break;
 
                 case TransferState.WaitingForRSXCommand:
-                    if (b != CR)
+                    if (value != CR)
                     {
                         // Ignore control characters
-                        if (b >= 0x20)
+                        if (value >= 0x20)
                         {
-                            _rsxCommand += (char)b;
+                            _rsxCommand += (char)value;
                         }
                     }
                     else
@@ -304,7 +276,6 @@ namespace PERQemu.IO.SerialDevices
                         else
                         {
                             // Command input was invalid; restart state machine
-                            // (this really should not ever happen...)
                             Log.Error(Category.RS232, "RSX: command parse failed, resetting");
 
                             ResetState();
@@ -313,7 +284,7 @@ namespace PERQemu.IO.SerialDevices
                     break;
 
                 case TransferState.WaitingForCtrlS:
-                    if (b == CtrlS)
+                    if (value == CtrlS)
                     {
                         // Now that we're paused, go ahead and queue up the file
                         // so it's ready to go when the ^Q arrives.  Yeesh.
@@ -328,11 +299,24 @@ namespace PERQemu.IO.SerialDevices
                     if (_fileAccess == FileAccess.Write)
                     {
                         // Writing: transfer ends on Ctrl-Z
-                        if (b != CtrlZ)
+                        if (value != CtrlZ)
                         {
                             if (_fileStream != null)
                             {
-                                _fileStream.WriteByte(b);
+                                // Handle line ending translation on the host side:
+                                // POS strips LFs entirely; on Windows, add them
+                                // back in; on Unix, replace the CR with a lone LF.
+                                // Maybe this should be configurable?
+                                if (value == CR)
+                                {
+                                    if (!PERQemu.HostIsUnix)
+                                        _fileStream.WriteByte(value);
+
+                                    // Translate and fall through :-)
+                                    value = LF;
+                                }
+
+                                _fileStream.WriteByte(value);
                             }
                         }
                         else
@@ -346,17 +330,9 @@ namespace PERQemu.IO.SerialDevices
                         }
                     }
 
-                    // Reading:  handled in ReceiveData()
+                    // Reading:  handled in Receive()
 
                     break;
-            }
-
-            // If there's data to send (echoback or file transfer), start it (if
-            // not already scheduled).  The simulated round trip delay gives the
-            // Z80 some time to process the tx/rx interrupts...
-            if (_inputQueue.Count > 0 && _sendEvent == null)
-            {
-                _sendEvent = _system.Scheduler.Schedule(_charRateInNsec, ReceiveData, null);
             }
         }
 
@@ -492,7 +468,10 @@ namespace PERQemu.IO.SerialDevices
         {
             Console.WriteLine($"RSX device:  open {_isOpen}, transfer state {_transferState}");
             Console.WriteLine($"Line state:  {BaudRate} baud, {DataBits}-{Parity}-{StopBits}");
-            if (_isPaused) Console.WriteLine($"[Paused ({ByteCount} bytes in output buffer)]");
+            if (_isPaused)
+            {
+                Console.WriteLine($"[Paused ({_inputQueue.Count} bytes in output buffer)]");
+            }
 
             if (IsOpen)
             {
@@ -532,22 +511,6 @@ namespace PERQemu.IO.SerialDevices
             Transferring
         }
 
-
-        Queue<byte> _inputQueue;
-        SchedulerEvent _sendEvent;
-
-        string _fileName;
-        FileMode _fileMode;
-        FileAccess _fileAccess;
-        FileStream _fileStream;
-
-        TransferState _transferState;
-        string _rsxCommand;
-        string _errorString;
-        bool _isPaused;
-
-        ulong _charRateInNsec;
-
         const byte CtrlQ = 0x11;        // ^Q
         const byte CtrlS = 0x13;        // ^S
         const byte CtrlZ = 0x1a;        // ^Z
@@ -557,7 +520,20 @@ namespace PERQemu.IO.SerialDevices
 
         const string _pipToken = "Pip";
         const string _TIToken = "TI:";
-        static char[] _separators = { ' ', '=' };
+        readonly char[] _separators = { ' ', '=' };
+
+        string _rsxCommand;
+        string _errorString;
+
+        string _fileName;
+        FileMode _fileMode;
+        FileAccess _fileAccess;
+        FileStream _fileStream;
+
+        Queue<byte> _inputQueue;
+        TransferState _transferState;
+
+        bool _isPaused;
     }
 }
 

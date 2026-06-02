@@ -74,6 +74,7 @@ namespace PERQemu.Config
             // Users must explicitly enable the RS-232 ports
             _rsaEnabled = false;
             _rsbEnabled = false;
+            _speechEnabled = true;
 
             // The default
             _etherAddr = 0;
@@ -196,16 +197,22 @@ namespace PERQemu.Config
             set { _ioBoard = value; }
         }
 
-        public bool RSAEnable
+        public bool RSAEnabled
         {
             get { return _rsaEnabled; }
             set { _rsaEnabled = value; }
         }
 
-        public bool RSBEnable
+        public bool RSBEnabled
         {
             get { return _rsbEnabled; }
             set { _rsbEnabled = value; }
+        }
+
+        public bool SpeechEnabled
+        {
+            get { return _speechEnabled; }
+            set { _speechEnabled = value; }
         }
 
         public OptionBoardType IOOptionBoard
@@ -304,6 +311,11 @@ namespace PERQemu.Config
             {
                 sb.Append("    RS-232 B:  ");
                 sb.AppendLine(Settings.RSBDevice == string.Empty ? "<unassigned>" : Settings.RSBDevice);
+            }
+
+            if (_speechEnabled)
+            {
+                sb.AppendLine("    Speech:    Enabled");
             }
 
             if (_ioBoard == IOBoardType.EIO && _etherAddr != 0)
@@ -422,6 +434,7 @@ namespace PERQemu.Config
 
         bool _rsaEnabled;
         bool _rsbEnabled;
+        bool _speechEnabled;
 
         bool _validated;
         bool _modified;

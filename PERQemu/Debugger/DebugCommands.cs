@@ -394,6 +394,12 @@ namespace PERQemu
         }
 
 #if DEBUG
+        [Command("debug dump memory alignment stats", "Show misaligned address stats")]
+        void ShowMemStats()
+        {
+            if (CheckSys()) PERQemu.Sys.CPU.ShowMemStats();
+        }
+
         [Command("debug dump memory", "Dump the entire memory array to a file")]
         void DumpMemory()
         {
@@ -475,12 +481,6 @@ namespace PERQemu
         }
 
 #if DEBUG
-        [Command("debug show memory alignment stats", "Show misaligned address stats")]
-        void ShowMemStats()
-        {
-            if (CheckSys()) PERQemu.Sys.CPU.ShowMemStats();
-        }
-
         // The fully-instrumented debug version of the code was removed to a special
         // build tree, so really detailed RasterOp debugging stuff is no longer needed
         // in typical Release builds.  Some basic info remains but much of this will
@@ -1025,18 +1025,6 @@ namespace PERQemu
         public void ClearInterrupt(InterruptSource irq)
         {
             if (CheckSys()) PERQemu.Sys.CPU.ClearInterrupt(irq);
-        }
-
-        [Command("debug dump rs232a")]
-        void ShowRS232Status()
-        {
-            if (CheckSys()) PERQemu.Sys.IOB.Z80System.DumpPortAStatus();
-        }
-
-        [Command("debug dump rs232b")]
-        void ShowRS232BStatus()
-        {
-            if (CheckSys()) PERQemu.Sys.IOB.Z80System.DumpPortBStatus();
         }
 
         [Command("debug dump harddisk")]

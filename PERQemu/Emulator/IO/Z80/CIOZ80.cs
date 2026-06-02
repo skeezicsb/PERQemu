@@ -41,14 +41,17 @@ namespace PERQemu.IO.Z80
             _seekControl = new HardDiskSeekControl(_system);
             _perqToZ80Fifo = new PERQToZ80Latch(_system);
             _z80ToPerqFifo = new Z80ToPERQLatch(_system);
+            _dmaRouter = new DMARouter(this);
 
-            _fdc = new NECuPD765A(0xa8, _scheduler);
             _tms9914a = new TMS9914A(0xb8);
+            _fdc = new NECuPD765A(0xa8, _scheduler);
             _z80dma = new Z80DMA(0x98, _memory, _bus);
             _z80ctc = new Z80CTC(0x90, _scheduler);
-            _z80sio = new Z80SIO(0xb0, this);
-            _dmaRouter = new DMARouter(this);
+            _z80sio = new Z80SIO(0xb0, _scheduler);
+
+            _cvsd = new MC3417(this);
             _keyboard = new Keyboard();
+            _speechMux = new SerialMux(this);
 
             _ioReg3 = new IOReg3(_perqToZ80Fifo, _keyboard, _fdc, _dmaRouter);
 
@@ -71,6 +74,7 @@ namespace PERQemu.IO.Z80
 
         // Expose to the DMA router
         public override Z80SIO SIOA => _z80sio;
+        public override Z80SIO SIOB => null;
 
         // Allow for external CTC triggers (disk seeks)
         public override Z80CTC CTC => _z80ctc;
@@ -89,30 +93,18 @@ namespace PERQemu.IO.Z80
 
             if (_system.Config.Tablet.HasFlag(TabletType.Kriz))
             {
-                _z80sio.AttachDevice(1, new KrizTablet(_scheduler, _system));
+                _speechMux.AttachRxDevice(new KrizTablet(this, _system));
             }
 
-            // If enabled and configured, attach device to RS232
-            if (_system.Config.RSAEnable && Settings.RSADevice != string.Empty)
-            {
-                if (Settings.RSADevice == "RSX:")
-                {
-                    var rsx = new RSXFilePort(this);
-                    _z80sio.AttachPortDevice(0, rsx);
-                    _z80ctc.AttachDevice(0, rsx);
-                }
-                else
-                {
-                    var rsa = new PhysicalPort(this, Settings.RSADevice, Settings.RSASettings, "A");
-                    _z80sio.AttachPortDevice(0, rsa);
-                    _z80ctc.AttachDevice(0, rsa);
-                }
-            }
-            else
-            {
-                // Otherwise direct it to the bit bucket
-                _z80sio.AttachPortDevice(0, new NullPort(this));
-            }
+            // Attach the CVSD chip
+            _speechMux.AttachTxDevice(_cvsd);
+            _z80ctc.AttachDevice(1, _cvsd);
+
+            // Attach the mux device to SIO channel B
+            _z80sio.AttachDevice(1, _speechMux);
+
+			// Attach the RS232 device to SIO channel A
+			SerialInit();
 
             // Everybody get on the bus!
             _bus.RegisterDevice(_fdc);
@@ -125,6 +117,54 @@ namespace PERQemu.IO.Z80
             _bus.RegisterDevice(_z80ToPerqFifo, false);
             _bus.RegisterDevice(_seekControl, false);
             _bus.RegisterDevice(_ioReg3, false);
+        }
+
+        public override void SerialReset(char port)
+        {
+            if (port != 'a' && port != 'A')
+                throw new InvalidOperationException($"Bad port {port}");
+
+            _z80ctc.DetachDevice(0);
+            _z80sio.DetachDevice(0);
+            SerialInit();
+            _z80sio.Reinitialize(0);
+            _z80ctc.Notify(0);
+        }
+
+        public override void SerialError(char port, string message)
+        {
+            Log.Warn(Category.All, "RS-232 port {0} has thrown an exception: {1}", port, message);
+            Log.Warn(Category.All, "Device '{0}' has been disabled.", Settings.RSADevice);
+            _system.Config.RSAEnabled = false;
+
+            // Detach the failed device, attach a NullPort
+            SerialReset(port);
+        }
+
+        void SerialInit()
+        {
+            // If enabled and configured, attach device to RS232
+            if (_system.Config.RSAEnabled && Settings.RSADevice != string.Empty)
+            {
+                if (Settings.RSADevice == "RSX:")
+                {
+                    var rsx = new RSXFilePort(this);
+                    _z80sio.AttachDevice(0, rsx);
+                    _z80ctc.AttachDevice(0, rsx);
+                }
+                else
+                {
+                    var rsa = new RealPort(this, "Port A", Settings.RSADevice, Settings.RSASettings);
+                    rsa.SetErrorHandler(SerialError, 'A');
+                    _z80sio.AttachDevice(0, rsa);
+                    _z80ctc.AttachDevice(0, rsa);
+                }
+            }
+            else
+            {
+                // Otherwise direct it to the bit bucket
+                _z80sio.AttachDevice(0, new NullPort(this));
+            }
         }
 
         protected override void DeviceReset()
@@ -345,16 +385,6 @@ namespace PERQemu.IO.Z80
             _perqToZ80Fifo.DumpFifo();
         }
 
-        public override void DumpPortAStatus()
-        {
-            _z80sio.DumpPortStatus(0);
-        }
-
-        public override void DumpPortBStatus()
-        {
-            Console.WriteLine($"{_system.Config.IOBoard} board does not have a serial port B.");
-        }
-
         public override void DumpIRQStatus()
         {
             _bus.DumpInterrupts();
@@ -370,11 +400,10 @@ namespace PERQemu.IO.Z80
         Z80CTC _z80ctc;
         Z80DMA _z80dma;
         IOReg3 _ioReg3;
-        DMARouter _dmaRouter;
         Keyboard _keyboard;
+        DMARouter _dmaRouter;
         PERQToZ80Latch _perqToZ80Fifo;
         Z80ToPERQLatch _z80ToPerqFifo;
         HardDiskSeekControl _seekControl;
-
     }
 }

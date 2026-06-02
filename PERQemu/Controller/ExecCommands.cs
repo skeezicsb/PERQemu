@@ -29,6 +29,7 @@ namespace PERQemu
     {
         [Command("status", "Show current status of the PERQ")]
         [Command("debug status", "Show current status of the PERQ")]
+        [Command("debug z80 status")]
         public void Status()
         {
             if (PERQemu.Controller.State == RunState.Off)
@@ -37,9 +38,9 @@ namespace PERQemu
                 return;
             }
 
-            Console.WriteLine($"Current configuration is {PERQemu.Sys.Config.Name}");
+            // Console.WriteLine($"Current configuration is {PERQemu.Sys.Config.Name}");
             Console.WriteLine($"Current run state is {PERQemu.Sys.State}");
-            Console.WriteLine("The Z80 {0} running", PERQemu.Sys.IOB.Z80System.IsRunning ? "is" : "is not");
+            Console.WriteLine("The Z80 {0} enabled", PERQemu.Sys.IOB.Z80System.IsRunning ? "is" : "is not");
 
             // DEBUG
             PERQemu.Sys.ShowThreadStatus();
@@ -47,6 +48,7 @@ namespace PERQemu
             PERQemu.Sys.Display.Status();
             PERQemu.Sys.HID.Status();
             PERQemu.Sys.VideoController.Status();
+            PERQemu.GUI.Audio.Status();
         }
 
         [Command("power on", "Turn on the configured PERQ")]
@@ -112,7 +114,6 @@ namespace PERQemu
             }
         }
 
-
         //
         // Miscellany
         //
@@ -170,6 +171,9 @@ namespace PERQemu
             }
         }
 
+        //
+        // Fixme: the printer stuff belongs somewhere else...
+        //
 
         bool FindCanon(out IO.CanonController ctrl)
         {
@@ -225,10 +229,12 @@ namespace PERQemu
         }
 
 #if DEBUG
-        // debugging
+        // Debugging
         [Command("hide", "Hide the PERQ display", Discreet = true)]
         void HideDisplay()
         {
+            if (PERQemu.Sys == null) return;
+
             PERQemu.Sys.Display.Hide();
             Console.WriteLine("Sent window hide event.");
         }
@@ -236,6 +242,8 @@ namespace PERQemu
         [Command("unhide", "Restore the PERQ display", Discreet = true)]
         void ShowDisplay()
         {
+            if (PERQemu.Sys == null) return;
+
             PERQemu.Sys.Display.Restore();
             Console.WriteLine("Sent window restore event.");
         }

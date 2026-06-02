@@ -541,7 +541,7 @@ all over the place:
         - up to 12 bits for cylinder number
         - with a firmware change, the write precomp bit can be used as a 4th
           head select, allowing the 15-head Maxtors to be used
-        - the DIB itself now has a 100KHz step pulse clock, driven by the
+        - the DIB itself now has a 100kHz step pulse clock, driven by the
           hardware to issue buffered seeks to the selected drive (but it's
           NOT possible to overlap seeks on both units in parallel)
         - provides OnCyl/SeekComplete and Trk0 signals so head settling is

@@ -1,0 +1,585 @@
+﻿
+PERQemu Serial Devices
+======================
+
+
+The emulator provides register-level emulation of the Z80 SIO chip used on all
+of the PERQ I/O boards.  In particular the PERQ uses the SIO/2 variant, which is
+as complicated to program as the NEC uPD765 floppy controller, so this document
+describes the implementation details and extra nerdy stuff that isn't in the
+User Guide, in case anyone cares.  Or so that I can come back to this in six
+months and remember what the hell I did, and why!
+
+
+Hardware: IOB/CIO
+-----------------
+
+The original PERQ sports a single RS-232 port with full modem control on channel
+A, with speech output on channel B.  When the Kriz tablet was introduced, the
+input half of channel B was enabled to allow the Kriz tablet to be hooked up to
+a PERQ-1 in place of the larger and more expensive GPIB-connected BitPad.  Both
+channels are wired for DMA transfers; reads and writes on the RS-232 port, and
+writes (output) only on the Speech side.  On the IOB, a Z80 CTC (Clock/Timer
+Controller) chip provides baud rate clocks.
+
+On the original PERQ, the DCD pin is also used as a GPIO pin, wired to the 60Hz
+AC line frequency to provide a "jiffy clock".  PERQemu doesn't emulate this, as
+it seems that nearly all software that may have used it was abandoned very early
+in favor of just using the video refresh to update the 60Hz system/software
+clock insted.  (It could be implemented, if any software that uses it is found.)
+
+
+Hardware: EIO
+-------------
+
+The PERQ-2 EIO board has two SIO chips, with two Intel i8254 PIT (Programmable
+Interval Timer) chips providing the baud rate clocking.  As with the CIO board,
+SIO "A" has a full featured RS-232 port on channel "A", with the same features
+as the earlier I/O board.  The "B" side of the first SIO chip is connected to
+Speech output, with an external kluge provided to select which active half of
+the chip gets DMA service.  As with the IOB/CIO implementation, the Kriz tablet
+(standard issue on PERQ-2 models) is wired for input to SIO "A", channel "B".
+
+The second SIO chip provides another RS-232 port "B", also with modem control
+but no DMA wiring -- it's strictly programmed I/O.  The "VT100-style" keyboard
+that shipped with the PERQ-2 models uses SIO "B", channel "B" for input.  Don't
+worry, there won't be a quiz later.  It's all wired together in the Z80System
+implementations (CIOZ80.cs and EIOZ80.cs).
+
+
+Code: What's Where
+------------------
+
+Because this low-level implementation is so involved, the files are grouped in
+three main areas under Emulator/IO:
+
+    Z80/
+        All of the actual controller chips (CTC, PIT, SIO and MC3417)
+        live here, as they are connected to the Z80's I/O bus and run
+        entirely in the scope of the Z80System/thread.  Several C#
+        relevant interface definitions are here too which provide
+        connective tissue for the CTC and DMA controllers and clients.
+
+    Ports/
+        A complete rewrite of the Mono/C# System.IO.Ports.SerialPort
+        class and its Stream implementation.  The original code is so
+        notoriously broken that I finally gave up and just chucked it.
+        PERQemu.IO.Ports.SerialPort is a stripped down, lean and mean
+        rewrite of the aged Mono sources.  Or at least a good start.
+
+    SerialDevices/
+        The various PERQ serial peripherals live here: Kriz tablet,
+        VT100 keyboard, and several flavors of RS-232 port:  NullPort
+        is a sink used when the user doesn't configure or enable the
+        host ports; RSXFilePort allows text file transfers to and from
+        the emulator by pretending to be a PIP session on an RSX-11M
+        host; RealPort is the full fat, full flavored RS-232 port that
+        talks to a host serial port/device.
+
+
+For those playing along at home, the ISIODevice interface was removed in a
+simplification of the previous implementation.  An abstract SerialDevice class
+now underlies both pseudo devices and real/physical host port devices.
+
+
+Baud Rates
+----------
+
+For clock generation, the two controller chips are emulated:
+
+    IO/Z80/Z80CTC.cs - Zilog Counter/Timer Chip (or its Mostek equivalent,
+                       used on the PERQ IOB/CIO)
+
+    IO/Z80/i8254.cs - Intel Programmable Interval Timer (EIO)
+
+Both timer chips use the ICTCDevice interface to announce baud rate changes when
+the Z80/PERQ reprograms them to set RS-232 baud rates or Speech output rates:
+
+    RS-232 A (PERQ-1) - 300 to 9600 baud
+    RS-232 A & B (PERQ-2) - 300 to 19200 baud
+    Speech (all) - 16kHz or 32kHz (possibly others, but no software found)
+
+The emulated devices ignore baud rate settings:
+
+    NullPort - takes whatever the PERQ/Z80 sets, sinks all data
+    RSXFilePort - runs at 9600 (PERQ-1) or 19200 (PERQ-2), fixed
+    Kriz tablet - 32kHz, fixed (but see below)
+    VT100 keyboard - 300 baud, fixed
+
+
+For IOB (Z80 @ 2.4576Mhz) the CTC is programmed with these values (channel 0)
+to generate the RS232-A port baud rate clock:
+
+    Prescaler for timer: 16 (or 256)    2.4576Mhz = 407ns
+    SIO driven @ 16x freq, so delta * 16 = bit rate, * 10 = char/irq rate
+    
+    9600    TC 1    delta 6512      -> 104192ns/bit or 1.042ms/char
+    4800    TC 2    delta 13024     -> 208384ns/bit or 2.084ms/char
+    2400    TC 4    delta 26048     -> 406768ns/bit or 4.168ms/char
+    1200    TC 8    delta 52096     -> 833536ns/bit or 8.335ms/char
+     600    TC 16   delta 104192    -> 1667072ns/bit, 16.670ms/char
+     300    TC 32   delta 208384    -> 3334144ns/bit, 33.341ms/char
+     150    TC 64   delta 416768    -> 6668288ns/bit, 66.682ms/char
+     110    TC 87   delta 566544    -> 9064704ns/bit, 90.647ms/char
+
+The EIO (Z80 @ 4Mhz) programs the PIT with the appropriately scaled values to
+achieve the same rates, plus the 19200 baud which the faster RS-232 ports allow.
+In addition, both implementations support the Speech rates of 16000 and 32000.
+(The conversion routines are actually implemented in Controller/Conversion.cs.)
+
+Note that the programming/constants used are taken directly from the PERQ's Z80
+code; so far I've not found any examples of fully custom programming under POS
+or Accent that strays from the approved/standard baud rates, and PNX uses the
+standard Unix APIs.  If anyone wants to run a serial port at 942 baud, I'd love
+to know why (and can recommend a good therapist).
+
+
+SIO Implementation
+------------------
+
+The complex SIO chip is broken into three parts.  Three is the numbah:
+
+    IO/Z80/Z80SIO.cs - top-level chip interface
+    IO/Z80/Z80SIOChannel.cs - one individual channel
+    IO/Z80/Z80SIORegisters.cs - all the CSR fiddly bits
+
+The Z80SIO is attached to the Z80's IOBus and fields interrupts and DMA requests
+for each instance of the chip.  On the EIO, it also implements the "switch"
+that directs DMA requests to either the RS-232 "A" port or the Speech device;
+only one can be doing "HiVol" I/O at a time (the Z80 firmware manages all this).
+This is a PERQ-specific quirk and not part of the Zilog spec.
+
+Each chip has two separate Z80SIOChannel objects to which peripherals may be
+attached (outlined in detail below).  Each Channel now instantiates a Registers
+object that handles all the fussy bit fiddling for the SIO's read and write
+registers which are used to program the (mostly) independent channels.  The
+Z80SIO "parent" acts as a pass-through for reading/writing commands and
+data, but coordinates the somewhat complicated interrupt/vector generation that
+the Z80 interacts with.  (I'm not going to delve into all that wackiness here;
+the masochistic among you can read the code and datasheet.)
+
+
+NB: the Channel object faithfully emulates the hardware's FIFOs: three bytes on
+the receive side, and one byte for transmit.  (In the SIO chip these are fuzzy,
+as the character currently being shifted in or out kind of counts, and all sorts
+of shenanigans about sync character matching and CRC generation also apply, but
+that is so far into the weeds that we'll ignore it for now.)  What this means is
+that the emulated devices may/can add their own buffering to help smooth out the
+variability of emulation speed of the host.  But the Z80 itself _also_ provides
+ring buffers for that purpose, so to draw a diagram of the flow of data into or
+out of a serial device on the PERQ, from user program to the physical layer, is
+a real tumble down the rabbit hole.
+
+
+As of this writing (v0.9.x), each Channel monitors its transmit and receive (Tx
+and Rx hereafter) enable bits and kicks off a polling loop with the Scheduler.
+The original event-driven Mono/C# SerialPort class was so thoroughly broken that
+a purely polled, non-blocking approach was taken with the rewrite.  This has the
+side benefit that serial I/O to the "real" ports is handled entirely on the Z80
+thread, so the elimination of locks more than offsets the polling overhead.  At
+least that's how it seems in initial testing so I'm gonna call it a win. :-)
+
+Each SerialDevice (IO/SerialDevices/SerialDevice.cs) informs the SIO of its
+desired polling rate:  for "pseudo devices" that only care about receiving or
+transmitting data within the "virtual time" domain of the emulator (i.e., the
+Kriz tablet or keyboard) the current baud rate is used.  A "real" device such as
+a host serial port or the Speech device can specify an independent polling rate
+so that data from the host can be moved to and from the virtual machine.
+
+
+I Did Not Need To Know That
+---------------------------
+
+The PERQ allows programming _separate_ Tx and Rx baud rates by giving the RS-232
+"A" channel two different clock inputs.  The Z80 SIO chip also supports setting
+the number of bits per character _differently_ for Tx and Rx, so in theory you
+could use the POS (and Accent) register-level programming interface to set up
+8-bit input characters and 7-bit output characters.  WHY?  I have no idea.  But
+somebody, somewhere in the 1970s thought "oh yeah, we should do that."  Drugs,
+probably.
+
+Similarly, the SIO has a range of options for synchronous modes, so if you want
+to do SDLC or HDLC with CRC-16 generation and all that jazz, you can program it;
+FOR NOW, the emulator quietly ignores almost all of it.  Only the parts needed
+by the Kriz tablet (which uses a half-assed sync mode, thankfully) are actually
+implemented.  IN THEORY, there's a PERQ 3270 communications package that *may*
+use some of the exotic programming modes, but I don't have any IBM hardware to
+connect to and test it.  Send me something and I'll add support?  Sure.
+
+To deal with the variability in emulation speed and the difficulty of changing
+baud rates using the old Mono/C# SerialPort class reliably, the RS-232 ports are
+configured using Settings commands to run at a fixed rate; changes to parity,
+baud rate, data or stop bits, or even handshaking mode are quietly ignored by
+the SIO implementation and not propagated to the host.  This may change!
+
+Just because this has to be noted somewhere:  the SIO chip encodes stop bits in
+two bits in the middle of Write Register 4.  Windows, Unix and C#/Mono all use
+slightly different encodings (StopBits enum) so the mapping is:
+
+        StopBits    SIO     Win32    Unix
+          enum      WR4      API    termios
+None        0        0        -        -        (not legal)
+One         1        1        0        0
+Two         2        3        2        2
+OnePtFive   3        2        1        2        (termios: only if 5 data bits)
+
+Madness.  Partly to deal with this (and plenty of other) craziness, I split the
+register handling off into a separate class because the Channels was approaching
+1,000 lines and getting increasingly tangled with all of the nutty operational
+modes that the chip provides.  History will vindicate me, surely.
+
+
+Device Implementations
+======================
+
+VT-100 Keyboard
+---------------
+
+IO/SerialDevices/SerialKeyboard.cs implements the interface from the SDL UI to
+the SIO chip.  It runs at a fixed 300 baud, 8/N/1.  The Z80 code implements a
+ring buffer to provide some type-ahead and try to prevent overruns, but if your
+emulation host can't run at 60fps you may encounter dropped characters.  (My old
+test Mac, unfortunately, suffers this; in case I'm not the only person on Earth
+running this on a "slow" machine I may quietly add a Setting for boosting the
+polling rate.  TBD.)
+
+This is the simplest of the serial devices; it only receives, doesn't poll, and
+ignores all configuration changes.
+
+
+SerialMux Device
+----------------
+
+This is a fake device that allows two separate devices to share a single SIO
+channel.  PERQ I/O boards all wire the Kriz tablet as a receive-only device,
+while the Speech device is transmit-only, sharing the "B" side of the first SIO
+chip.  SerialMux.cs is extremely simple, just routing data to or from each
+sub-device; these are described in detail below.
+
+
+Kriz Tablet
+-----------
+
+Some background information about the Kriz tablet is in the UserGuide.  It's the
+default pointing device on the PERQ-2 machines, but it could also be interfaced
+to the PERQ-1 and later versions of the Z80 firmware support it.  See the User
+Guide for info about OS support, etc.
+
+[This section preserves some of the verbose commentary from KrizTablet.cs.]
+
+The Kriz tablets send updates every 1/60th of a second to the Z80 on SIO port B
+at a fixed baud rate of 32kHz.  It uses a sort-of-synchronous mode of the chip,
+with the following data format (from v8.7 ROM, with updates from "kriz.doc"):
+
+    ; Byte0<7:0> = sync char (filtered out by SIO B hardware)
+    ; Byte1<7>   = ValidMsg bit (0)
+    ; Byte1<6>   = TabOffTablet (1 -> mouse off tablet)
+    ; Byte1<5>   = Landscape (1 -> landscape tablet)
+    ; Byte1<4>   = unused (0)
+    ; Byte1<3:0> = high bits of X
+    ; Byte2<7:0> = low X
+    ; Byte3<7:5> = Switches (right, middle, left)
+    ; Byte3<4>   = unused (0)
+    ; Byte3<3:0> = high bits of Y
+    ; Byte4<7:0> = low Y
+
+The Sync char transmitted is 0x81 (for CIO, active low) or 0x7e (EIO).  Some
+"junk" pad bytes are tacked on here because, as the ROM explains:
+
+    ; Note: A complete msg is only 4 chars.  But we count 2 extra chars
+    ; and just throw them away.  This was done to overcome problem we had
+    ; with SIO internal operation on Sync recognition when it is programmed 
+    ; back into Hunt mode below.
+
+Evidently nobody read the Z80 SIO datasheet, because in sync mode the chip is
+supposed to transmit two CRC bytes *after* reception of a second flag byte --
+but we would have to disassemble the embedded i8748 ROM or snoop an actual Kriz
+serial bitstream to find out if it's actually sending one.  No matter; since
+our SIO implementation doesn't (yet?) compute and insert a CRC at the end of
+the message or flag CRC errors in the status bits, we just send extra NULs when
+the device is polled.  Problem solved! :-)
+
+[Note that the ICL T2 Service guide says 90 updates per second, but that made no
+difference to PNX, and 60 is plenty smooth for every other OS.]
+
+The Z80 then reformats the "raw" packets from the Kriz into a 5-byte packet to
+send to the PERQ; see Pointer.{CIO,EIO} or the old v87.z80 (original IOB) code
+for more info.  Also from v87.z80:
+    
+    ; Note: Tablet data is active low.
+
+This is useful information as it turns out, although it is NOT the case for EIO!
+
+The "fudge factors" for applying cursor offsets (io_private.pas):
+
+    { Fudge factors for Kriz Tablet. }
+    KrizXfudge = 64;        { actual range of X is 0..895 }
+    KrizYfudge = 1087;      { actual range of Y is 0..1151 }
+                            { of TX, TabAbsX: 0..895  }
+                            { of TX, TabAbsY: 0..1151 }
+                            { of TabRelX: -64..831    limited to 0..767 }
+                            { of TabRelY: 1087..-64   limited to 1023..0 }
+
+
+In a bit of an "own goal" by 3RCC, the Kriz shares a baud rate clock with the
+Speech device.  When audio playback is scheduled at 16kHz, the mouse pointer
+"wigs out" as the sync character and mouse position data packets are garbled by
+the baud rate change.  Most audio applications turn off mouse tracking, play the
+sound, then reset the baud rate and re-enable.  Sigh.  The emulator does _not_
+currently reproduce this effect, though for strict accuracy maybe it should?
+
+To support the Kriz, the SIO implements the basic 8-bit sync character matching
+when programmed for "hunt mode."  It does NOT implement 16-bit sync, SDLC/HDLC
+aborts, CRC generation, over/underrun detection and sync char injection, etc.
+Since the PERQ/Z80 doesn't use any of that, we don't bother with it.
+
+The Kriz, if configured, is attached to the Rx side of the SerialMux device.
+
+
+Speech
+------
+
+All PERQs support a limited form of audio output.  Most of the documentation
+calls this the "Speech" device; a Motorola MC3417 Continuously Variable Slope
+Delta Modulator (CVSD) chip decompresses 8-bit data streams into an op-amp that
+drives a speaker in the display cabinet for a 16kHz, mono output stream.  This
+is now emulated by PERQemu by converting the bytes sent to the Speech channel to
+16-bit signed PCM samples, delivered to the host's default audio device via the
+SDL2 output routines.
+
+IO/Z80/MC3417.cs converts the 8-bit CVSD data to 16-bit PCM.  For each byte sent
+to the device, 8 samples are generated and queued for output.  Baud rate changes
+are also forwarded once the internal sampler state is updated.  This device is
+attached to the Tx side of the SerialMux.  It operates in the VM's time domain.
+
+UI/SDL/Speaker.cs interfaces with the SDL library.  It handles all of the device
+setup and buffering of the output samples for some measure of efficiency.  This
+part of the interface operates in the host/realtime domain.  Of course, this is
+tricky to handle on slower hosts that can't run the emulation at full speed.
+
+There is a measurable impact on performance when the audio playback is active,
+as high as 20-30% higher CPU usage in aggregate across the active cores as
+measured on Linux.  (PERQemu dedicates a main thread to the UI, a CPU thread,
+and a Z80 thread; there may also be timers, Ethernet, or thread pool activity
+that makes it hard to isolate the impact of audio, but on a quad-core CPU it's
+not hard to see.)
+
+Thus, PERQemu detects "silence" and pauses the device when no output from the
+PERQ is present.  For slow hosts that can't keep up with the playback rate, two
+additional strategies are employed:
+
+    When paused, playback doesn't begin until the sample buffer is full;
+    subsequently the buffer is pushed into the SDL audio queue when at
+    1/2 to 1/4 capacity.  For a buffer of 2K samples, this gives a "head
+    start" of around .128 seconds, with 512-1K blocks of samples streamed
+    to try to prevent gaps and stuttering;
+
+    The system's overall emulation rate is computed based on video refresh
+    and the SIO's polling rate is effectively "cheated" so that the audio
+    can keep up.  This may/will be set via the RateLimit Settings (as with
+    the Keyboard polling rate) so that slow hosts can run more smoothly,
+    with a minor reduction in emulation accuracy.  Much as I hate to say it,
+    at some point you really do just have to throw hardware at it...
+    
+
+Note that the CIO/EIO implementation of the Z80 firmware ALSO does buffering,
+and in fact uses two RAM buffers to manage DMA of new incoming "HiVol" samples
+from the PERQ while the Z80 DMA ships the other buffer to the SIO chip.  So if
+you're running (or writing :-) a PERQ application that produces audio, there
+may be a very slight latency under emulation that isn't present on the hardware.
+
+In operation things are a little bit tricky.  At 16kHz we should receive 2000
+bytes/sec in CVSD samples (some music demos run at 32kHz, or 4000 bytes/sec).
+The SDL2 routines provide their own variable length buffering with depth only
+limited by system RAM, but we try to avoid unrealistic playback rates as it can
+throw off emulation if it isn't at least reasonably accurate.
+
+Note that PERQemu also relies on SDL2 to "magically" do the up-sampling needed
+to convert 16kHz mono to the more typical 44.1kHz or 48kHz (usually stereo)
+formats used today.  Thus, under the covers the SDL2 library provides its own
+stream implementation that buffers the incoming data in order to interpolate
+and convert the samples to the actual host output format.  
+
+An Example
+----------
+
+Assuming the SDL audio device is paused and the Speaker has a 2K sample buffer,
+here's how this works (in theory):
+
+    On EIO, the Z80 sets will ship up to 512 bytes in a DMA transaction,
+    with the SIO pacing the output to the MC3417 at 1 byte every .5ms
+    (the IOB has less Z80 RAM to work with so it uses smaller ring buffers
+    to push speech data but the interface is the same);
+       
+    Because the Z80 has to ping pong the baud rate between the 32kHz Kriz
+    tablet and the (usual) 16kHz audio output rate, the Speaker buffers
+    the baud change notifications until the first samples arrive; at that
+    point if it has to change the output rate, it closes and reopens the
+    host device with the correct settings;
+
+    Before starting the initial playback, Speaker waits until the buffer
+    is full; with the default 2K sample buffer, this gives the Z80 a .128
+    second head start.  Subsequently the threshold is dropped to 512 samples
+    per copy, hopefully striking the right balance between smooth playback,
+    startup latency, and acceptably low overhead of doing too many managed ->
+    unmanaged buffer copies;
+
+
+There's nothing in the PERQ firmware/protocol to signal the end of playback.
+The data just stops showing up.  The SIO's polling function is used to detect
+this and make sure that residual samples in the Speaker's buffer AND in the SDL2
+stream buffer are properly flushed.  Once idle, the device is paused.
+
+An obvious fly in the ointment is when a short sample such as a system "beep" is
+played: if it isn't at least one full buffer long, it won't play until enough
+additional samples are queued up, which might be seconds or minutes later!  The
+polling function accounts for this case as well.
+
+There is quite a bit of testing and tuning to do, so some of the debugging knobs
+are still present in the code.  Additional settings may be added, such as the
+ability to tune the buffer sizes or force "stereo" output (some people may find
+it odd or off-putting to have sound in one ear; some OSes just automatically
+convert mono by copying the output to both channels).
+
+
+NullPort
+--------
+
+There are three possible devices that can be attached to an SIO channel that do
+RS-232 emulation:  the first of these is NullPort.cs, a simple data sink.  When
+a PERQ is configured without enabling the host port(s), the appropriate channels
+are assigned a NullPort so that the Z80 "sees" a device that it's expecting, but
+transmitted bytes go off into the void and nothing is ever received.
+
+
+RSXFilePort
+-----------
+
+Josh wrote this pseudo-device as a quick way to upload or download text files
+from the emulator way, way back in the early days.  Most versions of POS can
+recognize the "RSX:" device, which is what's emulated here: it pretends that a
+PDP-11 running RSX-11M is on the other end of the line, and spoofs the weird
+PIP protocol used to copy files over the serial port.  So if you don't happen
+to have a real PDP-11 handy, assigning/enabling RSX: as the serial device on
+port "A" enables this.
+
+There's a ton of commentary in IO/SerialDevices/RSXFilePort.cs, and in the User
+Guide.  
+
+The only implementation notes here are that the emulated RSX: device can only be
+assigned to port "A" (POS doesn't recognize it on port "B" on PERQ-2s), and it
+runs at the fixed max baud rate of the virtual machine (so 9600 baud for PERQ-1,
+19200 baud for PERQ-2s).  If you really, really want to transfer a file at 1200
+baud for some reason, I don't know what to say.  "Slow food" is a thing.  Is
+there a "slow serial" movement out there too? :-)
+
+
+RealPort
+--------
+
+The User Guide describes how to set up and use the PERQ's RS-232 ports; here's
+a recap with additional background into the implementation:
+
+    A host device is configured in the Settings subsystem, then enabled
+    for use with a particular Configuration[*];
+
+    The host's transfer parameters are fixed, and are decoupled from the
+    PERQ's settings for baud rate, parity, data/stop bits, and handshaking;
+
+    One port (RS-232 "A") on all PERQ types is DMA-capable, so if you want
+    to do high-speed be sure to attach to that one; port "B" on PERQ-2s is
+    purely programmed I/O;
+
+    Both ports support full modem control and hardware handshaking, in
+    theory, but there is a *lot* of testing to do before confidently 
+    asserting this as true.  Initially, anyway.
+
+
+[*] Part of the reason for this split is that some crappy/cheapo USB-to-serial
+bridge adapters don't always support the full range of baud rates or can be used
+with a real RS-232 breakout box (low voltage).  As I don't have an army of
+generous Patreons to buy me better test gear, I've had to make due, although I
+am able to test between Linux and Windows using cheap Dell PCs that have actual
+DB-9 COM ports on the back.  Comical stack of 9->25->null modem adapters aside,
+at least it's better than nothing.  (A better quality FTDI cable should be on
+the way shortly.)
+
+
+RealPort.cs is the intermediary between the emulator/SIO and a host device. This
+is a little bit convoluted and may be streamlined; for now, a SerialPort object
+(SerialPort.cs) is instantiated to wrap the underlying "stream":
+
+    ISerialStream.cs defines the interface between SerialPort and the
+    platform/OS-specific implementations;
+
+    UnixSerialStream.cs is the rewritten wrapper around the Unix termios
+    library exposed by the MonoPosixHelper DLL for Mac and Linux;
+
+    WinSerialStream.cs is the stripped-down Windows interface, using native
+    Win32 calls but with most of the broken behavior mitigated.
+
+SerialPort.cs provides a configurable buffer between the VM and the host; this
+is independent of any driver-level buffering the OS may do.  The polling rate
+for the host is computed based on the host-side baud rate selected; to keep this
+reasonable, the Settings command limits the host to 38400 baud, which is faster
+than any baud rate the PERQ supported.
+
+The strategy is to poll the host up to 16 characters at a time, or approximately
+every 4-8ms, doing non-blocking reads to quickly capture incoming data up to the
+internal buffer size.  The aim is to not rely on "deep buffers" in the OS or
+platform driver and to smooth-out delivery of characters to and from the virtual
+PERQ.  The exchange of data from host buffers to the SIO is always character-by-
+character, using the pacing of the SIO's programmed Rx/Tx rates according to the
+"virtual time" clock of the emulator's Scheduler.  In this way, the virtual PERQ
+only deals with interrupts at the rates it expects.  If the host can't run the
+VM at full speed, the [expectation is] host's driver will apply the configured
+handshaking OR the overrun will be reported up the chain to the SIO/Z80/PERQ and
+the original software's error handling will deal with it.
+
+That's the theory, anyway.  "Flow control" is going to be extremely difficult to
+test and qualify; for now, the SIO passes control bits for DTR and RTS through
+to the stream, and reports back DCD, DSR and CTS to the VM.  It remains TBD if a
+fully "synthetic" flow control scheme should be implemented, where the SIO never
+"sees" the real status of the pins.  One oddity is that the SIO's AutoEnables
+"feature" uses DCD _as the receiver enable_ which leads to an obvious problem:
+how do you talk to a modem that isn't connected if it doesn't raise DCD until a
+connection has completed?  I have to fire up a Z80 SBC or a PERQ with a breakout
+box and clarify that.  May need a "settings rs232a assert dcd true" perhaps? :-(
+
+[As of this writing, the basic mechanisms are all in place and initial testing
+to verify the Kriz, keyboard, Null/RSX/Real ports and Speech has been performed.
+There is a LOT more work to test real transfers between two hosts through cross-
+over cable (or modems! :-) or with an actual RS-232 printer.  Watch this space!]
+
+
+Problems and Enhancements
+-------------------------
+
+Currently (on MacOS X anyway, untested elsewhere) if you yank out a USB-serial
+cable while the emulator is running, the underlying device file is yanked out
+from under the emulator and a fatal exception is thrown.  Wrapping EVERY bloody
+call that touches the interface in try/catch blocks is ridiculous; the rewrite
+attempts to capture return status from all of the underlying calls and throw
+ONE exception that -- since this has been written specifically for the emulator
+and not an API-compatible replacement -- I may try to invoke a MachineChanged
+event, for which all the plumbing is already in place.  This would allow me to
+gracefully shut down the active serial port without crashing the emulator.
+
+Thus, in concert with the graceful handling of "fatal" errors, the obvious UI
+enhancement will be to make the "configure enable rs232" command be dynamic, and
+not require restarting the VM.
+
+
+Much more testing is needed: on Linux and Windows, I haven't yet tried to use a
+USB port as my test hosts have actual on-board serial ports!  On Mac, a new
+(higher quality) FTDI cable behaves _much_ better than the cheap crappy one I
+started with.  On all platforms, testing high volume transfers to see how the
+emulator stands up in various flow control scenarios is needed, although I have
+done some cursory testing with applications like Kermit can actually do 8-bit
+binary transfers properly and the new approach seems promising.
+
+Finally, the User Guide needs to be updated with all of these developments!
+
+
+---
+Last update: skeezics   Fri Mar 27 14:29:58 PDT 2026

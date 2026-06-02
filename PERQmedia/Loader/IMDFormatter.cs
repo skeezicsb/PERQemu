@@ -114,13 +114,9 @@ namespace PERQmedia
         {
             _helper = new IMDFormatHelper();
 
-            // Are we translating from a different format?
-            // Update our fields appropriately.
-            if (dev.FileInfo.Format != Formatters.IMDFormat)
-            {
-                dev.FileInfo.Format = Formatters.IMDFormat;
-                dev.FileInfo.Version = _helper.IMDVersion;
-            }
+            // On save, set/update our fields appropriately
+            dev.FileInfo.Format = Formatters.IMDFormat;
+            dev.FileInfo.Version = _helper.IMDVersion;
 
             var bytes = _helper.EncodeHeader(dev);
 

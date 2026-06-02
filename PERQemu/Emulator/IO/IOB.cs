@@ -1,5 +1,5 @@
 //
-// IOB.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// IOB.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -16,8 +16,6 @@
 // You should have received a copy of the GNU General Public License
 // along with PERQemu.  If not, see <http://www.gnu.org/licenses/>.
 //
-
-using System;
 
 using PERQemu.IO.Z80;
 using PERQemu.IO.DiskDevices;

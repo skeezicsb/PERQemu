@@ -58,23 +58,23 @@ namespace PERQemu.UI
         public void Initialize()
         {
             // Set up our callbacks
-            PERQemu.GUI.RegisterDelegate(SDL.SDL_EventType.SDL_KEYUP, OnKeyUp);
-            PERQemu.GUI.RegisterDelegate(SDL.SDL_EventType.SDL_KEYDOWN, OnKeyDown);
-            PERQemu.GUI.RegisterDelegate(SDL.SDL_EventType.SDL_MOUSEWHEEL, OnMouseWheel);
-            PERQemu.GUI.RegisterDelegate(SDL.SDL_EventType.SDL_MOUSEMOTION, OnMouseMove);
-            PERQemu.GUI.RegisterDelegate(SDL.SDL_EventType.SDL_MOUSEBUTTONUP, OnMouseUp);
-            PERQemu.GUI.RegisterDelegate(SDL.SDL_EventType.SDL_MOUSEBUTTONDOWN, OnMouseDown);
+            PERQemu.GUI.Events.Register(SDL.SDL_EventType.SDL_KEYUP, OnKeyUp);
+            PERQemu.GUI.Events.Register(SDL.SDL_EventType.SDL_KEYDOWN, OnKeyDown);
+            PERQemu.GUI.Events.Register(SDL.SDL_EventType.SDL_MOUSEWHEEL, OnMouseWheel);
+            PERQemu.GUI.Events.Register(SDL.SDL_EventType.SDL_MOUSEMOTION, OnMouseMove);
+            PERQemu.GUI.Events.Register(SDL.SDL_EventType.SDL_MOUSEBUTTONUP, OnMouseUp);
+            PERQemu.GUI.Events.Register(SDL.SDL_EventType.SDL_MOUSEBUTTONDOWN, OnMouseDown);
         }
 
         public void Shutdown()
         {
             // Unhook 'em
-            PERQemu.GUI.ReleaseDelegate(SDL.SDL_EventType.SDL_KEYUP);
-            PERQemu.GUI.ReleaseDelegate(SDL.SDL_EventType.SDL_KEYDOWN);
-            PERQemu.GUI.ReleaseDelegate(SDL.SDL_EventType.SDL_MOUSEWHEEL);
-            PERQemu.GUI.ReleaseDelegate(SDL.SDL_EventType.SDL_MOUSEMOTION);
-            PERQemu.GUI.ReleaseDelegate(SDL.SDL_EventType.SDL_MOUSEBUTTONUP);
-            PERQemu.GUI.ReleaseDelegate(SDL.SDL_EventType.SDL_MOUSEBUTTONDOWN);
+            PERQemu.GUI.Events.Release(SDL.SDL_EventType.SDL_KEYUP);
+            PERQemu.GUI.Events.Release(SDL.SDL_EventType.SDL_KEYDOWN);
+            PERQemu.GUI.Events.Release(SDL.SDL_EventType.SDL_MOUSEWHEEL);
+            PERQemu.GUI.Events.Release(SDL.SDL_EventType.SDL_MOUSEMOTION);
+            PERQemu.GUI.Events.Release(SDL.SDL_EventType.SDL_MOUSEBUTTONUP);
+            PERQemu.GUI.Events.Release(SDL.SDL_EventType.SDL_MOUSEBUTTONDOWN);
         }
 
         //

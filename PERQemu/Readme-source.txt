@@ -46,7 +46,13 @@ runs the POS "burn in" code (i.e. the SIGGRAPH demos) it's good to go!
 1.2  Version History
 --------------------
 
-PERQemu v0.8.x introduces some UI improvements, and new features to support the
+PERQemu v0.9.x adds audio support!  This work-in-progress aims to complete the
+final missing bits of the emulation of all standard PERQ peripherals and options
+with the aim to finally release a v1.0.  Future work will then focus on refining
+and expanding the user interface, software library, network functionality, and
+the extra rare options like Multibus and 3Mbit Ethernet.
+
+PERQemu v0.8.5 introduces some UI improvements, and new features to support the
 FLEX operating system, PERQ-2/T4 (24-bit) configurations, and the import/export
 of PERQ 5.25" hard disk images.  Ethernet operation is more reliable, and other
 bug fixes improve emulation accuracy and software compatibility.
@@ -415,10 +421,10 @@ Several serial devices are used in the PERQ.  The PERQemu implementation groups
 these into the Emulator/IO/SerialDevices folder.
 
     - The base "SerialDevice" class provides the base for RS-232 ports:
-      "RealPort" uses the System.IO.Ports.SerialPort class to access a host
-      serial device (including USB-to-serial adapters on modern PCs that lack
-      actual, physical COM ports), while "NullPort" provides a data sink when
-      the user hasn't configured one;
+      "RealPort" uses a local replacement for the System.IO.Ports.SerialPort
+      class to access a host serial device (including USB-to-serial adapters
+      on modern PCs that lack actual, physical COM ports), while "NullPort"
+      provides a data sink when the user hasn't configured one;
 
     - The POS "RSX:" pseudo device enables text file transfers to and from the
       host.  It's implemented as the "RSXFilePort" class;
@@ -429,9 +435,13 @@ these into the Emulator/IO/SerialDevices folder.
     - "SerialKeyboard" contains the driver for the PERQ-2's "VT100-style"
       keyboard, attached to the EIO board;
 
-    - The "Speech" class will emulate the PERQ's CVSD chip to provide "telephone
-      quality" (8Khz, mono) audio output.  This class will provide the glue to
-      stream data from the SIO to the SDL audio routines.  [Not yet implemented]
+    - The "Speech" functionality has been implemented in three parts: SerialMux
+      is a class that provides a thin interface between the Z80SIO and the Kriz
+      tablet and CVSD chip, as they share the two ports on a single SIO channel.
+      MC3417.cs converts the PERQ CVSD bytestream to 16-bit PCM samples, which
+      are fed to UI/SDL/Speaker.cs for output to the host's default audio output
+      device.  The SDL2 library handles any upsampling necessary to match the
+      16kHz (or 32kHz) PERQ output to the host's expected rate.
 
             
 2.3.3  GPIB
@@ -780,6 +790,7 @@ PERQ info and lore.  More to come!
 
 Update history:
 
+v2.8 - 5/9/2026 - skeezics - v0.9.x experiments branch update
 v2.7 - 11/13/2025 - skeezics
 v2.6 - 4/22/2025 - skeezics - v0.7.5 release
 v2.5 - 3/28/2025 - skeezics

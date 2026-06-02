@@ -80,6 +80,10 @@ namespace PERQemu.IO.Z80
         }
 
 
+        // Yeah, I know, these should be protected by a lock since input is
+        // queued from the main thread (SDL or the ExecutionController) and
+        // read on the Z80 thread...
+
         byte _lastKeycode;
 
         bool _interruptsEnabled;

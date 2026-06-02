@@ -1,5 +1,5 @@
 ﻿//
-// Log.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Log.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -139,7 +139,7 @@ namespace PERQemu
             _fileLevel = Severity.Info;         // A bit more info to the file
             _logToFile = false;                 // Log only to the console
 
-            _logDirectory = Paths.OutputDir;
+            _logDirectory = Settings.OutputDirectory;
             _currentFile = string.Empty;
 
             _lastOutput = string.Empty;
@@ -155,8 +155,6 @@ namespace PERQemu
 
 
 #if TRACING_ENABLED
-            _loggingAvailable = true;
-
             _logSize = 1024 * 1024 * 10;        // Default log size is 10MB?
             _logLimit = 99;                     // Keep 100 files? (0..99)
             _logFilePattern = "debug{0:d2}.log";
@@ -165,7 +163,10 @@ namespace PERQemu
             _log = null;
             _queue = new ConcurrentQueue<string>();
 
-            Initialize();
+            // Create a timer for the log flush callback
+            _logTimerHandle = HighResolutionTimer.Register(100d, FlushQueue, "Logger");
+
+            _loggingAvailable = true;
 #else
             _loggingAvailable = false;
 #endif
@@ -408,7 +409,7 @@ namespace PERQemu
 
                 Console.ForegroundColor = _defaultForeground;
 
-                Thread.Sleep(0);   // Give it a rest why dontcha
+                Thread.Yield();     // Give it a rest why dontcha
             }
 
 #if TRACING_ENABLED
@@ -429,15 +430,17 @@ namespace PERQemu
 #if TRACING_ENABLED
 
         /// <summary>
-        /// Enumerate the existing log files in the output directory.  Since this
-        /// can take some time, we do it once at startup.
+        /// Enumerate the existing log files in the output directory and set the
+        /// current file.  This can take some time if the maximum log count is high.
         /// </summary>
         /// <remarks>
-        /// Sets _currentFile and _currentFileNum, and if necessary creates the
-        /// OutputDir.
+        /// Updates _logDirectory, then sets _currentFile and _currentFileNum.  If
+        /// necessary, creates the OutputDirectory (usually only on first startup).
         /// </remarks>
         public static void Initialize()
         {
+            _logDirectory = Settings.OutputDirectory;
+
             // Create the output directory if necessary
             if (!Directory.Exists(_logDirectory))
             {
@@ -470,15 +473,12 @@ namespace PERQemu
 
             // Ready for if/when file logging is enabled
             _currentFile = Paths.BuildOutputPath(string.Format(_logFilePattern, _currentFileNum));
-
-            // Create a timer for the log flush callback
-            _logTimerHandle = HighResolutionTimer.Register(100d, FlushQueue, "Logger");
         }
 
         static int GetFileNum(string filename)
         {
             // For now, assume the fixed pattern "debugNN.log".  Yuck...
-            return Convert.ToInt32(Path.GetFileName(_currentFile).Substring(5, 2));
+            return Convert.ToInt32(Path.GetFileName(filename).Substring(5, 2));
         }
 
         /// <summary>
@@ -494,6 +494,9 @@ namespace PERQemu
 
             if (enable)
             {
+                // Reset, in case the OutputDir has changed
+                Initialize();
+
                 // Open log and start the timer
                 _log = File.AppendText(_currentFile);
                 HighResolutionTimer.Enable(_logTimerHandle, true);
@@ -631,7 +634,7 @@ namespace PERQemu
             _colors.Add(Category.RTC, ConsoleColor.DarkBlue);
             _colors.Add(Category.GPIB, ConsoleColor.Blue);
             _colors.Add(Category.RS232, ConsoleColor.DarkBlue);
-            _colors.Add(Category.Speech, ConsoleColor.DarkBlue);
+            _colors.Add(Category.Speech, ConsoleColor.Blue);
 
             // Peripherals
             _colors.Add(Category.Tablet, ConsoleColor.Blue);

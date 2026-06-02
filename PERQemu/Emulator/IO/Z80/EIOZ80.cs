@@ -1,5 +1,5 @@
 //
-// EIOZ80.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// EIOZ80.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -45,36 +45,33 @@ namespace PERQemu.IO.Z80
             // Set up the EIO peripherals
             _tms9914a = new TMS9914A(0, 0x7b, 0x7c);
             _fdc = new NECuPD765A(0x20, _scheduler);
-            _z80sioA = new Z80SIO(0x10, this, "A");
-            _z80sioB = new Z80SIO(0x40, this, "B");
-            _timerA = new i8254PIT(0x50, "A");
-            _timerB = new i8254PIT(0x54, "B");
+            _z80sioA = new Z80SIO(0x10, _scheduler, 'A', 0x79);
+            _z80sioB = new Z80SIO(0x40, _scheduler, 'B');
+            _timerA = new i8254PIT(0x50, 'A');
+            _timerB = new i8254PIT(0x54, 'B');
             _rtc = new Oki5832RTC(0x76);
 
             // Create our serial devices
-            _keyboard = new SerialKeyboard();
-            // _speech = new Speech(...)
+            _cvsd = new MC3417(this);
+            _keyboard = new SerialKeyboard(this);
+            _speechMux = new SerialMux(this);
 
-            // Same Z80 code for EIO/NIO
-            // Todo: verify for all variants?  8"/5.25", 24-bit?  The real fun
-            // begins when we load a ZBoot file and start executing dynamically
-            // loaded code from RAM.  Hmmm.
+            // Same Z80 PROM code for EIO/NIO
             _z80Debugger = new Z80Debugger("eioz80.lst");
 
             DeviceInit();
         }
 
-        // Port "A" is public, since it's a DMA-capable device
+        // Handles to the serial ports (for debug, reconfig)
         public override Z80SIO SIOA => _z80sioA;
+        public override Z80SIO SIOB => _z80sioB;
 
         // No hard disk seek circuit on the EIO
         public override Z80CTC CTC => null;
 
         // For debugging mostly
         public Oki5832RTC RTC => _rtc;
-#if DEBUG
-        public int[] CPI => _buckets;
-#endif
+
 
         /// <summary>
         /// Initializes the EIO devices and attaches them to the bus.
@@ -89,55 +86,20 @@ namespace PERQemu.IO.Z80
 
             if (_system.Config.Tablet.HasFlag(TabletType.Kriz))
             {
-                _z80sioA.AttachDevice(1, new KrizTablet(_scheduler, _system));
+                _speechMux.AttachRxDevice(new KrizTablet(this, _system));
             }
 
-            // Attach the keyboard
+            // Attach the CVSD chip
+            _speechMux.AttachTxDevice(_cvsd);
+            _timerA.AttachDevice(1, _cvsd);
+
+            // Attach the fixed devices (audio/tablet & keyboard)
+            _z80sioA.AttachDevice(1, _speechMux);
             _z80sioB.AttachDevice(1, _keyboard);
 
-            // If enabled and configured, attach device to RS232 port A
-            if (_system.Config.RSAEnable && Settings.RSADevice != string.Empty)
-            {
-                if (Settings.RSADevice == "RSX:")
-                {
-                    var rsx = new RSXFilePort(this);
-                    _z80sioA.AttachPortDevice(0, rsx);
-                    _timerA.AttachDevice(0, rsx);
-                }
-                else
-                {
-                    var rsa = new PhysicalPort(this, Settings.RSADevice, Settings.RSASettings, "A");
-                    _z80sioA.AttachPortDevice(0, rsa);
-                    _timerA.AttachDevice(0, rsa);
-                }
-            }
-            else
-            {
-                // Otherwise direct it to the bit bucket
-                _z80sioA.AttachPortDevice(0, new NullPort(this));
-            }
-
-            // Now do RS232 port B
-            if (_system.Config.RSBEnable && Settings.RSBDevice != string.Empty)
-            {
-                if (Settings.RSBDevice == "RSX:")
-                {
-                    var rsx = new RSXFilePort(this);
-                    _z80sioB.AttachPortDevice(0, rsx);
-                    _timerB.AttachDevice(0, rsx);
-                }
-                else
-                {
-                    var rsb = new PhysicalPort(this, Settings.RSBDevice, Settings.RSBSettings, "B");
-                    _z80sioB.AttachPortDevice(0, rsb);
-                    _timerB.AttachDevice(0, rsb);
-                }
-            }
-            else
-            {
-                // Otherwise direct it to the bit bucket
-                _z80sioB.AttachPortDevice(0, new NullPort(this));
-            }
+            // Attach serial ports (split out so we can reconfigure on-the-fly)
+            SerialInitRSA();
+            SerialInitRSB();
 
             // All aboard the bus
             _bus.RegisterDevice(_z80sioA);
@@ -166,8 +128,102 @@ namespace PERQemu.IO.Z80
             // Assign DMA devices to their channel
             _dmac.AttachChannelDevice(0, _fdc, 0x21);
             _dmac.AttachChannelDevice(1, _tms9914a, 0x07);
-            _dmac.AttachChannelDevice(2, _z80sioA, 0x10);   // Todo: speech
+            _dmac.AttachChannelDevice(2, _z80sioA, 0x10);
             _dmac.AttachChannelDevice(3, _pdma, 0x75);
+        }
+
+        public override void SerialReset(char port)
+        {
+            if (port == 'a' || port == 'A')
+            {
+                // Disconnect current device
+                _timerA.DetachDevice(0);
+                _timerA.DetachDevice(2);
+                _z80sioA.DetachDevice(0);
+
+                // Initialize and reset new one
+                SerialInitRSA();
+                _z80sioA.Reinitialize(0);
+                _timerA.Notify(0);
+                _timerA.Notify(2);
+            }
+            else if (port == 'b' || port == 'B')
+            {
+                _timerB.DetachDevice(0);
+                _timerB.DetachDevice(2);
+                _z80sioB.DetachDevice(0);
+
+                SerialInitRSB();
+                _z80sioB.Reinitialize(0);
+                _timerB.Notify(0);
+                _timerB.Notify(2);
+            }
+            else
+                throw new InvalidOperationException($"Bad port {port}");
+        }
+
+        public override void SerialError(char port, string message)
+        {
+            Log.Warn(Category.All, "RS-232 port {0} has thrown an exception: {1}", port, message);
+
+            if (port == 'a' || port == 'A')
+            {
+                Log.Warn(Category.All, "Device '{0}' has been disabled.", Settings.RSADevice);
+                _system.Config.RSAEnabled = false;
+            }
+            else
+            {
+                Log.Warn(Category.All, "Device '{0}' has been disabled.", Settings.RSBDevice);
+                _system.Config.RSBEnabled = false;
+            }
+
+            // Detach the failed device, attach a NullPort
+            SerialReset(port);
+        }
+
+        void SerialInitRSA()
+        {
+            // If enabled and configured, attach device to RS232 port A
+            if (_system.Config.RSAEnabled && Settings.RSADevice != string.Empty)
+            {
+                if (Settings.RSADevice == "RSX:")
+                {
+                    var rsx = new RSXFilePort(this);
+                    _z80sioA.AttachDevice(0, rsx);
+                    _timerA.AttachDevice(0, rsx);
+                }
+                else
+                {
+                    var rsa = new RealPort(this, "Port A", Settings.RSADevice, Settings.RSASettings);
+                    rsa.SetErrorHandler(SerialError, 'A');
+                    _z80sioA.AttachDevice(0, rsa);
+                    _timerA.AttachDevice(0, rsa);
+                    _timerA.AttachDevice(2, rsa);
+                }
+            }
+            else
+            {
+                // Otherwise direct it to the bit bucket
+                _z80sioA.AttachDevice(0, new NullPort(this));
+            }
+        }
+
+        void SerialInitRSB()
+        {
+            // If enabled and configured, attach device to RS232 port B
+            if (_system.Config.RSBEnabled && Settings.RSBDevice != string.Empty)
+            {
+                var rsb = new RealPort(this, "Port B", Settings.RSBDevice, Settings.RSBSettings);
+                rsb.SetErrorHandler(SerialError, 'B');
+                _z80sioB.AttachDevice(0, rsb);
+                _timerB.AttachDevice(0, rsb);
+                _timerB.AttachDevice(2, rsb);
+            }
+            else
+            {
+                // Otherwise direct it to the bit bucket
+                _z80sioB.AttachDevice(0, new NullPort(this));
+            }
         }
 
         protected override void DeviceReset()
@@ -290,14 +346,6 @@ namespace PERQemu.IO.Z80
             // Clock the EIO DMA
             ticks += _dmac.Clock();
 
-#if DEBUG
-            // Debug - histogram of average # cycles per call
-            if (ticks >= _buckets.Length)
-                _buckets[_buckets.Length - 1]++;
-            else
-                _buckets[ticks]++;
-#endif
-
             // Run the scheduler
             _scheduler.Clock(ticks);
 
@@ -394,16 +442,6 @@ namespace PERQemu.IO.Z80
             _pdma.DumpFIFOs();
         }
 
-        public override void DumpPortAStatus()
-        {
-            _z80sioA.DumpPortStatus(0);
-        }
-
-        public override void DumpPortBStatus()
-        {
-            _z80sioB.DumpPortStatus(0);
-        }
-
         public override void DumpIRQStatus()
         {
             _bus.DumpInterrupts();
@@ -419,19 +457,14 @@ namespace PERQemu.IO.Z80
         // EIO/NIO boards
         //
         Am9519 _irqControl;
-        Z80SIO _z80sioA, _z80sioB;
-        i8254PIT _timerA, _timerB;
-        i8237DMA _dmac;
         PERQDMA _pdma;
-        Oki5832RTC _rtc;
+        i8237DMA _dmac;
+        i8254PIT _timerA, _timerB;
+        Z80SIO _z80sioA, _z80sioB;
         SerialKeyboard _keyboard;
+        Oki5832RTC _rtc;
         PERQToZ80FIFO _perqToZ80Fifo;
         Z80ToPERQFIFO _z80ToPerqFifo;
-
-#if DEBUG
-        // Debugging the DMAC/Z80 "slowness" that trips up FLEX
-        int[] _buckets = new int[32];
-#endif
     }
 }
 
@@ -461,7 +494,7 @@ namespace PERQemu.IO.Z80
     SIOA    SEL SIO A L         20:37 (0x10)    Z80SIO (4 used)
     SIOB    SEL SIO B L         100:137 (0x40)  Z80SIO (4 used)
 
-    SIO?    SPEECH SEL L        171 (0x79)      <tbd>
+    SIOA    SPEECH SEL L        171 (0x79)      Speech=0, RSA=1
 
     CTCA    SEL CTC A L         120:127 (0x50)  i8254PIT (4 used?)
     CTCB    SEL CTC B L         130:137 (0x54)  i8254PIT (4 used?)

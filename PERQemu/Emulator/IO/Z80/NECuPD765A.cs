@@ -53,6 +53,7 @@ namespace PERQemu.IO.Z80
             _drives = new FloppyDisk[2];
             _pcn = new byte[2];
             _pollEvent = null;
+            _cmdEvent = null;
 
             _commands = new CommandData[]
             {
@@ -93,13 +94,19 @@ namespace PERQemu.IO.Z80
             _commandData.Clear();
             _statusData.Clear();
 
+            _scheduler.Cancel(_cmdEvent);
+            _cmdEvent = null;
             _scheduler.Cancel(_pollEvent);
             _pollEvent = null;
 
+            // Should probably just track and cancel callback events properly,
+            // but for now just use the hammer
+            _transfer.Cancelled = true;
+
             // IOB/CIO uses IOReg3 to set this; EIO has no equivalent
             _interruptsEnabled = PERQemu.Sys.IOB.Z80System.IsEIO;
-
             _interruptActive = false;
+
             _nonDMAMode = false;
             _status = Status.RQM;
             _state = State.Command;
@@ -107,11 +114,12 @@ namespace PERQemu.IO.Z80
             _readDataReady = false;
             _writeByte = 0;
             _writeDataReady = false;
-            _unitSelect = 0;
-            _headSelect = 0;
             _lastSector = 0;
             _seekEnd = false;
             _byteTimeNsec = FMByteTimeNsec;
+
+            // Reset unit #, head #
+            SelectUnitHead(0);
 
             // Turn off activity light
             PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, false);
@@ -142,10 +150,13 @@ namespace PERQemu.IO.Z80
         //
         // IDMADevice Implementation
         //
-        bool IDMADevice.ReadDataReady => _readDataReady;
-        bool IDMADevice.WriteDataReady => _writeDataReady;
 
-        void IDMADevice.DMATerminate()
+        public bool DMAReadReady => _readDataReady;
+        public bool DMAWriteReady => _writeDataReady;
+
+        public AcknowledgeDelegate DMAAcknowledge => null;
+
+        public void DMATerminate()
         {
             _transfer.Aborted = true;
             Log.Detail(Category.FloppyDisk, "DMA transfer terminated");
@@ -182,22 +193,23 @@ namespace PERQemu.IO.Z80
         /// </remarks>
         void SelectUnitHead(byte select)
         {
-            // Deselect the current drive
-            if (SelectedUnit != null)
+            var curUnit = _unitSelect;
+
+            // Deselect the current drive?
+            if (_unitSelect != curUnit && SelectedUnit != null)
             {
-                SelectedUnit.DriveSelect = false;   // Clears DiskChanged
+                SelectedUnit.DriveSelect = false;
             }
 
-            _unitSelect = select & 0x3;
+            _unitSelect = select & 0x1;             // US1 is NC on PERQ
             _headSelect = (select & 0x4) >> 2;
 
             // Select the new one
             if (SelectedUnit != null)
             {
                 SelectedUnit.DriveSelect = true;
-                _byteTimeNsec = SelectedUnit.IsDoubleDensity ? MFMByteTimeNsec : FMByteTimeNsec;
-
                 SelectedUnit.HeadSelect = (byte)_headSelect;
+                _byteTimeNsec = SelectedUnit.IsDoubleDensity ? MFMByteTimeNsec : FMByteTimeNsec;
             }
         }
 
@@ -225,7 +237,6 @@ namespace PERQemu.IO.Z80
             last++;
             return (last > SelectedUnit.Geometry.Sectors) ? (ushort)1 : last;
         }
-
 
         //
         // IZ80Device implementation (Read & Write)
@@ -266,7 +277,7 @@ namespace PERQemu.IO.Z80
 
                         Log.Debug(Category.FloppyDisk, "FDC result byte 0x{0:x}", data);
 
-                        _scheduler.Schedule(12 * Conversion.UsecToNsec, (skew, context) =>
+                        _cmdEvent = _scheduler.Schedule(12 * Conversion.UsecToNsec, (skew, context) =>
                         {
                             // Set DIO and RQM appropriately to signify readiness for next data
                             if (_statusData.Count > 0)
@@ -283,12 +294,13 @@ namespace PERQemu.IO.Z80
                                 _status |= Status.RQM;
                                 _state = State.Command;
                             }
+                            _cmdEvent = null;
                         });
                     }
                     else
                     {
                         // Unexpected right now
-                        throw new InvalidOperationException("FDC status read with no data available");
+                        throw new InvalidOperationException("FDC result read with no data available");
                     }
                 }
                 else if (_state == State.Execution)
@@ -304,7 +316,7 @@ namespace PERQemu.IO.Z80
                 else
                 {
                     // Unsure exactly what should happen here
-                    throw new InvalidOperationException("FDC status read in Command phase");
+                    throw new InvalidOperationException("FDC data read in Command phase");
                 }
 
                 return data;
@@ -362,14 +374,15 @@ namespace PERQemu.IO.Z80
                         // is significant when sending the result code
                         _seekEnd = false;
                     }
-                    _scheduler.Schedule(12 * Conversion.UsecToNsec, _currentCommand.Executor);
+                    _cmdEvent = _scheduler.Schedule(12 * Conversion.UsecToNsec, _currentCommand.Executor);
                 }
                 else
                 {
-                    _scheduler.Schedule(12 * Conversion.UsecToNsec, (skew, context) =>
+                    _cmdEvent = _scheduler.Schedule(12 * Conversion.UsecToNsec, (skew, context) =>
                     {
                         // Set RQM to signify readiness for next data
                         _status |= (Status.RQM);
+                        _cmdEvent = null;
                     });
                 }
             }
@@ -455,7 +468,6 @@ namespace PERQemu.IO.Z80
             if (_pollEvent == null)
             {
                 _pollEvent = _scheduler.Schedule(PollTimeNsec, PollDrives);
-                //PollDrives(0, null);
             }
         }
 
@@ -513,6 +525,9 @@ namespace PERQemu.IO.Z80
             PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, true);
         }
 
+        /// <summary>
+        /// Invoked by the drive when a seek operation completes.
+        /// </summary>
         void SeekCompleteCallback(ulong skewNsec, object context)
         {
             // Stimpy!  We made it!
@@ -580,7 +595,6 @@ namespace PERQemu.IO.Z80
             FinishCommand(false);
         }
 
-
         /// <summary>
         /// Read the next sector ID.  Implemented on the EIO, but is it ever used?
         /// </summary>
@@ -638,7 +652,6 @@ namespace PERQemu.IO.Z80
             // and handle the result phase, turn off the blinky icon, etc.
             _scheduler.Schedule(SectorTimeNsec, SectorTransferCallback);
         }
-
 
         #endregion
 
@@ -739,6 +752,9 @@ namespace PERQemu.IO.Z80
 
         void SectorTransferCallback(ulong skewNsec, object context)
         {
+            // If reset during a transfer, bail immediately
+            if (_transfer.Cancelled) return;
+
             // Simulate the initial search for the sector, then kick off the sector transfer:
             Log.Detail(Category.FloppyDisk, "In transfer callback");
 
@@ -841,6 +857,9 @@ namespace PERQemu.IO.Z80
 
         void SectorByteReadCallback(ulong skewNsec, object context)
         {
+            // If reset during a transfer, bail immediately
+            if (_transfer.Cancelled) return;
+
             // If the last trip was the end of the transfer, we're done
             if (_transfer.Aborted || _transfer.TransferIndex == _transfer.SectorLength)
             {
@@ -872,6 +891,9 @@ namespace PERQemu.IO.Z80
 
         void SectorByteWriteCallback(ulong skewNsec, object context)
         {
+            // If reset during a transfer, bail immediately
+            if (_transfer.Cancelled) return;
+
             // If the last byte was not written, this is an overrun
             if (_writeDataReady)
             {
@@ -1003,6 +1025,9 @@ namespace PERQemu.IO.Z80
 
         void SectorFormatCallback(ulong skewNsec, object context)
         {
+            // If reset during a transfer, bail immediately
+            if (_transfer.Cancelled) return;
+
             // If the last byte was not written, this is an overrun
             if (_writeDataReady)
             {
@@ -1119,7 +1144,7 @@ namespace PERQemu.IO.Z80
             PERQemu.Sys.MachineStateChange(WhatChanged.FloppyActivity, false);
 
             // Apply the "ID Information at Result Phase" rules
-            // todo: if anything uses MT, that subtly changes things at eot
+            // Todo: if anything uses MT, that subtly changes things at eot
             if (request.Sector < request.EndOfTrack)
             {
                 request.Sector++;
@@ -1183,9 +1208,23 @@ namespace PERQemu.IO.Z80
         /// </summary>
         StatusRegister0 SetErrorStatus(StatusRegister0 error)
         {
-            // This just can't happen
+            // This should never happen - no official configuration ever included
+            // multiple drives -- but of course, ICL provides a floppy that selects
+            // unit 1 and tries to issue a command, which fails.  Oy vey.  Catch it
+            // and return an error status, rather than throw an exception.
             if (SelectedUnit == null)
-                throw new InvalidOperationException($"Selected drive {_unitSelect} is null");
+            {
+                Log.Warn(Category.FloppyDisk, "Unit {0} selected for {1} command!?",
+                                              _unitSelect, _currentCommand.Command);
+
+                _errorStatus = StatusRegister0.AbnormalTermination |
+                               StatusRegister0.EquipChk |
+                               StatusRegister0.NotReady |
+                               (_headSelect > 0 ? StatusRegister0.Head : StatusRegister0.None) |
+                               (StatusRegister0)_unitSelect;
+
+                return _errorStatus;
+            }
 
             // If the drive has gone offline but the status code given doesn't
             // indicate an error, override it; this can happen in the middle of
@@ -1229,7 +1268,7 @@ namespace PERQemu.IO.Z80
         void PollDrives(ulong skewNsec, object context)
         {
             // In Command mode, and no busy flags?
-            if (_state == State.Command && ((byte)_status & 0x1f) == 0)
+            if (_state == State.Command && ((byte)_status & 0x3f) == 0)
             {
                 Log.Detail(Category.FloppyDisk, "Starting drive poll");
 
@@ -1237,12 +1276,7 @@ namespace PERQemu.IO.Z80
 
                 for (var d = 0; d < _drives.Length; d++)
                 {
-                    if (_drives[d] != null && _drives[d].DiskChange)
-                    {
-                        changed = true;
-                        _drives[d].DriveSelect = false; // Clears DiskChange
-                        SelectUnitHead((byte)d);        // Reselect unit, head 0
-                    }
+                    changed |= (_drives[d] != null && _drives[d].DiskChange);
                 }
 
                 if (changed)
@@ -1299,6 +1333,7 @@ namespace PERQemu.IO.Z80
 
             // Cancellation
             public bool Aborted;
+            public bool Cancelled;
 
             // Status Bits (for transfer completion)
             public StatusRegister0 ST0;
@@ -1466,6 +1501,7 @@ namespace PERQemu.IO.Z80
         readonly ulong PollTimeNsec = 500 * Conversion.MsecToNsec;
 
         SchedulerEvent _pollEvent;
+        SchedulerEvent _cmdEvent;
 
         // System interface
         byte _baseAddress;

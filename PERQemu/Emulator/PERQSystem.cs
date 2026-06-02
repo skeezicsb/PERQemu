@@ -161,6 +161,7 @@ namespace PERQemu
             _ioBus = new IOBus();
 
             // Attach devices
+            _ioBus.AddDevice(_mem);
             _ioBus.AddDevice(_mem.Video);
             _ioBus.AddDevice(_iob);
             _ioBus.AddDevice(_oio);
@@ -243,6 +244,7 @@ namespace PERQemu
             PERQemu.Controller.RunStateChanged -= OnRunStateChange;
 
             // Now go away or I shall taunt you some more
+            PERQemu.GUI.Audio.Shutdown();
             _inputs.Shutdown();
             _display.Shutdown();
             _ioBus.Shutdown();
@@ -306,6 +308,7 @@ namespace PERQemu
                 case RunState.WarmingUp:
                     _display.Initialize();
                     _inputs.Initialize();
+                    PERQemu.GUI.Audio.Initialize();
                     break;
 
                 case RunState.Running:

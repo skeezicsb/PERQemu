@@ -252,9 +252,6 @@ namespace PERQemu
 
             TransitionTo(RunState.Off);
 
-            // The only way to actually release resources? :-/
-            PERQemu.GUI.ShutdownSDL();
-
             // Farewell, sweet PERQ
             _system = null;
         }

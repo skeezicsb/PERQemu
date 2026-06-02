@@ -1,5 +1,5 @@
 //
-// StorageCommands.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// StorageCommands.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -20,7 +20,6 @@
 using System;
 using System.IO;
 using System.Text;
-using System.Diagnostics;
 
 using PERQmedia;
 

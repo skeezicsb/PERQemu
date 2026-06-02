@@ -1,5 +1,5 @@
 ﻿//
-// DMARouter.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// DMARouter.cs - Copyright (c) 2006-20265 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -34,8 +34,7 @@ namespace PERQemu.IO.Z80
 
     /// <summary>
     /// Routes DMA requests to PERQ IOB's Z80 DMA-capable devices as controlled
-    /// by IOReg3.  These are:
-    ///     Floppy, PERQ Read and Write FIFOs, SIO channel A and B, and GPIB.
+    /// by IOReg3 and enumerated above.
     /// </summary>
     public class DMARouter : IDMADevice
     {
@@ -56,8 +55,12 @@ namespace PERQemu.IO.Z80
                     _selectedDevice = _system.FDC;
                     break;
 
+                case SelectedDMADevice.SIOA:
+                    _selectedDevice = _system.SIOA;     // RS232, through SIO chan A
+                    break;
+
                 case SelectedDMADevice.SIOB:
-                    _selectedDevice = _system.SIOA;
+                    _selectedDevice = _system.SIOA;     // Speech, through SIO chan B
                     break;
 
                 default:
@@ -70,8 +73,10 @@ namespace PERQemu.IO.Z80
             }
         }
 
-        public bool ReadDataReady => _selectedDevice.ReadDataReady;
-        public bool WriteDataReady => _selectedDevice.WriteDataReady;
+        public bool DMAReadReady => _selectedDevice.DMAReadReady;
+        public bool DMAWriteReady => _selectedDevice.DMAWriteReady;
+
+        public AcknowledgeDelegate DMAAcknowledge => _selectedDevice.DMAAcknowledge;
 
         public void DMATerminate()
         {

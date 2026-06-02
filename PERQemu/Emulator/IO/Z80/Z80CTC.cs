@@ -1,5 +1,5 @@
 //
-// Z80CTC.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80CTC.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -73,6 +73,19 @@ namespace PERQemu.IO.Z80
         public void AttachDevice(int channel, ICTCDevice dev)
         {
             _channels[channel].TimerClient = dev;
+        }
+
+        public void DetachDevice(int channel)
+        {
+            if (_channels[channel].TimerClient == null) return;
+
+            _channels[channel].Stop();
+            _channels[channel].TimerClient = null;
+        }
+
+        public void Notify(int channel)
+        {
+            _channels[channel].Start();
         }
 
         public byte Read(byte portAddress)
@@ -374,10 +387,10 @@ namespace PERQemu.IO.Z80
                 //
                 // For the IOB:  CLK is Z_CLK (2.4576Mhz) or ~407ns
                 //      ZC/TO0 is the RS-232 baud rate clock (defaults to 4800?) ~13us
-                //      ZC/TO1 is the 32KHz speech clock (schem says 16KHz, sigh) ~32us
-                //      ZC/TO2 feeds a series of flipflops that combine with a 500KHz
-                //              clock to form the disk stepper pulses (96KHz)
-                //      CLK3 is TAB STAT, also derived from the 500KHz clock and
+                //      ZC/TO1 is the 32kHz speech clock (schem says 16kHz, sigh) ~32us
+                //      ZC/TO2 feeds a series of flipflops that combine with a 500kHz
+                //              clock to form the disk stepper pulses (96kHz)
+                //      CLK3 is TAB STAT, also derived from the 500kHz clock and
                 //              possibly unused?  (Old touch tablet interface)
                 // Thus, the min/max timer values at 2.4576Mhz are ~6.5uS to 26.6ms.
                 // At 9600 baud, the CTC runs at its maximum rate to produce the SIO/0

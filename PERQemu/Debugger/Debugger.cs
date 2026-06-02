@@ -1,5 +1,5 @@
 //
-// Debugger.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Debugger.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -152,7 +152,7 @@ namespace PERQemu.Debugger
             {
                 var array = (Int32[])v.Property.GetValue(v.Instance, null);
 
-                // todo: use Columnify()
+                // TODO: use Columnify()
                 for (int i = 0; i < array.Length; i++)
                 {
                     Console.Write("{0}[{1:x2}] = {2:x8}\t", v.Name, i, array[i]);

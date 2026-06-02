@@ -1,5 +1,5 @@
-﻿//
-// i8237DMA.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+//
+// i8237DMA.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -31,7 +31,7 @@ namespace PERQemu.IO.Z80
     /// and four address/word count registers in a second.
     /// 
     /// DREQ channel assignments are fixed on the EIO:
-    ///     Chn 0 - Floppy      Chn 2 - SIO
+    ///     Chn 0 - Floppy      Chn 2 - SIO (RSA/Speech)
     ///     Chn 1 - GPIB        Chn 3 - PERQ
     /// </remarks>
     public class i8237DMA : IZ80Device
@@ -99,7 +99,10 @@ namespace PERQemu.IO.Z80
 #endif
             _channels[chan].Device = dev;
             _channels[chan].DataPort = port;
-            Log.Debug(Category.Z80DMA, "Channel {0} assigned to {1} (port 0x{2:x2})", chan, dev, port);
+            _channels[chan].AckRequested = dev.DMAAcknowledge;
+
+            Log.Debug(Category.Z80DMA, "Channel {0} assigned to {1} (port 0x{2:x2}) {3}", chan, dev, port,
+                                        (_channels[chan].AckRequested != null) ? "[ACK requested]" : "");
         }
 
         /// <summary>
@@ -138,10 +141,18 @@ namespace PERQemu.IO.Z80
                     //
                     if (devToMem)
                     {
+                        // The SIO (or other?) clients may need to differentiate
+                        // between DMA and PIO reads or writes; if they provide
+                        // a delegate, fire it now before we check Ready
+                        if (_channels[_active].AckRequested != null)
+                        {
+                            _channels[_active].AckRequested(_channels[_active].DataPort);
+                        }
+
                         // Is the source ready? (It better be, since right now
                         // we don't have any timeout or reset if things get out
                         // of sync!
-                        if (!_channels[_active].Device.ReadDataReady)
+                        if (!_channels[_active].Device.DMAReadReady)
                         {
                             // Bug out, _state unchanged
                             Log.Warn(Category.Z80DMA, "Device {0} not ready on read!", _active);
@@ -171,7 +182,15 @@ namespace PERQemu.IO.Z80
                     // 
                     if (!devToMem)
                     {
-                        if (!_channels[_active].Device.WriteDataReady)
+                        // As above: fire the DMAAcknowledgement if provided so
+                        // the client can furiously handwave and shuffle internal
+                        // state before we check for and write a byte.  Ugh.
+                        if (_channels[_active].AckRequested != null)
+                        {
+                            _channels[_active].AckRequested(_channels[_active].DataPort);
+                        }
+
+                        if (!_channels[_active].Device.DMAWriteReady)
                         {
                             Log.Warn(Category.Z80DMA, "Device {0} not ready on write!", _active);
                             return 0;
@@ -361,7 +380,7 @@ namespace PERQemu.IO.Z80
                     else
                         _channels[chan].WordCount += (ushort)(value << 8);
 
-                    _channels[chan].CurrentCount = (ushort)(_channels[chan].WordCount + 1);
+                    _channels[chan].CurrentCount = _channels[chan].WordCount;
                     _channels[chan].Terminated = false;
                 }
 
@@ -421,7 +440,7 @@ namespace PERQemu.IO.Z80
                     _channels[0].Masked = false;
                     _channels[1].Masked = false;
                     _channels[2].Masked = false;
-                    _channels[3].Masked = false;                    
+                    _channels[3].Masked = false;
                     break;
 
                 case 0x7:   // Write all mask bits
@@ -515,20 +534,20 @@ namespace PERQemu.IO.Z80
             public ushort WordCount;
             public ushort CurrentCount;
 
+            public AcknowledgeDelegate AckRequested;
+
             public bool CountComplete()
             {
                 // Bump the address
                 CurrentAddress += (ushort)(AddrDecrement ? -1 : 1);
 
-                // Count is weird: it's always 1 more than programmed.  EOP
-                // is triggered on wrap around from zero!  And, YES, wraparound
+                // Count is 1 more than programmed, i.e., we count through to 0
+                // and EOP is triggered on wrap from zero!  And, YES, wraparound
                 // of a 16-bit ushort is exactly as the hardware does it. :-P
                 CurrentCount--;
 
-                if (CurrentCount == 0xffff)
-                {
-                    Terminated = true;
-                }
+                Terminated |= CurrentCount == 0xffff;
+
                 return Terminated;
             }
 
@@ -538,7 +557,7 @@ namespace PERQemu.IO.Z80
                 if (AutoInit && Terminated)
                 {
                     CurrentAddress = BaseAddress;
-                    CurrentCount = (ushort)(WordCount + 1);
+                    CurrentCount = WordCount;
                     Terminated = false;
                     Log.Debug(Category.Z80DMA, "{0} channel autoinitialized", Device);
                 }
@@ -546,8 +565,8 @@ namespace PERQemu.IO.Z80
                 // Set the Requested flag if the channel is ready to go
                 // Note: Use |= if software requests/block mode allowed...
                 Requested = (!Masked && !Terminated &&
-                             (((Transfer == TransferMode.Read) && Device.WriteDataReady) ||
-                              ((Transfer == TransferMode.Write) && Device.ReadDataReady)));
+                             (((Transfer == TransferMode.Read) && Device.DMAWriteReady) ||
+                              ((Transfer == TransferMode.Write) && Device.DMAReadReady)));
             }
 
             public override string ToString()

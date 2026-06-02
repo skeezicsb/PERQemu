@@ -64,8 +64,9 @@ significant ways and adds a number of additional IO options:
     - A 24-bit version of the 16K CPU extends the memory capacity to 8MB in
       the rare PERQ-2/T4 model
 
-PERQemu will emulate all of the standard PERQ-1 and PERQ-2 configurations and
-peripherals.
+PERQemu now emulates all of the standard PERQ-1 and PERQ-2 configurations and
+peripherals!  (The more exotic 3Mbit Ethernet and Multibus option boards will
+be added in a future release.)
 
 
 1.2 Current Status
@@ -85,7 +86,15 @@ PERQemu v0.7.5 wraps up all the work since v0.5.0 along with a batch of new
 bundled hard disk images with new software to play with.  It is a release to
 "skeezicsb/main" and a candidate to sync up with the master branch.
 
-Version 0.8.5 
+Version 0.8.5 adds keyboard remapping and support for resizing the display when
+moving between screens, with vertical scrolling on short/laptop screens.  The
+current experiments branch is adding audio/speech output and other improvements
+with the goal of a v1.0 release Real Soon Now.
+
+Version 0.9.5 reworks the RS-232 ports and audio support, updates some bundled
+hard disk images, and includes numerous small bug fixes, CLI updates, and a
+refreshed User Guide.
+
 Please check back often for updates!
 
 
@@ -152,7 +161,7 @@ There are several subdirectories:
         f15dev.prqm:
             Updated Shugart images containing the offshoot POS F.15
             distribution, in both basic and developer (full source)
-            versions.  Includes Amendments 1 & 2.
+            versions.  Includes all updates through Amendment 3.
 
         g6mic.prqm:
         g6mfm.prqm:
@@ -360,15 +369,14 @@ The following hardware has been implemented in the emulator:
     - Runs asynchronously on its own thread to improve performance;
     - Allows different ROMs to be loaded to support CIO and EIO boards;
     - New register-level interface written to support Z80 DMA, CTC, SIO, PIT,
-      FDC and GPIB controller chips;
+      CVSD, FDC and GPIB controller chips;
     - Z80 Debugger support includes single stepping and source code display
       (for the current v8.7 ROMs; v100.017 source disassembly for EIO is now
       complete, CIO in progress).  Limited breakpoint support is available.
 
   Keyboard:
     - Now uses the SDL2 interface so no more horrible hacks required for MacOS;
-    - Support for the VT100-style PERQ-2 keyboard is now included and is working
-      (but is not fully tested and has some limitations);
+    - Supports the PERQ-1 (parallel) and VT100-style PERQ-2 (serial) keyboards;
     - Keyboard re-mapping is now fully supported so you can customize PERQemu
       for your host/preferences (See UserGuide.pdf for details!);
     - Currently caps lock is problematic and can get out of sync with the host.
@@ -377,8 +385,9 @@ The following hardware has been implemented in the emulator:
   RS-232:
     - The Z80 SIO chip is implemented to work with the new Z80 emulator;
     - Software running under emulation can control a real physical serial port
-      on the host; second RS-232 port available with the PERQ-2/EIO models [not
-      yet fully tested];
+      on the host; second RS-232 port available with the PERQ-2/EIO models;
+    - Rewrite of the host-side physical serial port interface now runs more
+      consistently and reliably on all platforms;
     - The RSX: pseudo-device for transferring text files from the host to POS
       has been reinstated.
 
@@ -411,6 +420,11 @@ The following hardware has been implemented in the emulator:
       PERQ chassis/IO Board combinations.  It provides high quality output in
       PNG or TIFF format at 240 or 300 dpi.
 
+  Speech:
+    - The PERQ's CVSD chip is implemented and can produce 16-32kHz mono sound
+      output on the host's default audio device.  The latest rewrite is still
+      undergoing testing and refinement, and the Settings/Configuration options
+      (and debugging aids) are subject to change.  But it bleeps and bloops!
 
 There is a ton of additional detail about the internals of PERQemu itself in
 the source distribution.  See Readme-source.txt, or the copious notes in the
@@ -422,17 +436,14 @@ Docs/ directory for way, way more information than you need.  Way more.
  
 - Ethernet.  In development! [See above]
 
+- Z80 disassembly/source debugging when running from RAM (PERQ-2/EIO).
+
 - Option boards:  3Mbit Ethernet.  On the list.
 
-- Z80 disassembly/source debugging when running from RAM (PERQ-2/EIO).
+- Multibus option and SMD disk/9-track tape support.  Dream on!
  
 - PERQLink.  Unimplemented other than a stub that tells the microcode that
   there's nothing connected to it.
- 
-- Sound.  Yet to be rewritten to work with the new Z80/SIO and hooked up to
-  any sort of host output device.
-
-- Multibus option and SMD disk/9-track tape support.  Dream on!
 
 - A proper GUI.  Sigh.
 
@@ -473,14 +484,15 @@ window back onto the screen.  This was fixed?  Kind of?  Except when it isn't?
 
 3. Reading from the serial port is unreliable.
 
-Symptoms:  On Linux, reading data from a COM port (/dev/ttyS0) stalls unless
-output is transmitted (to prod the receiver).  Windows and Mac serial devices
-seem to struggle less, but this isn't exactly "production ready."  Flow control
-on all three platforms is unreliable and data may be garbled or lost.
+Symptoms:  In most versions prior to v0.9.x, PERQ RS-232 ports fail to work
+reliably with a host serial device.
 
-Workaround:  None, yet.  This is largely due to serious deficiencies in the
-C#/Mono System.IO.Ports.SerialPort implementation that will require a reworking
-of the emulator's port handling.
+Workaround:  None.  The emulator's port handling ran into serious deficiencies
+in the C#/Mono System.IO.Ports.SerialPort implementation that made use of the
+serial ports difficult or impossible depending on the platform and moon phase.
+
+Solution:  A complete rewrite of the SerialPort implementation has improved
+operation across all platforms; upgrade to v0.9.5.
 
 
 4. PNX boot failure at DDS 142.
@@ -497,7 +509,7 @@ session, and will not stop at 255 when PNX has completed booting.
 
 Solution:  A patch to detect and fix this automatically was included in PERQemu
 v0.5.8 through v0.6.5; the CPU was modified to correct the issue and the patch
-removed in v0.6.6 (experiments branch).  Suggest upgrade to v0.7.5 or later.
+removed in v0.6.6 (experiments branch).  Upgrade to v0.7.5 or later.
 
 
 5. PNX video glitches.
@@ -505,7 +517,7 @@ removed in v0.6.6 (experiments branch).  Suggest upgrade to v0.7.5 or later.
 Symptom: The PNX 2 window manager sometimes randomly paints its background 
 pattern with strange stripes or other visual anomalies.
 
-Solution:  Corrected in PERQemu v0.6.9.  Suggest upgrade to v0.7.5 or later.
+Solution:  Corrected in PERQemu v0.6.9.  Upgrade to v0.7.5 or later.
 
 
 6. PNX 5 kernel panic after boot.
@@ -527,13 +539,21 @@ v1.0 - TBD
   Sometime before the heat death of the universe:
   - Feature complete, with a nice GUI, full screen mode, VR, scratch 'n sniff
   - Massive software library organized, catalogued, available for use and study
+  - Full-featured Ethernet with encapsulation options/no root requirement
   - See if CIO Micropolis has any real software support?
   - Remaining items from the "What's Not" list above
 
-v0.9 - TBD
-  Fill in the final pieces:
-  - Full-featured Ethernet with encapsulation options/no root requirement
-  - Working audio output :-)
+v0.9.5 - Main branch
+  - Speech output proof-of-concept is now working!  Mostly!  Can also enable
+    or disable playback and tune the decoder in real-time
+  - Full rewrite of the SerialPort and updates to the SIO emulation increase
+    emulation accuracy and reliability of all serial devices
+  - Dynamic reloading of RS-232 ports at runtime (host port device settings
+    can be changed without restarting the VM)
+  - Add limited (fake) support for forcing and reporting memory parity errors
+    so that certain diagnostics/confidence tests can run
+  - Updated bundled f15, f15dev hard disk images to POS F.15 Amendment 3
+  - Many bug fixes, CLI changes, updated UserGuide
 
 v0.8.5 - Main branch
   - Minor updates to Nuget package dependencies (now tested/verified against
@@ -707,6 +727,7 @@ v0.1 - First public release
 
 Update history:
 
+5/31/2026 - skeezicsb - v0.9.5 (main)
 12/12/2025 - skeezicsb - v0.8.5 (main)
 8/8/2025 - skeezicsb - v0.7.8 (main)
 4/22/2025 - skeezicsb - v0.7.5 (main)

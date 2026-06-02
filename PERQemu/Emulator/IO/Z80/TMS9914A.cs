@@ -1,5 +1,5 @@
-﻿//
-// TMS9914A.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+//
+// TMS9914A.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -176,8 +176,10 @@ namespace PERQemu.IO.Z80
         // IDMADevice Interface
         //
 
-        public bool ReadDataReady => _dmaReadReady;
-        public bool WriteDataReady => _dmaWriteReady;
+        public bool DMAReadReady => _dmaReadReady;
+        public bool DMAWriteReady => _dmaWriteReady;
+
+        public AcknowledgeDelegate DMAAcknowledge => null;
 
         public void DMATerminate()
         {

@@ -42,7 +42,7 @@ namespace PERQmedia
             _sectors = new List<Sector>();
         }
 
-        public byte IMDVersion => _imdVersion;
+        public byte IMDVersion => 118;                          // IMD v1.18
         public bool DoubleSided => (_heads == 1);
         public bool DoubleDensity => (_sectorSize == 256);
 
@@ -80,7 +80,7 @@ namespace PERQmedia
                 var minor = Convert.ToByte(match.Groups[2].Value);
                 dev.FileInfo.Version = (byte)(major * 100 + minor);
 
-                if (dev.FileInfo.Version != _imdVersion)
+                if (dev.FileInfo.Version != IMDVersion)
                 {
                     Log.Debug(Category.MediaLoader,
                               "Note: File was written with IMD version ({0}.{1})!",
@@ -547,7 +547,5 @@ namespace PERQmedia
         // Sector sizes that IMD supports
         static ushort[] _sectorSizes = { 128, 256, 512, 1024, 2048, 4096, 8192 };
 
-        // Compatible version: IMD 1.18
-        readonly byte _imdVersion = 118;
     }
 }
