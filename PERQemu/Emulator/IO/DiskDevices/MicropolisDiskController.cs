@@ -1,5 +1,5 @@
 ﻿//
-// MicropolisDiskController.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// MicropolisDiskController.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -333,6 +333,7 @@ namespace PERQemu.IO.DiskDevices
             if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
             {
                 delay = _dib.SelectedDrive.ComputeRotationalDelay(_system.Scheduler.CurrentTimeNsec, sector);
+                delay += HeaderDelayNsec;
             }
 
             // Sanity checks
@@ -397,16 +398,15 @@ namespace PERQemu.IO.DiskDevices
                      _command, cyl, head, sector, data);
 
             // Are we firing the mid-sector interrupt?
-            if (_flags.HasFlag(SMFlags.MidIntDisable))
+            if (!_flags.HasFlag(SMFlags.MidIntDisable))
             {
-                // Nope, exit through the gift shop
-                FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
+                // Yes, schedule it and finish
+                MidSectorFinish(delay);
+                return;
             }
-            else
-            {
-                // Schedule the mid-cycle interrupt (which will then finish)
-                MidSectorFinish(delay, SMStatus.Idle);
-            }
+
+            // Nope, exit through the gift shop
+            FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
         }
 
         /// <summary>
@@ -439,6 +439,7 @@ namespace PERQemu.IO.DiskDevices
             if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
             {
                 delay = _dib.SelectedDrive.ComputeRotationalDelay(_system.Scheduler.CurrentTimeNsec, sector);
+                delay += HeaderDelayNsec;
             }
 
             if (!CheckBlockParameters(cyl, head))
@@ -471,21 +472,21 @@ namespace PERQemu.IO.DiskDevices
                 block.Data[i + 1] = (byte)(word >> 8);
             }
 
-
             _dib.SelectedDrive.SetSector(block);
 
             Log.Debug(Category.HardDisk,
                      "Micropolis sector {0} to {1}/{2}/{3}, from memory at 0x{4:x6}",
                      _command, cyl, head, sector, data);
 
-            if (_flags.HasFlag(SMFlags.MidIntDisable))
+            // Mid-sector interrupt?
+            if (!_flags.HasFlag(SMFlags.MidIntDisable))
             {
-                FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
+                MidSectorFinish(delay);
+                return;
             }
-            else
-            {
-                MidSectorFinish(delay, SMStatus.Idle);
-            }
+
+            // Normal finish
+            FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
         }
 
         #endregion
@@ -496,39 +497,29 @@ namespace PERQemu.IO.DiskDevices
         /// Schedule the mid-sector interrupt, and if not in error, proceed to
         /// complete the command normally.
         /// </summary>
-        void MidSectorFinish(ulong delay, SMStatus exitCode)
+        void MidSectorFinish(ulong delay)
         {
 #if DEBUG
             if (_busyEvent != null)
                 Log.Error(Category.HardDisk, "MidSectorFinish called while already busy");
             // but proceed anyway?
 #endif
-            if (exitCode == SMStatus.Idle)
+
+            Log.Debug(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
+
+            _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
             {
-                Log.Debug(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
+                Log.Debug(Category.HardDisk, "Mid-sector interrupt firing}");
 
-                _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
-                {
-                    Log.Debug(Category.HardDisk, "Mid-sector interrupt firing, code={0}", exitCode);
+                // Per disk.doc, mid-sector int sets SMInt, low 3 bits to 1
+                _status = (SMStatus.SMInt | SMStatus.Busy);
 
-                    // Per disk.doc, mid-sector int sets SMInt, low 3 bits to 1
-                    _status = (SMStatus.SMInt | SMStatus.Busy);
+                // Fire mid-sector "DB" interrupt
+                SetInterrupt(true);
 
-                    // Fire mid-sector "DB" interrupt
-                    SetInterrupt(true, true);
-
-                    // Schedule a normal completion
-                    FinishCommand(BlockDelayNsec, exitCode);
-                });
-            }
-            else
-            {
-                _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
-                {
-                    // Error out through FinishCommand()
-                    FinishCommand(delay, exitCode);
-                });
-            }
+                // Schedule a normal completion
+                FinishCommand(BlockDelayNsec, SMStatus.Idle);
+            });
         }
 
         /// <summary>
@@ -560,19 +551,15 @@ namespace PERQemu.IO.DiskDevices
         /// interrupt is skipped.  All interrupts are cleared by reading the
         /// status register.
         /// </remarks>
-        void SetInterrupt(bool raiseInterrupt, bool mid = false)
+        void SetInterrupt(bool raiseInterrupt)
         {
             // If interrupts are disabled, force clear
             raiseInterrupt &= _flags.HasFlag(SMFlags.InterruptsOn);
 
             if (raiseInterrupt && !_interrupting)
             {
-                // Extra check for mid-sector interrupt enabled
-                if (!mid || (mid && !_flags.HasFlag(SMFlags.MidIntDisable)))
-                {
-                    _system.CPU.RaiseInterrupt(InterruptSource.HardDisk);
-                    _interrupting = true;
-                }
+                _system.CPU.RaiseInterrupt(InterruptSource.HardDisk);
+                _interrupting = true;
             }
             else if (!raiseInterrupt && _interrupting)
             {
@@ -678,9 +665,10 @@ namespace PERQemu.IO.DiskDevices
 
         // Work timing for reads/writes, assuming the interface's documented
         // 5.64Mbit/sec (705KB/sec) max transfer rate (MFM, not GCR encoding)
-        // transferring 528-byte sectors.  See ShugartController.cs for more
+        // transferring 528-byte sectors.  See Docs/HardDisks.txt for more
         // info about how this is derived.
-        readonly ulong BlockDelayNsec = 749 * Conversion.UsecToNsec;
+        readonly ulong HeaderDelayNsec = 129 * Conversion.UsecToNsec;
+        readonly ulong BlockDelayNsec = 551 * Conversion.UsecToNsec;
 
         // Registers
         SMCommand _command;

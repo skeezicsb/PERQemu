@@ -1,5 +1,5 @@
 ﻿//
-// MFMDiskController.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// MFMDiskController.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -92,8 +92,8 @@ namespace PERQemu.IO.DiskDevices
             // Reading clears interrupts
             SetInterrupt(false);
 
-            // And our state machine status?
-            _status = SMStatus.Idle;
+            // And, I presume, the SMInt bit?
+            _status &= ~(SMStatus.SMInt);
 
             Log.Debug(Category.HardDisk, "MFM status: 0x{0:x3}", status);
             return status;
@@ -264,7 +264,10 @@ namespace PERQemu.IO.DiskDevices
             // select, although it's defined; checking it causes the boot to fail at
             // DDS 157 even if the OS code programs the value correctly.  Instead the
             // head is stored in reg[9] as the low 4 bits like the Micropolis does it,
-            // even though that's more work to set up in the microcode.  Sigh.
+            // even though that's more work to set up in the microcode.  Sigh.  To
+            // clarify, registers 3, 4 and 8 are written in the physical header during
+            // format and used by the hardware to verify head/cyl positioning and find
+            // the requested sector as it arrives.
             if (_dib.SelectedDrive.CurHead != _dib.Head || _dib.Head != head)
             {
                 Log.Warn(Category.HardDisk, "Wrong head selected: disk={0} DIB={1} regs={2}",
@@ -299,19 +302,21 @@ namespace PERQemu.IO.DiskDevices
                 (LH[4] != _registerFile[7]) ||
                 (LH[5] != _registerFile[11]))
             {
-                // todo: StringBuilder, log it properly
-                Console.Write("LH mismatch: blk: ");
+                var err = "LH mismatch:\n  block: ";
+
                 for (int i = 0; i < 6; i++)
                 {
-                    Console.Write($"  {i}={LH[i]:x2}");
+                    err += $"  {i}={LH[i]:x2}";
                 }
-                Console.WriteLine();
-                Console.Write("   register file:  ");
+
+                err += "\n  regs:  ";
+
                 for (int i = 5; i < 8; i++)
                 {
-                    Console.Write($"  {i}={_registerFile[i]:x2}  {i + 4}={_registerFile[i + 4]:x2}");
+                    err += $"  {i}={_registerFile[i]:x2}  {i + 4}={_registerFile[i + 4]:x2}";
                 }
-                Console.WriteLine();
+
+                Log.Warn(Category.HardDisk, err);
                 return false;
             }
 #endif
@@ -337,6 +342,7 @@ namespace PERQemu.IO.DiskDevices
             if (Settings.Performance.HasFlag(RateLimit.DiskSpeed))
             {
                 delay = _dib.SelectedDrive.ComputeRotationalDelay(_system.Scheduler.CurrentTimeNsec, sector);
+                delay += HeaderDelayNsec;
             }
 
             // Sanity checks
@@ -355,40 +361,43 @@ namespace PERQemu.IO.DiskDevices
             var quads = _system.IOB.DMARegisters.GetHeaderCount(ChannelName.HardDisk);
 
 #if DEBUG
-            if (quads != 2)
-            {
-                Log.Warn(Category.HardDisk, "Bad DMA header count {0} on {1}", quads, _command);
-            }
-
-            // Probably not even worth logging this; see below
+            // Probably not even worth logging this, as it's mostly noise.  At boot
+            // some versions of the ROM code sets a DMA address potentially off the
+            // end of RAM and depend on the hardware wrapping it around, which might
+            // be fine on 20 bit but was thought to be an issue on 24 bit?  Meh.
             if (header > _system.Memory.MemSize)
             {
                 Log.Detail(Category.HardDisk, "DMA header addr 0x{0:x} out of range on {1}", header, _command);
             }
 #endif
 
-            // This always seems to be set, even when the data isn't needed or used
-            // and even at boot time when the ROM code sets a DMA address potentially
-            // off the end of RAM (depends on the hardware wrapping it around).  UGH.
-            if (quads == 2)
+            // So far every single OS encountered properly sets the header count to
+            // two quads, even when the data isn't needed or used; the hard disk state
+            // machine will just go grab what it needs, apparently?  So the data the
+            // DMA regs are pointing at better be right. :-)
+
+            // Just log it and continue
+            if (quads != 2)
             {
-                // Copy the header to the header address
-                for (int i = 0; i < block.Header.Length; i += 2)
-                {
-                    int word = block.Header[i] | (block.Header[i + 1] << 8);
-                    _system.Memory.StoreWord(header + (i >> 1), (ushort)word);
-                }
+                Log.Warn(Category.HardDisk, "Bad DMA header count {0} on {1}", quads, _command);
+            }
 
-                // On a ReadChk, verify that the LH matches the registers
-                if (_command == SMCommand.ReadChk && !CheckLogicalHeaderBytes(block.Header))
-                {
-                    Log.Warn(Category.HardDisk,
-                             "Logical header mismatch on read from {0}/{1}/{2}",
-                             cyl, head, sector);
+            // Copy the header to the header address
+            for (int i = 0; i < block.Header.Length; i += 2)
+            {
+                int word = block.Header[i] | (block.Header[i + 1] << 8);
+                _system.Memory.StoreWord(header + (i >> 1), (ushort)word);
+            }
 
-                    FinishCommand(delay, SMStatus.LHMismatch);
-                    return;
-                }
+            // On a ReadChk, verify that the LH matches the registers
+            if (_command == SMCommand.ReadChk && !CheckLogicalHeaderBytes(block.Header))
+            {
+                Log.Warn(Category.HardDisk,
+                         "Logical header mismatch on read from {0}/{1}/{2}",
+                         cyl, head, sector);
+
+                FinishCommand(delay, SMStatus.LHMismatch);
+                return;
             }
 
             // Copy the data to the data buffer address
@@ -403,17 +412,16 @@ namespace PERQemu.IO.DiskDevices
                       _command, cyl, head, sector, data, header);
 
             // For MFM, no separate flag to ignore mid-sector interrupts.  EXCEPT
-            // that apparently there IS, because PNX 5 sets the "T" bit in order
+            // that apparently there IS, because PNX 5 (and FLEX) sets the "T" bit
             // to turn off mid-sector interrupts even though the documentation
             // doesn't mention this.  Confirmed in NDSK7.MAS.
             if (_flags.HasFlag(SMControl.InterruptsOn) && !_flags.HasFlag(SMControl.T))
             {
-                MidSectorFinish(delay, SMStatus.Idle);
+                MidSectorFinish(delay);
+                return;
             }
-            else
-            {
-                FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
-            }
+
+            FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
         }
 
         /// <summary>
@@ -431,6 +439,7 @@ namespace PERQemu.IO.DiskDevices
             {
                 // Formatting is sensitive to accurate index pulse timing!
                 delay = _dib.SelectedDrive.ComputeRotationalDelay(_system.Scheduler.CurrentTimeNsec, sector);
+                delay += HeaderDelayNsec;
             }
 
             if (!CheckBlockParameters(cyl, head))
@@ -441,11 +450,31 @@ namespace PERQemu.IO.DiskDevices
 
             var block = _dib.SelectedDrive.GetSector(cyl, head, sector);
 
-            var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
             var data = _system.IOB.DMARegisters.GetDataAddress(ChannelName.HardDisk);
+            var header = _system.IOB.DMARegisters.GetHeaderAddress(ChannelName.HardDisk);
+            var quads = _system.IOB.DMARegisters.GetHeaderCount(ChannelName.HardDisk);
 
-            if (_command != SMCommand.WriteChk)
+            if (quads != 2)
             {
+                Log.Warn(Category.HardDisk, "Bad DMA header count {0} on {1}", quads, _command);
+            }
+
+            if (_command == SMCommand.WriteChk)
+            {
+                // WriteChk tests the existing LH data
+                if (!CheckLogicalHeaderBytes(block.Header))
+                {
+                    Log.Warn(Category.HardDisk,
+                             "Logical header mismatch on write to {0}/{1}/{2}",
+                             cyl, head, sector);
+
+                    FinishCommand(delay, SMStatus.LHMismatch);
+                    return;
+                }
+            }
+            else
+            {
+                // Write or Format scribbles over it
                 for (int i = 0; i < block.Header.Length; i += 2)
                 {
                     int word = _system.Memory.FetchWord(header + (i >> 1));
@@ -454,6 +483,7 @@ namespace PERQemu.IO.DiskDevices
                 }
             }
 
+            // Write the DB
             for (int i = 0; i < block.Data.Length; i += 2)
             {
                 int word = _system.Memory.FetchWord(data + (i >> 1));
@@ -467,14 +497,14 @@ namespace PERQemu.IO.DiskDevices
                       "MFM sector {0} to {1}/{2}/{3}, from memory at 0x{4:x6}",
                       _command, cyl, head, sector, data);
 
+            // Fire mid-sector interrupt?
             if (_flags.HasFlag(SMControl.InterruptsOn) && !_flags.HasFlag(SMControl.T))
             {
-                MidSectorFinish(delay, SMStatus.Idle);
+                MidSectorFinish(delay);
+                return;
             }
-            else
-            {
-                FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
-            }
+
+            FinishCommand(delay + BlockDelayNsec, SMStatus.Idle);
         }
 
         /// <summary>
@@ -523,10 +553,10 @@ namespace PERQemu.IO.DiskDevices
         #region Completion and Interrupts
 
         /// <summary>
-        /// Schedule the mid-sector interrupt, and if not in error, proceed to
-        /// complete the command normally.
+        /// Schedule the mid-sector interrupt, then proceed to complete the
+        /// command normally.
         /// </summary>
-        void MidSectorFinish(ulong delay, SMStatus exitCode)
+        void MidSectorFinish(ulong delay)
         {
 #if DEBUG
             if (_busyEvent != null)
@@ -534,32 +564,21 @@ namespace PERQemu.IO.DiskDevices
             // but proceed anyway?
 #endif
 
-            if (exitCode == SMStatus.Idle)
+            Log.Debug(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
+
+            _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
             {
-                Log.Debug(Category.HardDisk, "Firing mid-sector in {0}ms", delay * Conversion.NsecToMsec);
+                Log.Debug(Category.HardDisk, "Mid-sector interrupt firing");
 
-                _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
-                {
-                    Log.Debug(Category.HardDisk, "Mid-sector interrupt firing");
+                // Per adap.doc, mid-sector int sets SMInt
+                _status |= SMStatus.SMInt;
 
-                    // Per adap.doc, mid-sector int sets SMInt, low 3 bits to 1
-                    _status = (SMStatus.SMInt | SMStatus.Busy);
+                // Fire mid-sector "DB" interrupt
+                SetInterrupt(true);
 
-                    // Fire mid-sector "DB" interrupt
-                    SetInterrupt(true);
-
-                    // Schedule a normal completion
-                    FinishCommand(BlockDelayNsec, exitCode);
-                });
-            }
-            else
-            {
-                // Error out through FinishCommand()
-                _busyEvent = _system.Scheduler.Schedule(delay, (skewNsec, context) =>
-                {
-                    FinishCommand(delay, exitCode);
-                });
-            }
+                // Schedule a normal completion once the data block transfers
+                FinishCommand(BlockDelayNsec, SMStatus.Idle);
+            });
         }
 
         /// <summary>
@@ -700,7 +719,7 @@ namespace PERQemu.IO.DiskDevices
             InterruptsOn = 0x10,    // Disk Interrupt Enable when H
             T = 0x20,               // T bit: PNX 5 uses this to disable mid-sector int!
             Format = 0x40,          // Write sector marks on the track when H
-            T2 = 0x80               // T2 bit: ?
+            T2 = 0x80               // T2 bit: ignore PH/LH CRC errors?
         }
 
         /// <summary>
@@ -717,8 +736,9 @@ namespace PERQemu.IO.DiskDevices
         }
 
         // MFM sector timing based on 5Mbit/sec typical transfer rate for 528-byte
-        // sectors.  See ShugartController.cs for information about computing this.
-        readonly ulong BlockDelayNsec = 845 * Conversion.UsecToNsec;
+        // sectors.  See Docs/HardDisks.txt for information about computing this.
+        readonly ulong HeaderDelayNsec = 205 * Conversion.UsecToNsec;
+        readonly ulong BlockDelayNsec = 819 * Conversion.UsecToNsec;
 
         SMCommand _command;
         SMStatus _status;

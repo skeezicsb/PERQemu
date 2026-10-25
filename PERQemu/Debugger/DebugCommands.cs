@@ -1071,7 +1071,7 @@ namespace PERQemu
             ShowBlock(block.Data);
         }
 
-        [Conditional("DEBUG")]
+        // [Conditional("DEBUG")]
         [Command("debug show disk block", "Show contents of a hard disk block")]
         void ShowDiskBlock(int cyl, int head, int sect, int unit = 1)
         {

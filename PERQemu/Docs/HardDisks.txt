@@ -598,6 +598,39 @@ block read/write/format.  This approach seems to make the microcode and most of
 the tested diagnostics happy, and the "feel" of the machine seems consistent
 when rate limiting is turned on.
 
+Updated in v0.9.6:  While attempting to diagnose some very odd behavior in Flex
+(and possibly PNX 5) I've recomputed the approach to mid-sector interrupt and
+total disk block transfer times for the MFM (and Micropolis); may revise the
+Shugart too.  For MFM, 5Mbits/sec == 625KB/sec == 10,416 bytes/track at nominal
+3600RPM rotation speed (i.e., there can't be any more bytes per track or the
+drive couldn't read the entire track at speed when searching for a sector mark).
+The PERQ's format uses 16 sectors, so at 16.667ms per revolution that means each
+sector is 651 byte times, requiring 1.041875ms to read/write.  Subtract 512 data
+bytes and you have 139 bytes for the logical and physical headers, plus gaps.
+
+Because the PERQ disk state machine requests DMA service _while the sector is
+being accessed_ (through a 16-deep FIFO for buffering), we basically bury the
+cost of the DMA transfers for the header and data blocks.
+
+Thus, I've slightly revised the constants used to reflect more accurately when
+the mid-sector interrupt should fire and the total sector transfer time:
+
+    Compute rotational delay;           ~0-15 ms offset from index pulse
+    Add HeaderDelayNsec;                use 100 usec if not rate limiting
+    Fire mid-sector interrupt;          if enabled
+    Add BlockDelayNsec;                 use 819 usec (precomputed)
+    Fire completion interrupt.          if enabled
+
+The Micropolis 1200 series numbers don't add up, of course, because the docs are
+way less helpful.  The best guesstimate has been computed based on the maximum
+bytes per track yielding 24 sectors of (total) ~644 bytes each, and deriving the
+approximate format and timing from that.  It's not great but it'll do.
+
+Since Flex and PNX seem to ignore or disable (via the T bit) the mid-sector IRQ,
+this minor change may not affect those OSes at all, but something is/was causing
+writes to mysteriously fail in Flex and it seems that the HardDisk interrupt is
+not being triggered (or is being cleared too quickly to be acknowledged)?  Hmmm.
+
 
 Disk Formatting
 ---------------
