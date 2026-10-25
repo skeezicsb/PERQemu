@@ -5,6 +5,45 @@ Summary of changes on the development branch since the v0.8.5 interim release.
 Previous notes moved to ChangeLog-Old.txt.
 
 
+October, 2026:
+
+    2. Screw it.  Bump to v0.9.6 and push the updated memory stuff so that I can
+    start working backwards to make it LESS ACCURATE, because I never seem to
+    learn this stupid lesson:  WRITE CRAPPIER CODE, GET BETTER RESULTS.  Because
+    the universe is evil and everything sucks all the time, forever.
+
+    Wait for the next release for this to settle out.  Also, I've updated the
+    mono CPU target to x64 instead of "Any CPU" as it seems to provide a bit of
+    a performance boost?  If you build from source on ARM or 32-bit x86 let me
+    know, but it's probably long overdue (and since Apple has dropped Intel now
+    anyway, I am as always well behind the curve).  Sigh.
+
+    1. Well, crap, how has half a damn YEAR slipped by?  In yet another hopeless
+    attempt to make PNX 5 boot, six months of painstaking debugging yielded only
+    a strong hunch that the kernel must be reliant on a seriously arcane and 
+    subtle behavior in the memory state machine -- more than likely, a result of
+    a memory access rule violation that just happens to work on the hardware but
+    doesn't on the emulator.  So I took a week to completely refactor the entire
+    damn thing again.  I tore into the actual Pascal programs that generate the
+    contents of the BKM16.2, GMV02, MST10 and MST01 PROMs, _finally_ wrapped my
+    head around the insanely detailed and darkly beautiful implementation of the
+    distributed state machine, working out cycle-by-cycle how the impossibly
+    minimalistic hardware enables the almost absurdly complex set of access
+    rules for doing single-, double- and quad-word fetches and stores, including
+    overlapped accesses that enable the fast RasterOp read/modify/write cycle,
+    with all of the extremely precise timing requirements for each access type.
+
+    And?
+
+    POS and Accent still run perfectly well, and I even see around a 5-10% 
+    increase in frame rate as this version (even in its early state, not fully
+    debugged or optimized) is slightly more efficient.
+
+    PNX now crashes _instantly_ at startup.  EVERY version, not just PNX 5.
+
+    I am going to pour a large, stiff drink and reconsider my life choices.
+
+
 May, 2026:
 
     9. Call it good enough to push out the v0.9.5 release.  The final push to a
@@ -160,4 +199,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Sun May 31 13:15:16 PDT 2026
+Last update: skeezics    Sun Oct 25 00:20:50 PDT 2026

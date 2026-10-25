@@ -513,22 +513,22 @@ namespace PERQemu.Processor
 
         /// <summary>
         /// Returns the next RasterOp state, determined by the current phase
-        /// and Memory Tstate.
+        /// and Memory T-state.
         /// </summary>
+        /// <remarks>
+        /// RasterOp is clocked after the Memory "tick", but before DispatchFunction
+        /// which may (at the end of the cycle) specify a phase change.  This means
+        /// we can complete the current quadword cycle without concern for a phase
+        /// change harshing our mellow.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         State NextState()
         {
-            // RasterOp is clocked after the Memory "tick", but before the
-            // DispatchFunction which may (at the end of the cycle) specify a
-            // phase change.  This means we can complete the current quadword
-            // cycle without concern for a phase change harshing our mellow.
-            int _stateClock = _memory.TState;
-
             State next = _state;
 
-            // NOTE: our state change happens in T2, to coincide with MDI on
-            // fetches, NOT in the T1 when CntlRasterOp() is called (or in
-            // T3 when the Fetch is issued).
+            // NOTE: state change happens in T2, to coincide with MDI on fetches,
+            // NOT in the T1 when CntlRasterOp() is called (or in T3 when the
+            // Fetch4/R is issued).
             switch (_state)
             {
                 case State.Off:
@@ -536,7 +536,7 @@ namespace PERQemu.Processor
                     break;
 
                 case State.Idle:
-                    if (_stateClock == 2)
+                    if (_memory.TState == 2)
                     {
                         if (_phase == Phase.FirstSource || _phase == Phase.XtraSource)
                         {
@@ -550,14 +550,14 @@ namespace PERQemu.Processor
                     break;
 
                 case State.DestFetch:
-                    if (_stateClock == 2)
+                    if (_memory.TState == 2)
                     {
                         next = State.SrcFetch;
                     }
                     break;
 
                 case State.SrcFetch:
-                    if (_stateClock == 2)
+                    if (_memory.TState == 2)
                     {
                         next = State.Idle;
                     }
@@ -582,15 +582,16 @@ namespace PERQemu.Processor
             {
                 // The microcode calculates the addresses and initiates fetches;
                 // we just pluck the next incoming word off the MDI.
-                w.Address = _memory.MADR;
-                w.Index = _memory.MIndex;
-                w.Data = _memory.MDI;
+                w.Address = _memory.MDIAddress;
+                w.Index = _memory.MDIIndex;
+                w.Data = _memory.MDIWord;
                 return w;
             }
 
 #if DEBUG
             // For debugging we can try to continue, but we're pretty hosed at this point...
-            Log.Error(Category.RasterOp, "FetchNextWord in {0} while MDI was invalid!", _state);
+            Log.Error(Category.RasterOp, "FetchNextWord in {0} (T{1}) while MDI was invalid!",
+                                          _state, _memory.TState);
             w.Clear();
             return w;
 #else

@@ -1,4 +1,4 @@
-﻿//
+//
 // InputDevices.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
@@ -167,7 +167,7 @@ namespace PERQemu.UI
                     break;
 
                 case SDL.SDL_Keycode.SDLK_END:
-                    _system.Display.Scroll(_system.VideoController.DisplayHeight);
+                    _system.Display.Scroll(_system.Video.DisplayHeight);
                     handled = true;
                     break;
 

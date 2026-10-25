@@ -46,6 +46,7 @@
     <DocumentationFile></DocumentationFile>
     <Prefer32Bit>false</Prefer32Bit>
     <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType></DebugType>
@@ -60,6 +61,7 @@
     <CodeAnalysisIgnoreGeneratedCode>true</CodeAnalysisIgnoreGeneratedCode>
     <UseVSHostingProcess>false</UseVSHostingProcess>
     <Prefer32Bit>false</Prefer32Bit>
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
   <PropertyGroup />
   <PropertyGroup />
@@ -228,6 +230,8 @@
     <Compile Include="UI\SDL\KeyboardMap.cs" />
     <Compile Include="UI\SDL\EventList.cs" />
     <Compile Include="UI\SDL\Speaker.cs" />
+    <Compile Include="Emulator\Memory\MemoryRequest.cs" />
+    <Compile Include="Emulator\Memory\Bookmarks.cs" />
   </ItemGroup>
   <!-- Content items included in build output -->
   <ItemGroup>
@@ -319,9 +323,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <!-- Runtime ROM images -->
-    <None Include="PROM\bkm16emu.rom">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Include="PROM\boot.rom">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -387,9 +388,6 @@
     <None Include="PROM\rsc03.rom" />
     <None Include="PROM\rsh00.rom" />
     <None Include="PROM\rti02.rom" />
-    <None Include="PROM\makebkm.pl" />
-    <None Include="PROM\memstate_table.txt" />
-    <!-- Bitmaps/others not yet used or needed at runtime -->
     <None Include="Resources\PERQemu.ico" />
     <None Include="Resources\aboutbox1.png" />
     <None Include="Resources\aboutbox2.png" />

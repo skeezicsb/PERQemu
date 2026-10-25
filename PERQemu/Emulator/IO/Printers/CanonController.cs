@@ -1,5 +1,5 @@
 ﻿//
-// CanonController.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// CanonController.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -514,7 +514,7 @@ namespace PERQemu.IO
             // Grab quads from memory
             for (var i = 0; i < wordWidth / 4; i++)
             {
-                _lineBuffer.Quads[i] = _system.Memory.FetchQuad(addr++);
+                _lineBuffer.Quads[i] = _system.Memory.FetchQuadSwapped(addr++);
                 _bandAddr += 4;
             }
 

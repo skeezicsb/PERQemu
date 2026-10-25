@@ -114,9 +114,6 @@ namespace PERQemu.IO
                 _ethernetController = new NullEthernet(system);
             }
             RegisterPorts(_etherPorts);
-
-            // Register ports to access the serial number PROM
-            RegisterPorts(_snPorts);
         }
 
         public INetworkController Ether => _ethernetController;
@@ -279,7 +276,13 @@ namespace PERQemu.IO
             0xd0,       // 320 ConstPtr: constant register selector
             0xd1,       // 321 RamFile: constreg load and incr selector
             0xd2,       // 322 SmCtl: state machine control register
-            0xd3        // 323 DskCtl: disk control register
+            0xd3,       // 323 DskCtl: disk control register
+
+            // Backplane serial number PROM addresses
+            0x38,       // 070 S/N low byte
+            0x39,       // 071 S/N high byte
+            0x3a,       // 072 0 (constant)
+            0x3b        // 073 0x5c (134) (constant)
         };
 
         byte[] _etherPorts =
@@ -306,15 +309,6 @@ namespace PERQemu.IO
             0xde        // 336 E10EWrUSLow: load usec clock low byte
         };
 
-        byte[] _snPorts =
-        {
-            // Backplane serial number PROM addresses
-            0x38,       // 070 S/N low byte
-            0x39,       // 071 S/N high byte
-            0x3a,       // 072 0 (constant)
-            0x3b        // 073 0x5c (134) (constant)
-        };
-
         /// <remarks>
         /// These EIO registers are not implemented:
         /// 120     50      FPStat          read floating point status
@@ -331,6 +325,5 @@ namespace PERQemu.IO
 
         INetworkController _ethernetController;
         ChannelName _chanSelect;
-
     }
 }

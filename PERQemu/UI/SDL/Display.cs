@@ -64,8 +64,8 @@ namespace PERQemu.UI
             _printerActive = false;
 
             // Keep a local copy
-            _displayWidth = _system.VideoController.DisplayWidth;
-            _displayHeight = _system.VideoController.DisplayHeight;
+            _displayWidth = _system.Video.DisplayWidth;
+            _displayHeight = _system.Video.DisplayHeight;
             _visibleHeight = _displayHeight;
             _freeHeight = _displayHeight + EXTRA_LINES;
 
@@ -81,6 +81,8 @@ namespace PERQemu.UI
 
         public int TopY => _visibleRect.y;
         public int Screen => _screenIndex;
+        public int Width => _displayWidth;
+        public int Height => _displayHeight;
 
         public double AverageFPS => _totalCount > 0 ? (_totalFrames / _totalCount) : 0.0;
 

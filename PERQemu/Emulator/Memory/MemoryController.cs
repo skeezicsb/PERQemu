@@ -18,84 +18,15 @@
 //
 
 using System;
-using System.IO;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace PERQemu.Memory
 {
-    /// <summary>
-    /// Represents a request to the memory subsystem.
-    /// </summary>
-    public class MemoryRequest
+    public class MemoryRuleViolation : Exception
     {
-        public MemoryRequest()
-        {
-            Clear();
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Clear()
-        {
-            StartAddress = -1;
-            CycleType = MemoryCycle.None;
-            Bookmark = 0;
-            Active = false;
-        }
-
-        public override string ToString()
-        {
-            return string.Format("Addr={0:x6} cycle={1} bookmark={2:x} active={3}",
-                                StartAddress, CycleType, Bookmark, Active);
-        }
-
-        public int StartAddress;
-        public MemoryCycle CycleType;
-        public int Bookmark;
-        public bool Active;
+        public MemoryRuleViolation(int time, string msg) : base($"Memory violation in T{time}: {msg}") { }
     }
-
-
-    public enum MemoryState
-    {
-        Idle = 0,
-        WaitForT3,
-        WaitForT2,
-        Running
-    }
-
-
-    /// <summary>
-    /// A bookmark comprises a set of flags, a word index, and next state value.
-    /// These are read from the BKM16 ROM and are consulted each cycle to drive
-    /// the memory state machine.
-    /// </summary>
-    public class BookmarkEntry
-    {
-        public BookmarkEntry(byte result)
-        {
-            Abort = ((result & 0x80) != 0);
-            Recognize = ((result & 0x40) != 0);
-            Complete = ((result & 0x20) != 0);
-            Valid = ((result & 0x10) != 0);
-            Index = (result & 0x0c) >> 2;
-            NextState = (MemoryState)(result & 0x03);
-        }
-
-        public override string ToString()
-        {
-            return string.Format("PA={0} ST={1} CO={2} VA={3} idx={4} next={5}",
-                                Abort, Recognize, Complete, Valid, Index, NextState);
-        }
-
-        public bool Abort;
-        public bool Recognize;
-        public bool Complete;
-        public bool Valid;
-        public int Index;
-        public MemoryState NextState;
-    }
-
 
     /// <summary>
     /// Object to keep track of the Memory board's input and output queues.
@@ -107,97 +38,58 @@ namespace PERQemu.Memory
     /// </summary>
     public sealed class MemoryController
     {
-        static MemoryController()
-        {
-            _bkmTable = new BookmarkEntry[256];
-            LoadBookmarkROM();
-        }
 
-        public MemoryController(MemoryBoard mem, string name)
+        public MemoryController(MemoryBoard mem)
         {
             _mem = mem;
-            _name = name;
-            _current = new MemoryRequest();
-            _pending = new MemoryRequest();
 
-            _quadWordMask = _mem.MemSizeMask & 0xfffffc;     // nip two LSBs
-            _doubleWordMask = _mem.MemSizeMask & 0xfffffe;   // nip LSB
+            // Can have two requests "in flight"
+            _fetch = new MemoryRequest(_mem);
+            _store = new MemoryRequest(_mem);
         }
 
         public void Reset()
         {
-            _state = _nextState = MemoryState.Idle;
-            _bookmark = _nextBookmark = 0;
-            _address = -1;
-            _index = 0;
-            _wait = false;
-            _valid = false;
-            _current.Clear();
-            _pending.Clear();
+            _fetch.Reset();
+            _store.Reset();
 
-            Log.Debug(Category.MemCycle, "{0} queue reset", _name);
+            _wait = false;
+
+            Log.Info(Category.Memory, "Controller reset");
         }
 
+        public MemoryRequest MDI => _fetch;
+        public MemoryRequest MDO => _store;
+
         public bool Wait => _wait;
-        public bool Valid => _valid;
-        public int Address => _address;
-        public int WordIndex => _index;
-        public MemoryCycle Cycle => _current.CycleType;
 
 
         /// <summary>
-        /// Clocks this memory queue's state machine, setting flags appropriately for
-        /// the current running request, or setting up for the next one.  Called from
-        /// Memory.Tick(), this executes at the top of the microcycle, so it may abort 
-        /// the current instruction if a new request is issued at the wrong time.
+        /// Advance the state machine and set flags for the current microcycle.
+        /// May abort the current instruction if a new request is issued at the
+        /// wrong time.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Clock(MemoryCycle nextCycle)
         {
-#if DEBUG
-            if (nextCycle != MemoryCycle.None || _current.CycleType != MemoryCycle.None)
-                Log.Detail(Category.MemCycle,
-                           "{0} queue  IN: Clock T{1} cycle={2} bkm={3:x} next={4} state={5} next={6}",
-                           _name, _mem.TState, _current.CycleType, _bookmark, nextCycle, _state, _nextState);
-#endif
+            // Get verbose for debuggerin
+            if (Log.Level < Severity.Info) DumpState();
 
-            // Update the current op
+            Retire();
             Recognize();
-
-            // Update state and set flags for this cycle
-            RunStateMachine();
-
-            // Update bookmarks for the next cycle
-            UpdateBookmarks(nextCycle);
-
-#if DEBUG
-            if (nextCycle != MemoryCycle.None || _current.CycleType != MemoryCycle.None)
-                Log.Detail(Category.MemCycle,
-                           "{0} queue OUT: Clock T{1} cycle={2} bkm={3:x} next={4} state={5} next={6}",
-                           _name, _mem.TState, _current.CycleType, _bookmark, nextCycle, _state, _nextState);
-#endif
+            RunStateMachine(nextCycle);
         }
 
         /// <summary>
-        /// Accept a new memory request (at the bottom of the CPU cycle, after
-        /// R is computed).  Because the CPU now aborts until the correct cycle
-        /// when issuing new memory operations, we simply latch the new request
-        /// and let the state machine do all the right magic at the next Clock().
+        /// Accept a new request into the fetch or store pipeline.  Pass in the
+        /// next bookmark value.
         /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Request(int startAddr, MemoryCycle cycleType)
+        public void Request(MemoryCycle cycleType, int startAddr)
         {
-            // FIXME: whoops, we aren't actually checking the bookmark Start bit!
-            // if pending is *already* active, we've screwed up!?
-            if (_pending.Active)
-                Log.Write(Category.MemCycle, "Request {0} while {1} already pending!?",
-                                              cycleType, _pending.CycleType);
-
-            _pending.StartAddress = startAddr;
-            _pending.CycleType = cycleType;
-
-            _pending.Active = true;
-            _pending.Bookmark = _nextBookmark;
+            if (IsFetch(cycleType))
+                _fetch.Request(cycleType, startAddr, _nextBookmark);
+            else
+                _store.Request(cycleType, startAddr, _nextBookmark);
         }
 
         /// <summary>
@@ -206,266 +98,254 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void Recognize()
         {
-            if (_pending.Active && !_current.Active)
+            // Separating requests sort of mimics the "OldRead" SM loop
+            // in the hardware's MST PROMs
+            if (_fetch.Ready)
             {
-                // Copy in the relevant bits
-                _current.CycleType = _pending.CycleType;
-                _current.StartAddress = _pending.StartAddress;
-                _current.Bookmark = _pending.Bookmark;
-                _current.Active = true;
+                // Don't clobber the active op
+                if (_fetch.Active)
+                {
+                    Log.Debug(Category.MemCycle, "Recognize delayed, {0} still active", _fetch.CycleType);
+                }
+                else
+                {
+                    _fetch.Start();
+                    Log.Debug(Category.MemCycle, "Recognized {0}", _fetch.CycleType);
+                }
+            }
 
-                // Clear the request
-                _pending.Clear();
-
-                // Set the new bookmark
-                _bookmark = _current.Bookmark;
-
-                Log.Debug(Category.MemCycle, "{0} queue: Recognized {1}", _name, _current);
+            if (_store.Ready)
+            {
+                // Never clobber a running store
+                if (_store.Active)
+                {
+                    Log.Debug(Category.MemCycle, "Recognize delayed, {0} still active", _store.CycleType);
+                }
+                else
+                {
+                    _store.Start();
+                    Log.Debug(Category.MemCycle, "Recognized {0}", _store.CycleType);
+                }
             }
         }
 
         /// <summary>
-        /// Update the current state of the controller, and computes the address and
-        /// index of the current op if applicable.
+        /// Clear completed requests.  For stores, commit the appropriate word(s)
+        /// in the store buffer to memory.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void RunStateMachine()
+        public void Retire()
         {
-            // Bump the state
-            _state = _nextState;
-
-            // Get the flags for the current bookmark
-            var flags = GetBookmarkEntry(_bookmark, _state);
-
-            // Set the wait and next state based on the current flags
-            _wait = flags.Abort;
-            _nextState = flags.NextState;
-
-            // If reading or writing this cycle, compute the address for this word
-            _valid = flags.Valid;
-
-            if (_valid)
+            if (_fetch.Complete)
             {
-                _index = flags.Index;
+                Log.Debug(Category.MemCycle, "Retired {0}", _fetch);
+                _fetch.Clear();
+            }
 
-                switch (_current.CycleType)
+            if (_store.Complete)
+            {
+                // Do the writeback
+                _store.Commit();
+
+                // Log it and clear it
+                Log.Debug(Category.MemCycle, "Retired {0}", _store);
+                _store.Clear();
+            }
+        }
+
+
+        /// <summary>
+        /// Run "the" memory state machine.  Here we clock both of the separate
+        /// requests, which sort of mashes up the hardware's CPU state (BKM16 and
+        /// GMV02 PROMs) and the MEM board state machine (MST10/MST01).  Sets the
+        /// flags for data into and out of the buffers, and next states for all
+        /// active requests.  Much sausage making is happening here.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void RunStateMachine(MemoryCycle nextCycle)
+        {
+            // Attached to next op at Request() in bottom of cycle
+            _nextBookmark = (BookmarkType)nextCycle;
+
+            // Always positively assert this
+            _wait = false;
+
+            // Something wicked this way comes
+            if (nextCycle != MemoryCycle.None)
+            {
+                switch (_mem.TState)
                 {
-                    case MemoryCycle.Fetch4R:
-                    case MemoryCycle.Fetch4:
-                    case MemoryCycle.Store4R:
-                    case MemoryCycle.Store4:
-                        _address = (_current.StartAddress & _quadWordMask) + _index;
+                    case 0:
+                        // Special RasterOp overlapped fetch/store case allows for a
+                        // store in t0; note that the hardware doesn't actually enforce
+                        // a check that RasterOp is active!?
+                        //if (//_mem.RopEnabled &&
+                        if (((nextCycle == MemoryCycle.Store4 && _fetch.CycleType == MemoryCycle.Fetch4) ||
+                             (nextCycle == MemoryCycle.Store4R && _fetch.CycleType == MemoryCycle.Fetch4R)))
+                        {
+
+                            // Update the current request to patch the transition
+                            _nextBookmark = (_fetch.CycleType == MemoryCycle.Fetch4 ? BookmarkType.RopStore4 :
+                                                                                      BookmarkType.RopStore4R);
+
+                            Log.Info(Category.MemCycle, "OVERLAPPED {0} in T3: active={1} state={2} rop={3} switch={4}",
+                                                        nextCycle, _store.Bookmark, _store.State, _mem.RopEnabled, _nextBookmark);
+
+                            // Recognize immediately, don't stall the running fetch
+                            _store.Ready = true;
+                        }
+                        else
+                        {
+                            _wait = true;
+                        }
                         break;
 
-                    case MemoryCycle.Fetch2:
-                    case MemoryCycle.Store2:
-                        _address = (_current.StartAddress & _doubleWordMask) + _index;
+                    case 1:
+                        // All new requests stall in t1
+                        _wait = true;
                         break;
 
-                    default:
-                        _address = _current.StartAddress;
+                    case 2:
+                        // Single word Store runs in t2
+                        if (nextCycle == MemoryCycle.Store)
+                        {
+                            _store.Ready = true;
+                        }
+                        else
+                        {
+                            _wait = true;
+                        }
+                        break;
+
+                    case 3:
+                        // All others in t3
+                        switch (nextCycle)
+                        {
+                            case MemoryCycle.Fetch:
+                            case MemoryCycle.Fetch2:
+                            case MemoryCycle.Fetch4:
+                            case MemoryCycle.Fetch4R:
+
+                                // Handle overlapping fetch cases
+                                if (_fetch.Active)
+                                {
+                                    // Oh yes, I have done this.  Deal with it. ;-P
+                                    var book = (int)_fetch.Bookmark / 2;
+
+                                    Log.Info(Category.MemCycle, "OVERLAPPED {0} in T3: active={1} state={2} rop={3} switch={4}",
+                                                                 nextCycle, _fetch.Bookmark, _fetch.State, _mem.RopEnabled, book);
+
+                                    // If RasterOp is NOT enabled and a quad fetch is active,
+                                    // we must let it complete (blow a rev and wait); otherwise
+                                    // we switch to the indirect states to handle the transition
+                                    if (_fetch.CycleType == MemoryCycle.Fetch4 || _fetch.CycleType == MemoryCycle.Fetch4R)
+                                    {
+                                        if (!_mem.RopEnabled)
+                                        {
+                                            _wait = true;
+                                        }
+                                        else
+                                        {
+                                            // For RasterOp, the current Fetch4/R is allowed
+                                            // to complete normally; the _next_ op is switched
+                                            // to a RopFetch4/R and will stall in Recognize()
+                                            // until t2, where it reloads and continues without
+                                            // the t0, t1 gap (so two quad words are delivered
+                                            // in succession).  It's a slightly ugly tradeoff
+                                            // but I'll live with it
+                                            _nextBookmark = (BookmarkType)book;
+                                            _fetch.Ready = true;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Bump the current bookmark, enable the next op
+                                        _fetch.Bookmark = (BookmarkType)book;
+                                        _fetch.Ready = true;
+                                    }
+                                }
+                                else
+                                {
+                                    // Clear to launch
+                                    _fetch.Ready = true;
+                                }
+                                break;
+
+                            case MemoryCycle.Store:
+
+                                // Single word stores stall in t3
+                                _wait = true;
+                                break;
+
+                            case MemoryCycle.Store2:
+                            case MemoryCycle.Store4:
+                            case MemoryCycle.Store4R:
+
+                                // Another special case: a Store2 can be pipelined in t3 since
+                                // we aren't waiting on the last word to arrive and commit.
+                                // Otherwise, we have to blow a rev for the final Tock()
+                                if (_store.Active && _store.CycleType != MemoryCycle.Store2)
+                                {
+                                    _wait = true;
+                                }
+                                else
+                                {
+                                    // Start the next Store2/4/4R
+                                    _store.Ready = true;
+                                }
+                                break;
+                        }
                         break;
                 }
             }
 
-            // If this is the last word in a cycle, retire the current op
-            if (flags.Complete)
-            {
-                Log.Debug(Category.MemCycle, "{0} queue: Retired {1}", _name, _current);
+            // Even if the CPU stalls, update the in-flight requests
+            if (_fetch.Active) _fetch.Update();
+            if (_store.Active) _store.Update();
 
-                _current.Clear();
-                _bookmark = 0;
-            }
+            // Remove this, eventually, once confidence is restored :-)
+            if (_fetch.State == RequestState.Illegal || _store.State == RequestState.Illegal)
+                throw new MemoryRuleViolation(_mem.TState, "Illegal state entered");
         }
 
         /// <summary>
-        /// Sets bookmarks for the next cycle, and modifies the current one if necessary.
-        /// WARNING: THIS IS WHERE THE SAUSAGE IS MADE.
+        /// Return true if the memory request type is a Fetch.
         /// </summary>
         /// <remarks>
-        /// I used to think this was crazy and bad, a terribly improvised series of
-        /// hacks and assumptions to work around the complexity of the hardware.  Then
-        /// sources were found to the PALs and PROMs that make up the MST01/MST10 and
-        /// GMV02/BKM16.2 memory state machines and... well, it's eerie how I managed
-        /// to come closer with these wild-ass-guesses to the way the hardware actually
-        /// operates than I ever imagined.  It still cries out for refactoring, though.
+        /// The SF encodings are very specific: the hardware/firmware uses the
+        /// fact that all Fetch types are even-numbered, Stores types are odd.
+        /// In case you were wondering.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void UpdateBookmarks(MemoryCycle nextCycle)
+        bool IsFetch(MemoryCycle c)
         {
-            if (nextCycle == MemoryCycle.None)
-            {
-                // If no active or pending op, reset our bookmark
-                if (!_current.Active && !_pending.Active)
-                {
-                    _bookmark = 0;
-                }
-                return;
-            }
-
-            // This microinstruction specifies a new memory request: initialize
-            // the next bookmark value based on the request type
-            _nextBookmark = (int)nextCycle;
-            var book = _nextBookmark;
-
-            // 
-            // Special cases for RasterOp
-            //
-            if (_mem.RopEnabled)
-            {
-                if (_mem.TState == 0)
-                {
-                    // First: we're allowed to issue Store4/4R in T0, ahead
-                    // of the usual T3.  So we tweak the cycle type to index
-                    // the bookmark ROM with the modified timings.
-                    if (nextCycle == MemoryCycle.Store4R)
-                    {
-                        book = 0x2;         // "RopStore4R"
-                    }
-                    else if (nextCycle == MemoryCycle.Store4)
-                    {
-                        book = 0x4;         // "RopStore4"
-                    }
-                }
-                else if (_mem.TState == 3)
-                {
-                    //
-                    // Second: Fetch4/4Rs are issued back-to-back (in the
-                    // correct t3) but must NOT introduce the possible CPU
-                    // abort of a WaitT2 state;  MDI must remain valid AND
-                    // the index values must count down correctly for the
-                    // operation in progress, so after the t0,t1 complete
-                    // the next op's four words arrive in the four subsequent
-                    // Tstates.  This introduces two additional fake cycle
-                    // types, as with the case above.
-                    //
-                    if (_current.CycleType == MemoryCycle.Fetch4R &&
-                                 nextCycle == MemoryCycle.Fetch4R)
-                    {
-                        _bookmark = book = 0x1;     // "RopFetch4R"
-                    }
-                    else if (_current.CycleType == MemoryCycle.Fetch4 &&
-                                      nextCycle == MemoryCycle.Fetch4)
-                    {
-                        _bookmark = book = 0x3;     // "RopFetch4"
-                    }
-                }
-
-                // For RasterOp special cases, use modified bookmark for entire cycle
-                _nextBookmark = book;
-            }
-
-            //
-            // Special cases for indirect or overlapped Fetches (non-RasterOp)
-            //
-            if (_mem.IsFetch(nextCycle) && _current.Active)
-            {
-                //
-                // Back-to-back Fetch type operations requests present unique
-                // timing challenges.  To accommodate this with as little
-                // embarrassment as possible, we use a transitional bookmark
-                // to cover the overlap.  Gory details in Docs/MemoryRules.txt.
-                //
-
-                // Never found a case where Fetch4Rs overlap, actually
-                if (_current.CycleType == MemoryCycle.Fetch || _current.CycleType == MemoryCycle.Fetch2 ||
-                   ((_current.CycleType == MemoryCycle.Fetch4 || _current.CycleType == MemoryCycle.Fetch4R) && !_mem.RopEnabled))
-                {
-                    book = (int)_current.CycleType / 2;     // Compute indirect fetch to cover overlap
-
-                    Log.Debug(Category.MemCycle, "Overlap in T{0} @ PC 0x{1:x}: active {2} pending {3} book {4:x} new book {5:x} next book {6:x}",
-                                                 _mem.TState, PERQemu.Sys.CPU.PC, _current.CycleType, nextCycle, _bookmark, book, _nextBookmark);
-
-                    _bookmark = book;                       // Force immediate switch for the (t2,t3)
-                }
-            }
-
-            // Get a new set of flags -- these may modify the current cycle!
-            var flags = GetBookmarkEntry(book, _nextState);
-
-            // Set the wait and next state based on the new flags
-            _wait = flags.Abort;
-            _nextState = flags.NextState;
-
-            // If the done flag is set, retire the current op
-            if (flags.Complete)
-            {
-                Log.Debug(Category.MemCycle, "{0} queue: Terminated {1}", _name, _current);
-                _current.Clear();
-            }
+            return c > MemoryCycle.None && ((int)c & 0x1) == 0;
         }
 
         /// <summary>
-        /// Gets the bookmark for a particular cycle type.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        BookmarkEntry GetBookmarkEntry(int book, MemoryState state)
-        {
-            //
-            // Index into the "bookmark" table:
-            //		bits	value
-            //		7:4		bookmark (cycle type)
-            //		3:2		current state
-            //		1:0		current Tstate
-            //
-            int lookup = (book & 0x0f) << 4 | ((int)state << 2) | _mem.TState;
-
-            Log.Detail(Category.MemCycle, "{0} Bookmark[{1:x3}]: {2}", _name, lookup, _bkmTable[lookup]);
-
-            return _bkmTable[lookup];
-        }
-
-        /// <summary>
-        /// Load the BKM16 ROM image from disk.
-        /// </summary>
-        static void LoadBookmarkROM()
-        {
-            // BKM is a lookup table with an 8-bit index, returning an 8-bit value
-            using (var fs = new FileStream(Paths.BuildPROMPath("bkm16emu.rom"), FileMode.Open))
-            {
-                for (int i = 0; i < 256; i++)
-                {
-                    // Split result byte into fields once, rather than on lookup
-                    _bkmTable[i] = new BookmarkEntry((byte)fs.ReadByte());
-                }
-                fs.Close();
-            }
-            Log.Info(Category.Emulator, "Initialized BKM ROM lookup table");
-        }
-
-        /// <summary>
-        /// Dumps the current controller state and request slots. Quick and dirty debugging aid.
+        /// Dumps the current and pending requests. Quick and dirty debugging aid.
         /// </summary>
         //[Conditional("DEBUG")]
-        public void DumpQueue()
+        public void DumpState()
         {
-            Console.WriteLine("{0} queue:\tstate: wait={1} valid={2} index={3} addr={4:x6}",
-                              _name, _wait, _valid, _index, _address);
-            Console.WriteLine("\t\tcurrent: {0}", _current);
-            Console.WriteLine("\t\tpending: {0}", _pending);
+            Console.WriteLine($"Controller: T{_mem.TState} wait={_wait}");
+            Console.WriteLine($"Fetch:   {_fetch}");
+            Console.WriteLine($"Flags:   {_fetch.Flags}");
+            if (_fetch.Ready) Console.WriteLine($"Pending: {_fetch.Pending()}");
+
+            Console.WriteLine($"Store:   {_store}");
+            Console.WriteLine($"Flags:   {_store.Flags}");
+            if (_store.Ready) Console.WriteLine($"Pending: {_store.Pending()}");
         }
 
 
         MemoryBoard _mem;
 
-        string _name;
-        MemoryState _state;
-        MemoryState _nextState;
+        MemoryRequest _store;
+        MemoryRequest _fetch;
 
-        MemoryRequest _current;
-        MemoryRequest _pending;
+        BookmarkType _nextBookmark;
 
-        int _quadWordMask;
-        int _doubleWordMask;
-
-        int _address;
-        int _index;
         bool _wait;
-        bool _valid;
-
-        int _bookmark;
-        int _nextBookmark;
-
-        static BookmarkEntry[] _bkmTable;
     }
 }

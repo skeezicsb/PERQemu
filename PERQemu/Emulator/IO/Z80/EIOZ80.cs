@@ -158,8 +158,7 @@ namespace PERQemu.IO.Z80
                 _timerB.Notify(0);
                 _timerB.Notify(2);
             }
-            else
-                throw new InvalidOperationException($"Bad port {port}");
+            else throw new InvalidOperationException($"Bad port {port}");
         }
 
         public override void SerialError(char port, string message)
@@ -387,6 +386,10 @@ namespace PERQemu.IO.Z80
             // none of the known optional I/O devices use that functionality.
             // Audre?  MLO?  It seems very unlikely that emulating this feature
             // will ever be needed.
+#if DEBUG
+            if ((status & 0x08) != 0)
+                throw new UnimplementedHardwareException("EXT A DMA bit set");
+#endif
 
             // Set the enable bits
             _perqToZ80Fifo.InterruptEnabled = ((status & 0x02) != 0);
@@ -457,14 +460,14 @@ namespace PERQemu.IO.Z80
         // EIO/NIO boards
         //
         Am9519 _irqControl;
+        Z80SIO _z80sioA, _z80sioB;
         PERQDMA _pdma;
         i8237DMA _dmac;
         i8254PIT _timerA, _timerB;
-        Z80SIO _z80sioA, _z80sioB;
-        SerialKeyboard _keyboard;
         Oki5832RTC _rtc;
         PERQToZ80FIFO _perqToZ80Fifo;
         Z80ToPERQFIFO _z80ToPerqFifo;
+        SerialKeyboard _keyboard;
     }
 }
 
@@ -504,5 +507,4 @@ namespace PERQemu.IO.Z80
     IRQ     SEL INT L           140:157 (0x60)  Am9519 (2 used)
 
     DMAC    SEL DMA L           60:77 (0x30)    i8237DMA (16 used)
-
  */

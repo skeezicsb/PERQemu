@@ -477,7 +477,7 @@ namespace PERQemu
         [Command("debug show memory state", "Dump the memory controller state")]
         void ShowMemQueues()
         {
-            if (CheckSys()) PERQemu.Sys.Memory.DumpQueues();
+            if (CheckSys()) PERQemu.Sys.Memory.DumpMemState();
         }
 
 #if DEBUG

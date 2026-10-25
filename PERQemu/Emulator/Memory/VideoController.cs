@@ -513,7 +513,7 @@ namespace PERQemu.Memory
             // The "fast" loop gobbles up quad words
             for (int w = 0; w < _displayQuads; w++)
             {
-                _scanlineData.Quads[w] = TransformDisplayQuad(_system.Memory.FetchQuad(dispAddress + w));
+                _scanlineData.Quads[w] = TransformDisplayQuad(_system.Memory.FetchQuadSwapped(dispAddress + w));
             }
 
             // Now overlay the cursor bytes if enabled
@@ -554,7 +554,7 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void GetCursorQuad(int addr)
         {
-            var quad = _system.Memory.FetchQuad(addr);
+            var quad = _system.Memory.FetchQuadSwapped(addr);
 
             for (int b = 0; b < 8; b++)
             {

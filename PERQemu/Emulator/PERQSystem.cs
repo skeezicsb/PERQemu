@@ -1,5 +1,5 @@
 //
-// PERQSystem.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// PERQSystem.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -56,8 +56,9 @@ namespace PERQemu
             // to run (ExecutionController sees to this).
             //
 
-            // Memory board configures itself and the VideoController
+            // Memory board configures itself for size, display type
             _mem = new MemoryBoard(this);
+            _video = new VideoController(this);
 
             // Instantiate the CPU board
             switch (_conf.CPU)
@@ -162,7 +163,7 @@ namespace PERQemu
 
             // Attach devices
             _ioBus.AddDevice(_mem);
-            _ioBus.AddDevice(_mem.Video);
+            _ioBus.AddDevice(_video);
             _ioBus.AddDevice(_iob);
             _ioBus.AddDevice(_oio);
 
@@ -196,7 +197,7 @@ namespace PERQemu
         public ulong Uptime => _uptime;
 
         public MemoryBoard Memory => _mem;
-        public VideoController VideoController => _mem.Video;
+        public VideoController Video => _video;
         public Display Display => _display;
         public InputDevices HID => _inputs;
 
@@ -877,12 +878,15 @@ namespace PERQemu
         IOBoard _iob;
         OptionBoard _oio;
 
-        // Drives attached to this PERQ
-        StorageDevice[] _volumes;
+        // Part of the memory board; for emulation, logically distinct
+        VideoController _video;
 
         // User interface hooks (SDL)
         Display _display;
         InputDevices _inputs;
+
+        // Drives attached to this PERQ
+        StorageDevice[] _volumes;
 
         // Debugger
         PERQDebugger _debugger;

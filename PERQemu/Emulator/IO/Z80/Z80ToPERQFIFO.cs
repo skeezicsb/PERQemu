@@ -1,5 +1,5 @@
 //
-// Z80ToPERQFIFO.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Z80ToPERQFIFO.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -232,7 +232,7 @@ namespace PERQemu.IO.Z80
         // Debugging
         public void DumpFifo()
         {
-            Console.WriteLine($"Z80->PERQ FIFO: Enabled={_interruptEnabled} Ready={_outputReady}");
+            Console.WriteLine($"Z80->PERQ FIFO: IRQ enabled={_interruptEnabled} Ready={_outputReady}");
 
             Console.Write("Z80->PERQ FIFO: ");
 
@@ -250,6 +250,7 @@ namespace PERQemu.IO.Z80
 
 
         Queue<byte> _fifo;
+
         readonly object _lock;
 
         bool _outputReady;

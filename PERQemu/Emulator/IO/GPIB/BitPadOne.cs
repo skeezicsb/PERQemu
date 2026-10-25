@@ -1,5 +1,5 @@
 //
-// BitPadOne.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// BitPadOne.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -110,7 +110,7 @@ namespace PERQemu.IO.GPIB
 
             // Calculate X and Y positions based on the "fudge factors" below:
             int x = (_system.HID.MouseX + 38) * 2;
-            int y = (_system.VideoController.DisplayHeight -
+            int y = (_system.Display.Height -
                      _system.Display.TopY -
                      _system.HID.MouseY + 39) * 2;
 

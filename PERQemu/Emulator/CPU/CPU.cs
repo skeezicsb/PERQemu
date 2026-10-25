@@ -567,23 +567,23 @@ namespace PERQemu.Processor
                     break;
 
                 case AField.MDI:
-                    amux = _memory.MDI;
+                    amux = _memory.MDIWord;
 #if DEBUG
                     // Watched address?
-                    if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MADR))
+                    if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MDIAddress))
                     {
-                        _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MADR, amux);
+                        _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MDIAddress, amux);
                     }
 #endif
                     break;
 
                 case AField.MDX:
-                    amux = (_memory.MDI << 16) & CPUBoard.CPUMask;
+                    amux = (_memory.MDIWord << 16) & CPUBoard.CPUMask;
 #if DEBUG
                     // Watched address?
-                    if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MADR))
+                    if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MDIAddress))
                     {
-                        _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MADR, amux);
+                        _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MDIAddress, amux);
                     }
 #endif
                     break;
@@ -981,7 +981,7 @@ namespace PERQemu.Processor
                         }
 #endif
                         // Common to all CPUs: SF 8..15 are the memory ops
-                        _memory.RequestMemoryCycle(_alu.R.Value, uOp.MemoryRequest);
+                        _memory.RequestMemoryCycle(uOp.MemoryRequest, _alu.R.Value);
                     }
                     else
                     {
@@ -1009,11 +1009,11 @@ namespace PERQemu.Processor
             // Use Tstate, not word Index, so that LoadOp works with Fetch4 and 4R
             int opAddr = ((_memory.TState + 2) & 0x3) << 1;
 
-            _opFile[opAddr] = (byte)(_memory.MDI & 0xff);
-            _opFile[opAddr + 1] = (byte)((_memory.MDI & 0xff00) >> 8);
+            _opFile[opAddr] = (byte)_memory.MDIWord;
+            _opFile[opAddr + 1] = (byte)(_memory.MDIWord >> 8);
 
-            Log.Debug(Category.OpFile, "Loaded {0:x2} into Op[{1:x}] from {2:x6}", _opFile[opAddr], opAddr, _memory.MADR);
-            Log.Debug(Category.OpFile, "Loaded {0:x2} into Op[{1:x}] from {2:x6}", _opFile[opAddr + 1], opAddr + 1, _memory.MADR);
+            Log.Debug(Category.OpFile, "Loaded {0:x2} into Op[{1:x}] from {2:x6}", _opFile[opAddr], opAddr, _memory.MDIAddress);
+            Log.Debug(Category.OpFile, "Loaded {0:x2} into Op[{1:x}] from {2:x6}", _opFile[opAddr + 1], opAddr + 1, _memory.MDIAddress);
 
             _refillOp = (_memory.TState != 1);
         }

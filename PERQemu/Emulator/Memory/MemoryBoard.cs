@@ -25,6 +25,7 @@ using System.Runtime.CompilerServices;
 using PERQemu.IO;
 using PERQemu.Processor;
 
+
 namespace PERQemu.Memory
 {
     /// <summary>
@@ -51,8 +52,7 @@ namespace PERQemu.Memory
     /// C# purists may howl, but testing under 32-bit Mono showed a 30% speed
     /// increase when shifting video data out as longs, and now that we've 
     /// pretty much been freed/forced to run on 64-bits (on later MacOS, at
-    /// any rate) we might as well take advantage.  Word access for normal
-    /// CPU and I/O, Quads for video.  Booyah.
+    /// any rate) we might as well take advantage.  Booyah.
     /// </remarks>
     [StructLayout(LayoutKind.Explicit)]
     struct Core
@@ -64,11 +64,21 @@ namespace PERQemu.Memory
         public ushort[] Words;
     }
 
+
     /// <summary>
     /// Implements the PERQ's Memory board and memory state machine, and
     /// attaches the video controller (which is connected to the IO bus).
     /// </summary>
     /// <remarks>
+    /// All references here to MDI (Memory Data IN) and MDO (Memory Data OUT) are
+    /// from the CPU's point of view - the opposite of the Memory Board's (and the
+    /// hardware schematics)!
+    /// 
+    /// Currently the IO / DMA subsystem cheats and performs its memory accesses
+    /// directly, but it could at some point be integrated -- allowing us to more
+    /// accurately emulate the real PERQ which must give up processor cycles for
+    /// DMA. Thus, the "Hold" field of the microinstruction is basicalgnored.
+    /// 
     /// The VideoController class handles most of the IO bus interaction for the
     /// MemoryBoard directly, since that's more efficient.  The only non-video-
     /// related IO registers are the parity error read/clear, which (as of 0.9.x)
@@ -87,25 +97,18 @@ namespace PERQemu.Memory
             _memory = new Core();
             _memory.Words = new ushort[_memSize];
 
-            _mdiQueue = new MemoryController(this, "MDI");
-            _mdoQueue = new MemoryController(this, "MDO");
-
-            _videoController = new VideoController(_system);
+            _controller = new MemoryController(this);
         }
 
         public void Reset()
         {
             _Tstate = 0;
-            _mdi = 0;
-            _wait = false;
-            _hold = false;
 
             _parityErrorAddress = NoError;
             _parityErrorOnNextWrite = false;
             _parityIntRaised = false;
 
-            _mdiQueue.Reset();
-            _mdoQueue.Reset();
+            _controller.Reset();
 
             Log.Info(Category.Memory, "Board reset");
         }
@@ -117,19 +120,23 @@ namespace PERQemu.Memory
 
         public int MemSize => _memSize;
         public int MemSizeMask => _memSizeMask;
+
+        // Expose this for the Debugger
         public ushort[] Memory => _memory.Words;
 
-        public ushort MDI => _mdi;
-        public int MADR => _mdiQueue.Address;
-        public int MIndex => _mdiQueue.WordIndex;
-        public bool MDIValid => _mdiQueue.Valid;
-        public bool MDONeeded => _mdoQueue.Valid;
-        public bool Wait => _wait;
-        public bool Hold => _hold;
-
         public int TState => _Tstate;
+
+        public bool Wait => _controller.Wait;
+        public bool MDIValid => _controller.MDI.Valid;
+        public bool MDONeeded => _controller.MDO.Valid;
+
+        public ushort MDIWord => _controller.MDI.Data;
+
+        // For convenience, useful for RasterOp/debugging
+        public int MDIAddress => _controller.MDI.Address;
+        public int MDIIndex => _controller.MDI.Index;
+
         public bool RopEnabled => _system.CPU.RasterOp.Enabled;
-        public VideoController Video => _videoController;
 
 
         /// <summary>
@@ -145,24 +152,10 @@ namespace PERQemu.Memory
 
             Log.Detail(Category.Memory, "Tick! T{0} cycle={1}", _Tstate, cycleType);
 
-            // Segregate Fetches and Stores into separate queues
-            if (IsFetch(cycleType))
-            {
-                _mdiQueue.Clock(cycleType);
-                _mdoQueue.Clock(MemoryCycle.None);
-            }
-            else
-            {
-                _mdiQueue.Clock(MemoryCycle.None);
-                _mdoQueue.Clock(cycleType);
-            }
+            _controller.Clock(cycleType);
 
-            // Execute the fetch
-            if (_mdiQueue.Valid)
+            if (MDIValid)
             {
-                _madr = _mdiQueue.Address;
-                _mdi = FetchWord(_madr);
-
 #if PARITY
                 if ((_madr & 0xfffffc) == _parityErrorAddress && !_parityIntRaised)
                 {
@@ -171,23 +164,9 @@ namespace PERQemu.Memory
                     _parityIntRaised = true;
                 }
 #endif
+                Log.Detail(Category.Memory, "Fetch addr {0:x6} (idx {1}) --> {2:x4}",
+                                             MDIAddress, MDIIndex, MDIWord);
             }
-
-            // Set the wait flag if we need to abort the current instruction.
-            // If output is pending, we never wait; otherwise, let the combined
-            // status of the request queues determine our result.
-            _wait = !MDONeeded && (_mdiQueue.Wait || _mdoQueue.Wait);
-
-#if DEBUG
-            // Debug: look for Fetch/Store overlaps that might be missed by the
-            // split-queues implementation  (do it after the clock to ignore any
-            // op where the previous retired, so not a true overlap)
-            if (!RopEnabled && _mdiQueue.Cycle != MemoryCycle.None && _mdoQueue.Cycle != MemoryCycle.None)
-            {
-                Log.Info(Category.MemCycle, "Overlap in T{0}:  {1} + {2} @ PC 0x{3:x}",
-                         _Tstate, _mdiQueue.Cycle, _mdoQueue.Cycle, _system.CPU.PC);
-            }
-#endif
         }
 
         /// <summary>
@@ -195,28 +174,26 @@ namespace PERQemu.Memory
         /// output (from the ALU or current RasterOp result) to memory.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Tock(ushort input)
+        public void Tock(ushort data)
         {
-            Log.Detail(Category.Memory, "Tock! T{0} mdoNeeded={1} data={2:x4}",
-                                        _Tstate, MDONeeded, input);
-            // Execute the store
-            if (_mdoQueue.Valid)
-            {
-                StoreWord(_mdoQueue.Address, input);
+            Log.Detail(Category.Memory, "Tock! T{0} Data={1:x4}", _Tstate, data);
+
+            // Store to the MDO buffers
+            _controller.MDO.Data = data;
+
 #if PARITY
-                if (_parityErrorOnNextWrite)
-                {
-                    _parityErrorAddress = _mdoQueue.Address & 0xfffffc;
-                    _parityErrorOnNextWrite = false;
-                    Log.Info(Category.Memory, "Write bad parity @ 0x{0:x6}!", _parityErrorAddress);
-                }
-#endif
+            if (_parityErrorOnNextWrite)
+            {
+                _parityErrorAddress = _mdoQueue.Address & 0xfffffc;
+                _parityErrorOnNextWrite = false;
+                Log.Info(Category.Memory, "Write bad parity @ 0x{0:x6}!", _parityErrorAddress);
             }
+#endif
         }
 
         /// <summary>
-        /// Let the CPU know if we're in the correct cycle to initiate a
-        /// LoadOp to refill the Op cache.  (Op file itself moved to the CPU)
+        /// Let the CPU know if we're in the correct cycle to initiate a LoadOp
+        /// function to refill the Op cache.  (Op file itself moved to the CPU.)
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool LoadOpFile()
@@ -224,60 +201,52 @@ namespace PERQemu.Memory
             // If currently executing a Fetch4/4R, start the refill on the next
             // T2 state (i.e., next cycle).  Note: I've never seen any production
             // ucode that uses a LoadOp with Fetch4R, but OF COURSE PNX 5 does it
-            return (_Tstate == 1 && (_mdiQueue.Cycle == MemoryCycle.Fetch4 ||
-                                     _mdiQueue.Cycle == MemoryCycle.Fetch4R));
+            return (_Tstate == 1 && (_controller.MDI.CycleType == MemoryCycle.Fetch4 ||
+                                     _controller.MDI.CycleType == MemoryCycle.Fetch4R));
         }
 
         /// <summary>
-        /// Requests a specific memory cycle type at the specified address.
-        /// Routes the request to the separate fetch and store queues, which
-        /// vastly simplifies the complicated overlapped operation of RasterOp.
+        /// Submit a memory cycle request to the controller.                
         /// </summary>
-        public void RequestMemoryCycle(int address, MemoryCycle cycleType)
+        /// <remarks>
+        /// We're in no-man's land at the bottom of the CPU cycle, but the controller
+        /// will have stalled the processor until the correct time.  So this request
+        /// should be recognized at the next Tick().
+        /// </remarks>
+        public void RequestMemoryCycle(MemoryCycle cycleType, int address)
         {
-            Log.Debug(Category.Memory, "Requested {0} in T{1} addr={2:x6}",
-                                        cycleType, _Tstate, address);
-
-            //
-            // Queue up the request.  We're in no-man's land at the bottom of the CPU cycle,
-            // but the queue controller will have stalled the processor until the correct
-            // time, which will start at the next Tick().  In some cases (buggy microcode)
-            // the hardware would actually ignore memory references; we don't do that here,
-            // but read all the gory details in the comments at the end of MemoryController.cs.
-            //
-            if (IsFetch(cycleType))
-            {
-                _mdiQueue.Request(address, cycleType);
-            }
-            else
-            {
-                _mdoQueue.Request(address, cycleType);
-            }
+            _controller.Request(cycleType, address);
         }
 
         /// <summary>
-        /// Fetches one quadword from memory (immediate).
+        /// Fetch one quadword from memory (immediate).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ulong FetchQuad(int address)
         {
-            // Fast and furious: does not clip or bounds check!
-            // Change in v0.9.2: wrap using the quad mask; ICL ConWTest torture
-            // tests the display and cursor addressing, found a corner case. :-(
+            return _memory.Quads[address & _quadSizeMask];
+        }
+
+        /// <summary>
+        /// Fetch one quadword from memory, byte swapped.  For fast video and
+        /// Canon printer access to the frame buffer.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ulong FetchQuadSwapped(int address)
+        {
             ulong data = _memory.Quads[address & _quadSizeMask];
 
-            // Buuuuut... to be useful, it has to be byte swapped.
+            // To be useful for video access, the data has to be byte swapped.
             // Welp, there goes our salvage, guys.
             return ((data << 8) & 0xff00ff00ff00ff00) | ((data >> 8) & 0x00ff00ff00ff00ff);
         }
 
         /// <summary>
-        /// Fetches one word from memory (immediate).
+        /// Fetch one word from memory (immediate).  For DMA access.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ushort FetchWord(int address)
         {
-            // Clip address to memsize range and read
             ushort data = _memory.Words[address & _memSizeMask];
 
             Log.Detail(Category.Memory, "Fetch addr {0:x6} --> {1:x4}",
@@ -286,7 +255,7 @@ namespace PERQemu.Memory
         }
 
         /// <summary>
-        /// Stores one word into memory (immediate).
+        /// Store one word into memory (immediate).  For DMA access.
         /// </summary>
         /// <remarks>
         /// In the Accent kernel init microcode, there is a note in the memory
@@ -302,22 +271,7 @@ namespace PERQemu.Memory
             Log.Detail(Category.Memory, "Store addr {0:x6} <-- {1:x4}",
                                          address & _memSizeMask, data);
 
-            // Clip address to memsize range and write
             _memory.Words[address & _memSizeMask] = data;
-        }
-
-        /// <summary>
-        /// Return true if the memory request type is a Fetch.
-        /// </summary>
-        /// <remarks>
-        /// The SF encodings are very specific: the hardware/firmware uses the
-        /// fact that all Fetch types are even-numbered, Stores types are odd.
-        /// In case you were wondering.
-        /// </remarks>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool IsFetch(MemoryCycle c)
-        {
-            return (((int)c & 0x1) == 0);
         }
 
         /// <summary>
@@ -397,29 +351,26 @@ namespace PERQemu.Memory
         }
 
         //[Conditional("DEBUG")]
-        public void DumpQueues()
+        public void DumpMemState()
         {
             if (_parityErrorAddress != NoError)
             {
                 Console.WriteLine($"[Memory parity error at 0x{0:x6}!]", _parityErrorAddress);
             }
 
-            _mdiQueue.DumpQueue();
-            _mdoQueue.DumpQueue();
+            _controller.DumpState();
         }
 
 
         const int NoError = 0x01000000;         // Reads back as 0 if no parity error
+
+        Core _memory;
 
         int _memSize;
         int _memSizeMask;
         int _quadSizeMask;
 
         int _Tstate;
-        int _madr;
-        ushort _mdi;
-        bool _wait;
-        bool _hold;
 
         int _parityErrorAddress;
         bool _parityErrorOnNextWrite;
@@ -428,36 +379,8 @@ namespace PERQemu.Memory
 
         byte[] _handledPorts = { 0x66, 0x67 };  // Parity error regs
 
-        Core _memory;
-        MemoryController _mdiQueue;             // Queue for Fetch requests
-        MemoryController _mdoQueue;             // Queue for Store requests
-        VideoController _videoController;
+        MemoryController _controller;
 
         PERQSystem _system;
     }
 }
-
-/*
-    Notes:
-
-    All references here to MDI (Memory Data IN) and MDO (Memory Data OUT) are
-    from the CPU's point of view - the opposite of the Memory Board's (and the
-    hardware schematics') point of view!
-
-    Memory requests from the CPU/RasterOp unit are queued up according to
-    some elaborate timing rules.  Because there are several scenarios where
-    requests may overlap, fetches and stores are queued up in separate FIFOs.
-    (This is for emulation only; the hardware doesn't do it that way.)
-
-    Currently the IO / DMA subsystem cheats and performs its memory accesses
-    directly, but it could at some point be integrated -- allowing us to more
-    accurately emulate the real PERQ which must give up processor cycles for
-    DMA. Thus, the "Hold" field of the microinstruction is basically ignored.
-
-    Update for v0.9.2: To handle forced parity errors (used by extended diags)
-    MemoryBoard now implements IIODevice and handles the parity error address
-    registers directly.  For efficiency, the VideoController still maps the
-    control port, but calls IOWrite here if the "ForceBadParity" bit is set.
-    The next Store latches the error address; a Fetch from that address then
-    triggers a parity interrupt.  Reading the error registers clears both.
-*/

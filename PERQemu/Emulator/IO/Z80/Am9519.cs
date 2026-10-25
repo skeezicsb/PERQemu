@@ -1,5 +1,5 @@
 ﻿//
-// Am9519.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Am9519.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -396,7 +396,7 @@ namespace PERQemu.IO.Z80
                         SetModeBits(0xe0, (byte)(value & 0x1f));
 #if DEBUG
                         if (_mode.HasFlag(ModeBits.RotatePriority))
-                            Log.Debug(Category.Z80IRQ, "Rotating priority not implemented");
+                            Log.Warn(Category.Z80IRQ, "Rotating priority not implemented");
 #endif                  
                         Log.Debug(Category.Z80IRQ, "Loaded mode register (lo): {0}", _mode);
                         break;

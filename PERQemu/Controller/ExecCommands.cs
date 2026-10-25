@@ -47,7 +47,7 @@ namespace PERQemu
             PERQemu.Sys.IOB.Z80System.ShowThreadStatus();
             PERQemu.Sys.Display.Status();
             PERQemu.Sys.HID.Status();
-            PERQemu.Sys.VideoController.Status();
+            PERQemu.Sys.Video.Status();
             PERQemu.GUI.Audio.Status();
         }
 

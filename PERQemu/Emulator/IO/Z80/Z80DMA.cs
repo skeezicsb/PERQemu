@@ -564,7 +564,7 @@ namespace PERQemu.IO.Z80
 
                 // RR1..2 return byte counter high byte, then low
                 if (_statusMask.HasFlag(ReadMask.ByteCountHigh))
-                    _statusData.Enqueue((byte)((_byteCounter & 0xff00) >> 8));
+                    _statusData.Enqueue((byte)(_byteCounter >> 8));
 
                 if (_statusMask.HasFlag(ReadMask.ByteCountLow))
                     _statusData.Enqueue((byte)_byteCounter);
@@ -574,13 +574,13 @@ namespace PERQemu.IO.Z80
                     _statusData.Enqueue((byte)_portAddressA);
 
                 if (_statusMask.HasFlag(ReadMask.PortAddrAHigh))
-                    _statusData.Enqueue((byte)((_portAddressA & 0xff00) >> 8));
+                    _statusData.Enqueue((byte)(_portAddressA >> 8));
 
                 if (_statusMask.HasFlag(ReadMask.PortAddrBLow))
                     _statusData.Enqueue((byte)_portAddressB);
 
                 if (_statusMask.HasFlag(ReadMask.PortAddrBHigh))
-                    _statusData.Enqueue((byte)((_portAddressB & 0xff00) >> 8));
+                    _statusData.Enqueue((byte)(_portAddressB >> 8));
             }
             else
             {

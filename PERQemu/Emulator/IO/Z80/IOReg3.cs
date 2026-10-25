@@ -1,5 +1,5 @@
 //
-// IOReg3.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// IOReg3.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -64,7 +64,7 @@ namespace PERQemu.IO.Z80
             //  D.SIOB EQU     5 * 40Q; DMA TO SIO CHANNEL B
             //  D.GPIB EQU     6 * 40Q; DMA TO GPIB
             //
-            _dmaRouter.SelectDMADevice((SelectedDMADevice)((value & 0xe0) >> 5));
+            _dmaRouter.SelectDMADevice((SelectedDMADevice)((value >> 5) & 0x07));
 
             //
             // Dole out Interrupt enables.  From v87.z80:
