@@ -139,7 +139,9 @@ namespace PERQemu.Memory
             _bufIndex = StartAddress & 0x3;
             _baseAddress = StartAddress & 0xfffffc;
 
-            _flags = BookmarkTable.Lookup(Bookmark, NextState, _mem.TState);
+            // Small optimization? Nothing accesses flags between Start and Update
+            // so it's a wasted lookup... 
+            //_flags = BookmarkTable.Lookup(Bookmark, NextState, _mem.TState);
 
             Active = true;
             Ready = false;
@@ -153,8 +155,8 @@ namespace PERQemu.Memory
         {
             _buf.Quads[0] = _mem.FetchQuad(_baseAddress >> 2);
 
-            Log.Debug(Category.Memory, "Load Fetch buffer: addr {0:x6} (base {1:x6}) --> {2:x16}",
-                                        StartAddress, _baseAddress, _buf.Quads[0]);
+            Log.Debug(Category.MemCycle, "Load Fetch buffer: addr {0:x6} (base {1:x6}) --> {2:x16}",
+                                          StartAddress, _baseAddress, _buf.Quads[0]);
         }
 
         /// <summary>
@@ -191,8 +193,8 @@ namespace PERQemu.Memory
             }
 
             // Dubious... the individual stores get reported
-            Log.Debug(Category.Memory, "Commit Store buffer: addr {0:x6} (base {1:x6}) <-- {2:x16}",
-                                        StartAddress, _baseAddress, _buf.Quads[0]);
+            Log.Debug(Category.MemCycle, "Commit Store buffer: addr {0:x6} (base {1:x6}) <-- {2:x16}",
+                                          StartAddress, _baseAddress, _buf.Quads[0]);
         }
 
         /// <summary>
@@ -203,7 +205,7 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Update()
         {
-            Log.Debug(Category.MemCycle, "Update  IN: {0} {1}", _mem.TState, this, _flags);
+            Log.Debug(Category.MemCycle, "Update  IN: {0}", this);
 
             // Bump the state
             State = NextState;
@@ -218,7 +220,9 @@ namespace PERQemu.Memory
                 _bufIndex = _flags.Index;
 
                 // Adjust for high/low half of the quad
-                if (Bookmark == BookmarkType.Fetch2 || Bookmark == BookmarkType.Store2)
+                if (Bookmark == BookmarkType.Fetch2 || 
+                    Bookmark == BookmarkType.IndFetch2 ||
+                    Bookmark == BookmarkType.Store2)
                 {
                     _bufIndex = _flags.Index + (StartAddress & 0x2);
                 }
@@ -229,7 +233,7 @@ namespace PERQemu.Memory
             // Load the buffer if it's time
             if (_flags.Load) LoadBuffer();
 
-            Log.Debug(Category.MemCycle, "Update OUT: {0} {1}", _mem.TState, this, _flags);
+            Log.Debug(Category.MemCycle, "Update OUT: {0}", this);
         }
 
 

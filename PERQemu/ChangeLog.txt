@@ -7,6 +7,11 @@ Previous notes moved to ChangeLog-Old.txt.
 
 October, 2026:
 
+    3. Or, and hear me out on this, maybe I actually look at the results from my
+    own damn memory test microcode and notice the teeny tiny bug that affects
+    indirect Fetch2 ops and now PNX runs again.  Except not PNX 5, because of
+    course not that.
+
     2. Screw it.  Bump to v0.9.6 and push the updated memory stuff so that I can
     start working backwards to make it LESS ACCURATE, because I never seem to
     learn this stupid lesson:  WRITE CRAPPIER CODE, GET BETTER RESULTS.  Because
@@ -199,4 +204,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Sun Oct 25 00:20:50 PDT 2026
+Last update: skeezics    Sun Oct 25 13:58:56 PDT 20266

@@ -38,7 +38,6 @@ namespace PERQemu.Memory
     /// </summary>
     public sealed class MemoryController
     {
-
         public MemoryController(MemoryBoard mem)
         {
             _mem = mem;
@@ -72,9 +71,6 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Clock(MemoryCycle nextCycle)
         {
-            // Get verbose for debuggerin
-            if (Log.Level < Severity.Info) DumpState();
-
             Retire();
             Recognize();
             RunStateMachine(nextCycle);
@@ -84,6 +80,7 @@ namespace PERQemu.Memory
         /// Accept a new request into the fetch or store pipeline.  Pass in the
         /// next bookmark value.
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Request(MemoryCycle cycleType, int startAddr)
         {
             if (IsFetch(cycleType))
@@ -138,7 +135,7 @@ namespace PERQemu.Memory
         {
             if (_fetch.Complete)
             {
-                Log.Debug(Category.MemCycle, "Retired {0}", _fetch);
+                Log.Debug(Category.MemCycle, "Retired {0}", _fetch.CycleType);
                 _fetch.Clear();
             }
 
@@ -148,7 +145,7 @@ namespace PERQemu.Memory
                 _store.Commit();
 
                 // Log it and clear it
-                Log.Debug(Category.MemCycle, "Retired {0}", _store);
+                Log.Debug(Category.MemCycle, "Retired {0}", _store.CycleType);
                 _store.Clear();
             }
         }
@@ -188,8 +185,9 @@ namespace PERQemu.Memory
                             _nextBookmark = (_fetch.CycleType == MemoryCycle.Fetch4 ? BookmarkType.RopStore4 :
                                                                                       BookmarkType.RopStore4R);
 
-                            Log.Info(Category.MemCycle, "OVERLAPPED {0} in T3: active={1} state={2} rop={3} switch={4}",
-                                                        nextCycle, _store.Bookmark, _store.State, _mem.RopEnabled, _nextBookmark);
+                            Log.Debug(Category.MemCycle,
+                                     "OVERLAPPED {0}: active={1} state={2} rop={3} switch={4}",
+                                      nextCycle, _store.Bookmark, _store.State, _mem.RopEnabled, _nextBookmark);
 
                             // Recognize immediately, don't stall the running fetch
                             _store.Ready = true;
@@ -232,8 +230,9 @@ namespace PERQemu.Memory
                                     // Oh yes, I have done this.  Deal with it. ;-P
                                     var book = (int)_fetch.Bookmark / 2;
 
-                                    Log.Info(Category.MemCycle, "OVERLAPPED {0} in T3: active={1} state={2} rop={3} switch={4}",
-                                                                 nextCycle, _fetch.Bookmark, _fetch.State, _mem.RopEnabled, book);
+                                    Log.Debug(Category.MemCycle,
+                                             "OVERLAPPED {0}: active={1} state={2} rop={3} switch={4}",
+                                              nextCycle, _fetch.Bookmark, _fetch.State, _mem.RopEnabled, book);
 
                                     // If RasterOp is NOT enabled and a quad fetch is active,
                                     // we must let it complete (blow a rev and wait); otherwise

@@ -150,7 +150,8 @@ namespace PERQemu.Memory
             // Bump cycle counter
             _Tstate = (_Tstate + 1) & 0x3;
 
-            Log.Detail(Category.Memory, "Tick! T{0} cycle={1}", _Tstate, cycleType);
+            Log.Detail(Category.Memory, "T{0} Tick! {1}", _Tstate,
+                       (cycleType != MemoryCycle.None ? $"Cycle={cycleType}" : ""));
 
             _controller.Clock(cycleType);
 
@@ -176,7 +177,7 @@ namespace PERQemu.Memory
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Tock(ushort data)
         {
-            Log.Detail(Category.Memory, "Tock! T{0} Data={1:x4}", _Tstate, data);
+            Log.Detail(Category.Memory, "T{0} Tock! Data={1:x4}", _Tstate, data);
 
             // Store to the MDO buffers
             _controller.MDO.Data = data;
