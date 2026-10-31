@@ -328,12 +328,12 @@ namespace PERQemu.Memory
         public void DumpState()
         {
             Console.WriteLine($"Controller: T{_mem.TState} wait={_wait}");
-            Console.WriteLine($"Fetch:   {_fetch}");
-            Console.WriteLine($"Flags:   {_fetch.Flags}");
+            Console.WriteLine($"Fetch:\t{_fetch}");
+            Console.WriteLine($"\t{_fetch.Flags}");
             if (_fetch.Ready) Console.WriteLine($"Pending: {_fetch.Pending()}");
 
-            Console.WriteLine($"Store:   {_store}");
-            Console.WriteLine($"Flags:   {_store.Flags}");
+            Console.WriteLine($"Store:\t{_store}");
+            Console.WriteLine($"\t{_store.Flags}");
             if (_store.Ready) Console.WriteLine($"Pending: {_store.Pending()}");
         }
 

@@ -40,8 +40,7 @@ namespace PERQemu.Memory
             _mem = mem;
 
             // Local quad word buffer
-            _buf = new Core();
-            _buf.Words = new ushort[4];
+            _buf = new Core { Words = new ushort[4] };
 
             _flags = new BookmarkEntry();
         }
@@ -138,10 +137,6 @@ namespace PERQemu.Memory
 
             _bufIndex = StartAddress & 0x3;
             _baseAddress = StartAddress & 0xfffffc;
-
-            // Small optimization? Nothing accesses flags between Start and Update
-            // so it's a wasted lookup... 
-            //_flags = BookmarkTable.Lookup(Bookmark, NextState, _mem.TState);
 
             Active = true;
             Ready = false;

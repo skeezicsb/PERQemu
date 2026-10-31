@@ -125,7 +125,11 @@ From the POS Programming Examples:
 It seems a little dubious to try to faithfully emulate the video functions that
 are described as "broken" by the machine's creators. :-)  The four that are
 most commonly used work as advertised; the others may not look exactly right
-until I've verified them on the actual hardware.
+until I've verified them on the actual hardware.  However, refactoring of the
+memory and video controllers in v0.9.5+, PERQemu can now run the comprehensive
+hardware diagnostics to completion -- but it's not clear that it matches the
+visual experience that ConWTest produces on the hardware.  So I should look into
+making the weird ones look right, too!
 
 
 Moving to SDL2
@@ -189,8 +193,8 @@ This part of the loop runs on the CPU thread so it has to be minimal impact.
 
 On the SDL2 thread, the 8bpp buffer is expanded to 32bpp and copied to the GPU
 texture required to render it on the screen.  This yields around 10-12fps in
-performance compared to the old way, and after trying 147,635 other approaches
-I'm tired of screwing around with it.  Good enough.  Moving on.
+better performance compared to the old way, and after trying 147,635 other
+approaches I'm tired of screwing around with it.  Good enough.  Moving on.
 
 
 Video Controller State Machine
@@ -220,10 +224,10 @@ and the Pascal/IO microcode takes over to set up the frame buffer and use the
 screen.  Since everything in PERQemu is rendered through a 32 bit frame buffer
 anyway, we might as well add some visual sugar -- so as of v0.6.7, PERQemu
 simulates that retrace graphically, with some "fade in" as the phosphor warms
-up at power on.  Works a treat on Mac/Windows to really make the experience
-that much more realistic. :-)  (In a crappy VirtualBox Linux VM I'm not seeing
-the full effect, and if people find it annoying I may add an option to turn it
-off.  Party poopers.)
+up at power on.  While a fairly simplistic implementation, the animation makes
+the experience that much more realistic.  Of course, I'll have to rewrite it as
+a GPU shader eventually, and incorporate the other nifty CRT emulation tricks
+the cool kids are using in their emulators these days.
 
 Meanwhile, the Idle state transitions when the EnableVideo bit is set; at this
 point the first band should be programmed into the LineCount register and a
@@ -233,6 +237,34 @@ interrupt by reprogramming the LineCounter, then sets the flags to display
 another visual field OR enables the transition to VBlank.  Note that even in
 VBlank bands we let the HBlank state manage the line counter so that it's only
 done in ONE place.
+
+
+Further Evolution of the State Machine
+--------------------------------------
+
+In v0.9.6+, a close reading of the VSTA00 ROM and another dive into the hardware
+schematics has turned the whole line counter/state machine on its head.  The ICL
+ConWTest (extensive memory board diagnostic microcode) runs many of its tests
+without actually programming the line counter -- but when it comes to checking
+for parity errors, expects that the LineCounter interrupt is still regularly
+firing.  Why?  Because it seems there is no "idle" state; the horizontal timing
+runs constantly, and the line counter (a cascaded pair of 74S197 4-bit counters,
+with bit 8 pulled up) just keeps running.  The interrupt line is gated by an
+enable bit in the video control register (which affects memory parity interrupts
+too).  So the hardware counts up to 128 lines, then asserts the interrupt.  If
+you ignore or disable it and don't reprogram the line count register, 128 HBlank
+cycles later the counter wraps back to zero, the interrupt is unconditionally
+deasserted, and the process repeats.
+
+The signal that clocks the line counter _also_ gates the update of the vertical
+state and map (cursor function) signals, which means they only update at the end
+of a line.  This hasn't been a problem, since we only run our state machine at
+fixed intervals, achieving the same effect (if by accident rather than design!).
+
+So the Idle state is now essentially irrelevant after startup; once the video
+state machine is kickstarted by the microcode, it simply runs until the next
+system reset.
+
 
 For a small measure of efficiency, the UpdateSignals() method is now called to
 update the current "CRT signals" when they're needed, rather than only on state

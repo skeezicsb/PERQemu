@@ -7,6 +7,17 @@ Previous notes moved to ChangeLog-Old.txt.
 
 October, 2026:
 
+    4. Found the source to ConWTest.micro, part of ICL's comprehensive hardware
+    diagnostics suite.  Fixed some obvious and egregious bugs and sloppy coding,
+    then updated the memory controller to handle all the wacky parity error
+    reporting formats.  ConWTest also pointed out some more subtle issues in the
+    video controller's implementation -- because of course they went to great
+    lengths to abuse the programming specs -- so I reworked the handling of the
+    hardware's video line counter.  Now, on a T2 with a landscape display, the
+    bootable version of ConWTest runs to completion with no errors.  So far, all
+    of the OSes tested (POS D, F and G, Accent S4 and S6, PNX 1 & 2) run fine
+    with all the changes.  And PNX 5?  I'll give you three guesses.
+
     3. Or, and hear me out on this, maybe I actually look at the results from my
     own damn memory test microcode and notice the teeny tiny bug that affects
     indirect Fetch2 ops and now PNX runs again.  Except not PNX 5, because of
@@ -204,4 +215,4 @@ January, 2026:
 
 
 ---
-Last update: skeezics    Sun Oct 25 13:58:56 PDT 20266
+Last update: skeezics    Sat Oct 31 00:04:37 PDT 2026

@@ -73,6 +73,9 @@ namespace PERQemu.Memory
             _displayQuads = _displayWidth / 64;
             _displayBytes = _displayWidth / 8;
 
+            _needParityAddr = _system.Memory.Layout == BoardType.ICLLayout ||
+                              _system.Memory.Layout == BoardType.Old1Meg;
+
             // One scanline
             _scanlineData = new ScanLineBuffer { Bytes = new byte[_displayBytes] };
 
@@ -83,7 +86,7 @@ namespace PERQemu.Memory
         public void Reset()
         {
             _state = VideoState.Idle;
-            _videoStatus = StatusRegister.DisableMicroInterrupt;
+            _videoControl = ControlRegister.DisableMicroInterrupt;
             _crtSignals = _crtType;
             _displayAddress = 0;
             _cursorAddress = 0;
@@ -93,9 +96,9 @@ namespace PERQemu.Memory
             _scanLine = 0;
             _lineCounter = 0;
             _lineCounterInit = 0;
-            _lineCountOverflow = false;
             _startOver = false;
-            _raised = false;
+
+            SetInterrupt(false);
 
             _system.Scheduler.Cancel(_currentEvent);
             _currentEvent = null;
@@ -103,14 +106,15 @@ namespace PERQemu.Memory
             Log.Debug(Category.Display, "Video controller reset");
         }
 
+        public void Shutdown()
+        {
+            // Nothing extra to do
+        }
+
         public int DisplayWidth => _displayWidth;
         public int DisplayHeight => _displayHeight;
 
-        bool InterruptEnabled => (_videoStatus & StatusRegister.DisableMicroInterrupt) == 0;
-        bool DisplayEnabled => (_videoStatus & StatusRegister.EnableDisplay) != 0;
-        bool CursorEnabled => (_videoStatus & StatusRegister.EnableCursor) != 0;
-        bool VSyncEnabled => (_videoStatus & StatusRegister.EnableVSync) != 0;
-        bool BadParity => (_videoStatus & StatusRegister.WriteBadParity) != 0;
+        #region IO Registers
 
         public bool HandlesPort(byte ioPort)
         {
@@ -148,15 +152,14 @@ namespace PERQemu.Memory
                     //  15:8    High byte is the "video control port", below
                     //     7    StartOver bit (not in hardware)
                     //   6:0    2's complement of N
-                    _lineCounterInit = 128 - (value & (int)StatusRegister.LineCountMask);
-                    _lineCounter = _lineCounterInit;
-                    _lineCountOverflow = false;
+                    _lineCounter = (value & (int)ControlRegister.LineCountMask);
+                    _lineCounterInit = 128 - _lineCounter;
 
                     // StartOver bit signals the end of the display list
-                    _startOver = (value & (int)StatusRegister.StartOver) != 0;
+                    _startOver = (value & (int)ControlRegister.StartOver) != 0;
 
                     // Deal with some special cases :-| See Docs/Video.txt for more info.
-                    if (VSyncEnabled && (_lineCounterInit == 40 || _lineCounterInit == 43))
+                    if (_vSyncEnabled && (_lineCounterInit == 40 || _lineCounterInit == 43))
                     {
                         // ** PNX 1 & 2 HACK part 1 **
                         // For some reason ICL does video a little differently:
@@ -168,7 +171,7 @@ namespace PERQemu.Memory
                         _startOver = true;
                     }
 
-                    if (_startOver && DisplayEnabled)
+                    if (_startOver && _displayEnabled)
                     {
                         // ** PNX 1 & 2 HACK part 2 **
                         // Clear the StartOver bit when the display is enabled.
@@ -215,7 +218,7 @@ namespace PERQemu.Memory
                         value = 0x8400;
                     }
 
-                    if ((value & 0x1f00) == 0 && VSyncEnabled)
+                    if ((value & 0x0f00) == 0 && _vSyncEnabled)
                     {
                         // ** PNX 3 & 5 HACK **
                         // Okay, ICL.  You ALMOST got it right: using two bands for
@@ -237,17 +240,20 @@ namespace PERQemu.Memory
                     //      8   Show cursor
                     //    7:0   Low byte is the Line Count, above
                     _cursorFunc = (CursorFunction)((value & 0xe000) >> 13);
-                    _videoStatus = (StatusRegister)(value & 0x1f00);
+                    _videoControl = (ControlRegister)(value & 0x1f00);
+
+                    _intEnabled = (_videoControl & ControlRegister.DisableMicroInterrupt) == 0;
+                    _displayEnabled = (_videoControl & ControlRegister.EnableDisplay) != 0;
+                    _cursorEnabled = (_videoControl & ControlRegister.EnableCursor) != 0;
+                    _vSyncEnabled = (_videoControl & ControlRegister.EnableVSync) != 0;
 
                     Log.Debug(Category.Display, "Video status port set to {0} (0x{1:x}) @ line {2}",
-                                                _videoStatus, value, _scanLine);
+                                                _videoControl, value, _scanLine);
 
-                    if (BadParity)
-                    {
-                        _system.Memory.IOWrite(0xe3, value);
-                    }
+                    // Update mem board if bits 11 or 12 changed
+                    _system.Memory.IOWrite(0xe3, value);
 
-                    if (CursorEnabled)
+                    if (_cursorEnabled)
                     {
                         _cursorY = 0;
                         Log.Debug(Category.Display, "Cursor Y enabled at line {0}", _scanLine);
@@ -258,7 +264,7 @@ namespace PERQemu.Memory
                     _currentEvent = null;
 
                     // Clear interrupt if the enable bit is turned off
-                    if (!InterruptEnabled)
+                    if (!_intEnabled)
                     {
                         SetInterrupt(false);
                     }
@@ -266,11 +272,11 @@ namespace PERQemu.Memory
                     // Check the enable conditions in order of priority; setting
                     // the vertical blanking state AND the display enable bit is
                     // technically wrong (but see the Accent hack above)
-                    if (VSyncEnabled)
+                    if (_vSyncEnabled)
                     {
                         _state = VideoState.VBlank;
                     }
-                    else if (DisplayEnabled || !InterruptEnabled)
+                    else if (_displayEnabled || !_intEnabled)
                     {
                         _state = VideoState.Active;
                     }
@@ -324,13 +330,13 @@ namespace PERQemu.Memory
         int UnFrobAddress(int value)
         {
             // Early PERQ-1 256K memory board
-            if (_system.Memory.MemSize < 0x40000)
+            if (_system.Memory.MemSize < Configurator.HALF_MEG)
             {
                 return (value << 1);
             }
 
             // Half-meg through two meg boards
-            if (_system.Memory.MemSize < 0x200000)
+            if (_system.Memory.MemSize <= Configurator.TWO_MEG)
             {
                 return (value << 4);
             }
@@ -338,6 +344,51 @@ namespace PERQemu.Memory
             // Rare 4MB board (T4)
             return (((value & 0xc) << 14) | (value & 0xfff0)) << 4;
         }
+
+        /// <summary>
+        /// Updates the "CRT signals" (status register).
+        /// </summary>
+        /// <remarks>
+        /// The LineCounterOverflow status bit is set independently of interrupt
+        /// status.  Once at zero it remains set until the line count register is
+        /// reset by an IOWrite.  Accent and PNX specifically check for this bit!
+        ///
+        /// Note: I think the LoopThru, HSync and VSync status bits are inverted,
+        /// but _none_ of the microcode sources I've checked ever seems to test
+        /// for them so we've been getting by... the Landscape bit (active low,
+        /// renamed here because it drove me crazy) is the only one explicitly
+        /// checked besides LineCountOverflow.
+        /// 
+        /// Well, crap.  Depending on board type, the high bit(s) of the last
+        /// address fetched are returned to ID the board and determine how the
+        /// parity error address is checked.  Ugh.
+        /// </remarks>
+        void UpdateSignals()
+        {
+            _crtSignals = _crtType |
+                (_lineCounter >= 128 ? CRTSignals.LineCounterOverflow : CRTSignals.None) |
+                (_vSyncEnabled ? CRTSignals.VerticalSync : CRTSignals.None) |
+                (_state == VideoState.HBlank ? CRTSignals.HorizontalSync : CRTSignals.None);
+
+            if (!_needParityAddr) return;
+
+            // Fiddle the bits according to board layout
+            if (_system.Memory.Layout == BoardType.ICLLayout)
+            {
+                // Map address bits 19:18 to 15:14, based on speculation.  No schematics. :(
+                _crtSignals |= (CRTSignals)((_system.Memory.LastAddress >> 4) & 0xc000);
+            }
+            else
+            {
+                // Address bit 18 -> 15 for old HalfMeg and Meg boards
+                // ConWTest.Micro also says: "Quirk: bit 18 is inverted"
+                _crtSignals |= ((_system.Memory.LastAddress & 0x40000) != 0 ? CRTSignals.None : CRTSignals.HiAddrBit1);
+            }
+        }
+
+        #endregion
+
+        #region State machine
 
         /// <summary>
         /// Runs the state machine on callbacks based on the video timing.
@@ -350,7 +401,7 @@ namespace PERQemu.Memory
 
                     // Backstop: if the video is switched off mid-frame we
                     // want to continue the refresh loop, so force the action.
-                    if (!InterruptEnabled)
+                    if (!_intEnabled)
                     {
                         _currentEvent = _system.Scheduler.Schedule(_hBlankTimeNsec, (skew, context) =>
                         {
@@ -389,25 +440,40 @@ namespace PERQemu.Memory
                         // ignores interrupts the emulator doesn't go bonkers.
                         if (_scanLine % DisplayHeight == 0)
                         {
-                            _system.Display.Refresh(InterruptEnabled);
+                            _system.Display.Refresh(_intEnabled);
                         }
 
-                        // Line counter: count down this "band" until it hits zero
-                        // and do end-of-band processing (raise interrupt if set,
-                        // then return to idle to wait for the microcode to set up
-                        // the next one.  Otherwise, return to Active or VBlank to
-                        // do the next line.
-                        if (_lineCounter > 0) _lineCounter--;
+                        // Line counter: the hardware counts UP until bit 8 is set,
+                        // which is why it's initialized with the 2's complement of
+                        // the desired band height.  EndOfBand is reached when we
+                        // roll over from 127 to 128; the LineCounter interrupt is
+                        // asserted automatically, and the hardware state machine
+                        // keeps on truckin'.  If ignored or disabled, the counter
+                        // wraps around at 255, which deasserts the interrupt and
+                        // essentially starts another 128-line band.  The ConWTest
+                        // memory board diagnostic microcode seems to rely on this,
+                        // because of course it does.
 
-                        if (_lineCounter == 0 && _lineCounterInit > 0)
+                        _lineCounter++;
+
+                        if (_lineCounter == 256)
                         {
+                            // 8-bit counter wraps to zero, interrupt deasserted!
+                            _lineCounter = 0;
+                            Log.Detail(Category.Display, "Line counter overflow cleared @ scanline {0}", _scanLine);
+
+                            SetInterrupt(false);
+                        }
+                        else if (_lineCounter == 128)
+                        {
+                            Log.Detail(Category.Display, "Line counter overflow @ scanline {0}", _scanLine);
                             _state = VideoState.EndOfBand;
                         }
-                        else if (VSyncEnabled)
+                        else if (_vSyncEnabled)
                         {
                             _state = VideoState.VBlank;
                         }
-                        else if (DisplayEnabled)
+                        else if (_displayEnabled)
                         {
                             _state = VideoState.Active;
                         }
@@ -428,11 +494,6 @@ namespace PERQemu.Memory
 
                 case VideoState.EndOfBand:
 
-                    // Flag will be reset when _lineCounterInit is reloaded
-                    _lineCountOverflow = true;
-
-                    Log.Debug(Category.Display, "Line counter overflow @ scanline {0}", _scanLine);
-
                     // Check the StartOver bit: at the end of the second vertical
                     // blanking band we're about to start a new frame, so reset the
                     // scan line counter before we return to idle.  The microcode
@@ -446,54 +507,33 @@ namespace PERQemu.Memory
                     SetInterrupt(true);
 
                     // Return to idle
-                    _state = VideoState.Idle;
+                    _state = VideoState.Active;
                     RunStateMachine();
                     break;
             }
         }
 
         /// <summary>
-        /// Set or clear the LineCount interrupt.  The hardwawre clears it when
+        /// Set or clear the LineCount interrupt.  The hardware clears it when
         /// the counter is loaded, or when disabled via the control register.
         /// </summary>
         void SetInterrupt(bool raise)
         {
-            raise &= InterruptEnabled;
+            raise &= _intEnabled;
 
-            if (raise && !_raised)
+            if (raise && !_intRaised)
             {
                 _system.CPU.RaiseInterrupt(InterruptSource.LineCounter);
-                _raised = true;
+                _intRaised = true;
             }
-            else if (!raise && _raised)
+            else if (!raise && _intRaised)
             {
                 _system.CPU.ClearInterrupt(InterruptSource.LineCounter);
-                _raised = false;
+                _intRaised = false;
             }
         }
 
-        /// <summary>
-        /// Updates the "CRT signals" (status register).
-        /// </summary>
-        /// <remarks>
-        /// The LineCounterOverflow status bit is set independently of interrupt
-        /// status.  Once at zero it remains set until the line count register is
-        /// reset by an IOWrite.  Accent and PNX specifically check for this bit!
-        ///
-        /// Note: I think the LoopThru, HSync and VSync status bits are inverted,
-        /// but _none_ of the microcode sources I've checked ever seems to test
-        /// for them so we've been getting by... the Landscape bit (active low,
-        /// renamed here because it drove me crazy) is the only one explicitly
-        /// checked besides LineCountOverflow.
-        /// </remarks>
-        void UpdateSignals()
-        {
-            _crtSignals = _crtType |
-                (_lineCountOverflow ? CRTSignals.LineCounterOverflow : CRTSignals.None) |
-                (VSyncEnabled ? CRTSignals.VerticalSync : CRTSignals.None) |
-                (_state == VideoState.HBlank ? CRTSignals.HorizontalSync : CRTSignals.None);
-        }
-
+        #endregion
 
         #region Rendering
 
@@ -505,7 +545,7 @@ namespace PERQemu.Memory
         public void RenderScanline(int renderLine)
         {
             // If interrupts are off, nothin' to do
-            if (!InterruptEnabled) return;
+            if (!_intEnabled) return;
 
             // Set the start of this scanline, offset from start of display (by quads)
             int dispAddress = (_displayAddress >> 2) + (renderLine * _displayQuads);
@@ -517,7 +557,7 @@ namespace PERQemu.Memory
             }
 
             // Now overlay the cursor bytes if enabled
-            if (CursorEnabled)
+            if (_cursorEnabled)
             {
                 // Calc the starting address of this line of cursor data,
                 // fetch the quad and break it into 8 bytes for easy mixin'
@@ -626,24 +666,31 @@ namespace PERQemu.Memory
 
         #endregion Rendering
 
-
-        public void Shutdown()
-        {
-            // Nothing extra to do
-        }
-
         public void Status()
         {
             UpdateSignals();
 
             Console.WriteLine("Video status:");
             Console.WriteLine("  Init={0}, count={1}, overflow={2}, scanline={3}, startOver={4}",
-                              _lineCounterInit, _lineCounter, _lineCountOverflow, _scanLine, _startOver);
-            Console.WriteLine("  Screen @ 0x{0:x}, cursor @ 0x{1:x}, intrEnabled={2}",
-                              _displayAddress, _cursorAddress, InterruptEnabled);
+                              _lineCounterInit, _lineCounter, (_lineCounter >= 128), _scanLine, _startOver);
+            Console.WriteLine("  Screen @ 0x{0:x}, cursor @ 0x{1:x}, func={2}, IRQ enabled={3}, raised={4}",
+                              _displayAddress, _cursorAddress, _cursorFunc, _intEnabled, _intRaised);
             Console.WriteLine("  State={0}, crt={1}", _state, _crtSignals);
         }
 
+
+        [Flags]
+        enum ControlRegister
+        {
+            None = 0x0,
+            LineCountMask = 0x7f,       // 7 bits = 1..128 lines in the band
+            StartOver = 0x80,           // High bit signals end of frame
+            EnableCursor = 0x100,
+            EnableVSync = 0x200,
+            EnableDisplay = 0x400,
+            DisableMicroInterrupt = 0x800,
+            WriteBadParity = 0x1000
+        }
 
         [Flags]
         enum CRTSignals
@@ -656,20 +703,9 @@ namespace PERQemu.Memory
             LineCounterOverflow = 0x10, // LINE CNT OVERFLOW L
             Unused1 = 0x20,
             Unused2 = 0x40,
-            PortraitDisplay = 0x80      // LAND H
-        }
-
-        [Flags]
-        enum StatusRegister
-        {
-            None = 0x0,
-            LineCountMask = 0x7f,       // 7 bits = 1..128 lines in the band
-            StartOver = 0x80,           // High bit signals end of frame
-            EnableCursor = 0x100,
-            EnableVSync = 0x200,
-            EnableDisplay = 0x400,
-            DisableMicroInterrupt = 0x800,
-            WriteBadParity = 0x1000
+            PortraitDisplay = 0x80,     // LAND H
+            HiAddrBit0 = 0x4000,        // Bit 18 on "ICL Layout" board
+            HiAddrBit1 = 0x8000         // Bit 18 on "Old 1Meg" boards
         }
 
         enum VideoState
@@ -718,18 +754,31 @@ namespace PERQemu.Memory
         const int _displayHeight = 1024;
         int _displayWidth;
 
-        // Trade a little space for speed
+        // Use a bonch of locals to trade a little space for speed:
+
+        // Display
         int _displayQuads;
         int _displayBytes;
-
-        ScanLineBuffer _scanlineData;
-        byte[] _cursorData;
+        bool _displayEnabled;
 
         int _scanLine;
+        ScanLineBuffer _scanlineData;
+
+        // Cursor
+        CursorFunction _cursorFunc;
+        byte[] _cursorData;
+        bool _cursorEnabled;
+
+        // Line counter and interrupt state
         int _lineCounterInit;
-        bool _lineCountOverflow;
+
+        bool _intEnabled;
+        bool _intRaised;
+
+        // Other control bits
         bool _startOver;
-        bool _raised;
+        bool _vSyncEnabled;
+        bool _needParityAddr;
 
         // IO registers
         int _lineCounter;
@@ -738,13 +787,13 @@ namespace PERQemu.Memory
         int _cursorX;
         int _cursorY;
 
+        CRTSignals _crtType;
+        CRTSignals _crtSignals;
+        ControlRegister _videoControl;
+
+        // Plumbing
         VideoState _state;
         SchedulerEvent _currentEvent;
-
-        CursorFunction _cursorFunc;
-        CRTSignals _crtSignals;
-        CRTSignals _crtType;
-        StatusRegister _videoStatus;
 
         PERQSystem _system;
     }

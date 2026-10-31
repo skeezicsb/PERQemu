@@ -1,5 +1,5 @@
 //
-// CPU.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// CPU.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -144,7 +144,7 @@ namespace PERQemu.Processor
             // cheat and skip over aborts, as RasterOp depends on T-state
             // cycling through each word during overlapped fetch/stores.
             //
-            if (_ustore.Hold || _memory.Wait || (uOp.WantMDI && !_memory.MDIValid))
+            if (_memory.Wait || (uOp.WantMDI && !_memory.MDIValid) || _ustore.Hold)
             {
                 // Waiting for the next T3 or T2 cycle to come around on the guitar
                 Log.Detail(Category.Memory,
@@ -188,7 +188,7 @@ namespace PERQemu.Processor
             }
 
             // Latch the ALU result and flags from the last micro-op before we
-            // do this instruction's op, to test for conditional jumps later.
+            // do this instruction's op, to test for conditional jumps later
             _alu.LatchResult();
 
             //
@@ -201,7 +201,7 @@ namespace PERQemu.Processor
             int amux = GetAmuxInput(uOp);
 
             // If the hardware multiply unit is enabled, pass the MQ register
-            // to the ALU (where it may be modified); otherwise, run a normal op.
+            // to the ALU (where it may be modified); otherwise, run a normal op
             if (_mqEnabled)
             {
                 _alu.Execute(uOp.ALU, amux, bmux, _rasterOp.MulDivInst, _mq);
@@ -227,14 +227,15 @@ namespace PERQemu.Processor
             // supercede the ALU; otherwise write the last ALU result
             if (_memory.MDONeeded)
             {
-                if (_rasterOp.ResultReady)
+                ushort data = (_rasterOp.ResultReady ? _rasterOp.Result() : _alu.R.Lo);
+#if DEBUG
+                // Watched address?
+                if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MDOAddress))
                 {
-                    _memory.Tock(_rasterOp.Result());
+                    _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MDOAddress, data);
                 }
-                else
-                {
-                    _memory.Tock(_alu.R.Lo);
-                }
+#endif
+                _memory.Tock(data);
             }
 
             // Execute whatever function this op calls for
@@ -408,9 +409,7 @@ namespace PERQemu.Processor
             // Log it if it wasn't already set
             if (_interrupt.Raise(i) == 0)
             {
-                // Cut down on the spewage for debugging
-                Log.Write(i == InterruptSource.LineCounter ? Severity.Detail : Severity.Debug,
-                          Category.Interrupt, "{0} raised, active now {1}", i, _interrupt.Flag);
+                Log.Debug(Category.Interrupt, "{0} raised, active now {1}", i, _interrupt.Flag);
 
                 // Check for, fire if breakpoint set
                 if (_system.Debugger.WatchedInterrupts.IsWatched((int)i))
@@ -433,8 +432,7 @@ namespace PERQemu.Processor
             if (_interrupt.Clear(i) != 0)
             {
                 // Cut down on the spewage for debugging               
-                Log.Write(i == InterruptSource.LineCounter ? Severity.Detail : Severity.Debug,
-                          Category.Interrupt, "{0} cleared, active now {1}", i, _interrupt.Flag);
+                Log.Debug(Category.Interrupt, "{0} cleared, active now {1}", i, _interrupt.Flag);
 
                 // Check for, fire if breakpoint set
                 if (_system.Debugger.WatchedInterrupts.IsWatched((int)i))
@@ -489,7 +487,7 @@ namespace PERQemu.Processor
         [Debuggable("shift", "Most recent shifter result")]
         public ushort Shift
         {
-            get { return _shifter.ShifterOutput; }
+            get { return _shifter.Output; }
         }
 
         /// <summary>
@@ -518,7 +516,7 @@ namespace PERQemu.Processor
             {
                 case AField.Shifter:
                     _shifter.Shift(_alu.OldR.Lo);    // Shifter takes 16 bits of R
-                    amux = _shifter.ShifterOutput;
+                    amux = _shifter.Output;
                     break;
 
                 case AField.NextOp:
@@ -568,24 +566,10 @@ namespace PERQemu.Processor
 
                 case AField.MDI:
                     amux = _memory.MDIWord;
-#if DEBUG
-                    // Watched address?
-                    if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MDIAddress))
-                    {
-                        _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MDIAddress, amux);
-                    }
-#endif
                     break;
 
                 case AField.MDX:
                     amux = (_memory.MDIWord << 16) & CPUBoard.CPUMask;
-#if DEBUG
-                    // Watched address?
-                    if (_system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MDIAddress))
-                    {
-                        _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MDIAddress, amux);
-                    }
-#endif
                     break;
 
                 case AField.UState:
@@ -603,6 +587,14 @@ namespace PERQemu.Processor
                 default:
                     throw new UnimplementedInstructionException($"Unimplemented AMUX {uOp.A}");
             }
+
+#if DEBUG
+            // Watched address?
+            if (uOp.WantMDI && _system.Debugger.WatchedMemoryAddress.IsWatched(_memory.MDIAddress))
+            {
+                _break |= _system.Debugger.WatchedMemoryAddress.BreakpointReached(_memory.MDIAddress, amux);
+            }
+#endif
 
             return amux;
         }
@@ -645,7 +637,7 @@ namespace PERQemu.Processor
                     if (uOp.F == 0x2)
                     {
                         Log.Debug(Category.Shifter, "ShiftOnZ");
-                        _shifter.SetShifterCommand(uOp.Z);
+                        _shifter.SetCommand(uOp.Z);
                     }
 
                     switch (uOp.SF)
@@ -658,7 +650,7 @@ namespace PERQemu.Processor
                             if (uOp.F == 0)
                             {
                                 Log.Debug(Category.Shifter, "ShiftOnR");
-                                _shifter.SetShifterCommand(~(_alu.R.Value));
+                                _shifter.SetCommand(~(_alu.R.Value));
                             }
                             break;
 
@@ -686,7 +678,7 @@ namespace PERQemu.Processor
                         case 0x7:   // SrcRasterOp := (R)
                             _rasterOp.SrcRasterOp(_alu.R.Lo);
 
-                            // Check for poweroff bit and stop emulation if we're a PERQ-1.
+                            // Check for poweroff bit and stop emulation if we're a PERQ-1
                             if ((_alu.R.Lo & 0x80) == 0 && _system.Config.Chassis == ChassisType.PERQ1)
                             {
                                 _break = true;
@@ -713,7 +705,7 @@ namespace PERQemu.Processor
                                 {
                                     if (_mqEnabled)
                                     {
-                                        Log.Debug(Category.MulDiv, "Unit disabled\n");  // DEBUG
+                                        Log.Debug(Category.MulDiv, "Disabled");
                                         _mqEnabled = false;
                                     }
                                 }
@@ -724,9 +716,9 @@ namespace PERQemu.Processor
                                     // THIS IS TOTALLY WRONG  THE MICROCODE SETS THE SHIFTER COMMAND
                                     // TO ROTATE LEFT OR RIGHT AND OVERRIDING IT HERE IS BOGUS  but it works
                                     if (_rasterOp.MulDivInst == MulDivCommand.UnsignedDivide)
-                                        _shifter.SetShifterCommand(ShifterCommand.LeftShift, 1, 0);
+                                        _shifter.SetCommand(ShifterCommand.LeftShift, 1, 0);
                                     else
-                                        _shifter.SetShifterCommand(ShifterCommand.RightShift, 1, 0);
+                                        _shifter.SetCommand(ShifterCommand.RightShift, 1, 0);
 
                                     _mqEnabled = true;
                                 }
@@ -936,7 +928,7 @@ namespace PERQemu.Processor
                                     _estack.Push(uOp.LongConstant);
                                     break;
 
-                                case 0x6:   // Address input (MA) := Shift
+                                case 0x6:   // Address input (NIA) := Shift
                                     _shifter.Shift(_alu.OldR.Lo);
                                     //
                                     // We hack in the NIA value into the decoded (cached) Instruction's
@@ -944,7 +936,7 @@ namespace PERQemu.Processor
                                     // value is never normally used for this type of instruction.  The
                                     // shifter provides 12- or 14-bits of address depending on CPU type.
                                     //
-                                    uOp.NextAddress = _shifter.ShifterOutput;
+                                    uOp.NextAddress = _shifter.Output;
                                     Log.Debug(Category.Sequencer, "NIA set to {0:x4} (Shift)", uOp.NextAddress);
                                     break;
 

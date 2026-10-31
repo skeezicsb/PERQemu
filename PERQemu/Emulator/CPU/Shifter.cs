@@ -1,5 +1,5 @@
 //
-// Shifter.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
+// Shifter.cs - Copyright (c) 2006-2026 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
 //
@@ -47,13 +47,13 @@ namespace PERQemu.Processor
             /// <summary>
             /// Gets the 16 bit result of the last shift operation.
             /// </summary>
-            public ushort ShifterOutput => _output;
+            public ushort Output => _output;
 
             /// <summary>
             /// Set up the shifter according to the PERQ's encoding rules
             /// (two 4-bit nibbles packed into 1 command byte).
             /// </summary>
-            public void SetShifterCommand(int input)
+            public void SetCommand(int input)
             {
                 _params = _shifterTable[input & 0xff];
 
@@ -64,7 +64,7 @@ namespace PERQemu.Processor
             /// <summary>
             /// Set the shifter command the easy way (internal calls).
             /// </summary>
-            public void SetShifterCommand(ShifterCommand cmd, int amt, int mask)
+            public void SetCommand(ShifterCommand cmd, int amt, int mask)
             {
                 _params.Command = cmd;
                 _params.ShiftAmount = amt;

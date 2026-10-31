@@ -397,7 +397,7 @@ namespace PERQemu
         [Command("debug dump memory bookmarks", "Dump the memory state bookmarks")]
         void DumpBookmarks()
         {
-            if (CheckSys()) Memory.BookmarkTable.DumpTable();
+            Memory.BookmarkTable.DumpTable();
         }
 
         [Command("debug dump memory alignment stats", "Show misaligned address stats")]

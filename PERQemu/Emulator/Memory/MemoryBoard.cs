@@ -23,6 +23,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 
 using PERQemu.IO;
+using PERQemu.Config;
 using PERQemu.Processor;
 
 
@@ -42,6 +43,18 @@ namespace PERQemu.Memory
         Store2 = 0xd,
         Fetch = 0xe,
         Store = 0xf
+    }
+
+    /// <summary>
+    /// Enumerate the subtle differences between board types, which only really
+    /// matter when reporting parity errors.
+    /// </summary>
+    public enum BoardType
+    {
+        Unknown = 0,
+        PQSLayout,
+        ICLLayout,
+        Old1Meg
     }
 
     /// <summary>
@@ -94,8 +107,28 @@ namespace PERQemu.Memory
             _memSizeMask = _memSize - 1;
             _quadSizeMask = _memSizeMask >> 2;
 
-            _memory = new Core();
-            _memory.Words = new ushort[_memSize];
+            _memory = new Core { Words = new ushort[_memSize] };
+
+            // Set up the board type (for decoding parity error addresses)
+            if (_system.Config.Chassis == ChassisType.PERQ1)
+            {
+                if (_memSize == Configurator.ONE_MEG)
+                {
+                    // 2MB & Portrait? ICL type; a 2MB Landscape wasn't actually
+                    // a supported or shipped config, so assume a modern board
+                    _boardType = (_system.Config.Display == DisplayType.Portrait ?
+                                  BoardType.ICLLayout : BoardType.PQSLayout);
+                }
+                else
+                {
+                    _boardType = BoardType.Old1Meg;
+                }
+            }
+            else
+            {
+                // For all other types, use the modern standard
+                _boardType = BoardType.PQSLayout;
+            }
 
             _controller = new MemoryController(this);
         }
@@ -104,9 +137,11 @@ namespace PERQemu.Memory
         {
             _Tstate = 0;
 
+            _lastFetchAddress = 0;
             _parityErrorAddress = NoError;
             _parityErrorOnNextWrite = false;
-            _parityIntRaised = false;
+
+            SetInterrupt(false);
 
             _controller.Reset();
 
@@ -117,6 +152,8 @@ namespace PERQemu.Memory
         {
             // Nothing to do
         }
+
+        public BoardType Layout => _boardType;
 
         public int MemSize => _memSize;
         public int MemSizeMask => _memSizeMask;
@@ -133,8 +170,12 @@ namespace PERQemu.Memory
         public ushort MDIWord => _controller.MDI.Data;
 
         // For convenience, useful for RasterOp/debugging
-        public int MDIAddress => _controller.MDI.Address;
         public int MDIIndex => _controller.MDI.Index;
+        public int MDIAddress => _controller.MDI.Address;
+        public int MDOAddress => _controller.MDO.Address;
+
+        // Even if parity checking compiled out, the "CRT signals" needs this
+        public int LastAddress => _lastFetchAddress;
 
         public bool RopEnabled => _system.CPU.RasterOp.Enabled;
 
@@ -144,6 +185,15 @@ namespace PERQemu.Memory
         /// MDI and MDO queues, then sets up executes the current Fetch (if any).
         /// Asserts the Wait signal if the CPU should abort this cycle.
         /// </summary>
+        /// <remarks>
+        /// The hardware clocks the parity error address register every time Cpar
+        /// is asserted (same cycle as Cout).  Even if parity is compiled out (it's
+        /// just overhead 99.9% of the time) we have to provide the high address
+        /// bits for certain older boards through the video status register so the
+        /// microcode can determine the type.  The 2-4MB "PQS layout" boards use
+        /// the dedicated high parity address register.  It's a small bit of extra
+        /// overhead that hopefully doesn't impact performance much.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Tick(MemoryCycle cycleType)
         {
@@ -158,11 +208,17 @@ namespace PERQemu.Memory
             if (MDIValid)
             {
 #if PARITY
-                if ((_madr & 0xfffffc) == _parityErrorAddress && !_parityIntRaised)
+                // Save most recent fetched address; see remarks above
+                if (_controller.MDI.Flags.Load)
+                {
+                    _lastFetchAddress = MDIAddress;
+                }
+
+                // Check if any word in this quad was flagged
+                if (_lastFetchAddress == _parityErrorAddress)
                 {
                     Log.Info(Category.Memory, "Parity error @ 0x{0:x6}!", _parityErrorAddress);
-                    _system.CPU.RaiseInterrupt(InterruptSource.Parity);
-                    _parityIntRaised = true;
+                    SetInterrupt(true);
                 }
 #endif
                 Log.Detail(Category.Memory, "Fetch addr {0:x6} (idx {1}) --> {2:x4}",
@@ -185,8 +241,7 @@ namespace PERQemu.Memory
 #if PARITY
             if (_parityErrorOnNextWrite)
             {
-                _parityErrorAddress = _mdoQueue.Address & 0xfffffc;
-                _parityErrorOnNextWrite = false;
+                _parityErrorAddress = MDOAddress;
                 Log.Info(Category.Memory, "Write bad parity @ 0x{0:x6}!", _parityErrorAddress);
             }
 #endif
@@ -276,6 +331,25 @@ namespace PERQemu.Memory
         }
 
         /// <summary>
+        /// Set or clear the Parity interrupt.
+        /// </summary>
+        void SetInterrupt(bool raise)
+        {
+            raise &= _parityIntEnabled;
+
+            if (raise && !_parityIntRaised)
+            {
+                _system.CPU.RaiseInterrupt(InterruptSource.Parity);
+                _parityIntRaised = true;
+            }
+            else if (!raise && _parityIntRaised)
+            {
+                _system.CPU.ClearInterrupt(InterruptSource.Parity);
+                _parityIntRaised = false;
+            }
+        }
+
+        /// <summary>
         /// Handle the parity error address registers.
         /// </summary>
         public int IORead(byte ioPort)
@@ -287,32 +361,30 @@ namespace PERQemu.Memory
                 // Read parity error address (high bits)
                 case 0x66:
                     //
-                    // According to ICL (backed up by the 2Meg Landscape schematics),
-                    // the PQSLayout returns address bits <21:18> as IOD <3:0>.
+                    // This register doesn't exist on the older boards; they get the
+                    // high address bit(s) from the video status register!
+                    if (_boardType != BoardType.PQSLayout) return 0;
+
+                    //
+                    // PQSLayout boards return address bits <21:18> as IOD<3:0>
                     //
                     addr = (_parityErrorAddress >> 18) & 0x000f;
-                    Log.Info(Category.Memory, "Read parity error address (Hi): {0:x2}", addr);
+                    Log.Debug(Category.Memory, "Read parity error address (Hi): {0:x2}", addr);
                     return addr;
 
                 // Read parity error address (low word)
                 case 0x67:
                     //
-                    // For now, assume "PQSLayout" and return bits <17:2> as <15:0>.
-                    // This should work for the T2 or T4 landscape boards; other types
-                    // may be supported in the future.
+                    // All supported board layouts return address<17:2> as IOD<15:0>
                     //
                     addr = (_parityErrorAddress >> 2) & 0xffff;
-                    Log.Info(Category.Memory, "Read parity error address (Lo): {0:x4}", addr);
+                    Log.Debug(Category.Memory, "Read parity error address (Lo): {0:x4}", addr);
 
                     // "Clear" the address register
                     _parityErrorAddress = NoError;
 
                     // Also clears the interrupt!
-                    if (_parityIntRaised)
-                    {
-                        _system.CPU.ClearInterrupt(InterruptSource.Parity);
-                        _parityIntRaised = false;
-                    }
+                    SetInterrupt(false);
                     return addr;
 
                 default:
@@ -321,7 +393,7 @@ namespace PERQemu.Memory
         }
 
         /// <summary>
-        /// Handle the "Force bad parity" bit to signal the next memory write
+        /// Handle the "Force bad parity" bit to signal that the next memory write
         /// should trigger a parity error interrupt.
         /// </summary>
         /// <remarks>
@@ -334,10 +406,12 @@ namespace PERQemu.Memory
                 throw new UnhandledIORequestException(ioPort, value);
 
             _parityErrorOnNextWrite = ((value & 0x1000) != 0);
-            _parityIntEnabled = ((value & 0x0800) != 0);
+            _parityIntEnabled = ((value & 0x0800) == 0);
 
-            Log.Info(Category.Memory, "Force bad parity enabled {0}, irq enabled {1}",
+            Log.Debug(Category.Memory, "Force bad parity enabled={0}, IRQ enabled={1}",
                                        _parityErrorOnNextWrite, _parityIntEnabled);
+
+            if (!_parityIntEnabled) SetInterrupt(false);
         }
 
         public bool HandlesPort(byte ioPort)
@@ -354,12 +428,15 @@ namespace PERQemu.Memory
         //[Conditional("DEBUG")]
         public void DumpMemState()
         {
-            if (_parityErrorAddress != NoError)
-            {
-                Console.WriteLine($"[Memory parity error at 0x{0:x6}!]", _parityErrorAddress);
-            }
-
             _controller.DumpState();
+
+#if PARITY
+            Console.WriteLine("Parity check:");
+            Console.WriteLine("\tType={0} Force next={1} IRQ enabled={2} raised={3}",
+                              _boardType, _parityErrorOnNextWrite, _parityIntEnabled, _parityIntRaised);
+            Console.WriteLine("\tLast Fetch addr=0x{0:x6} Error addr=0x{1:x6}",
+                              _lastFetchAddress, _parityErrorAddress);
+#endif
         }
 
 
@@ -373,7 +450,9 @@ namespace PERQemu.Memory
 
         int _Tstate;
 
+        int _lastFetchAddress;
         int _parityErrorAddress;
+
         bool _parityErrorOnNextWrite;
         bool _parityIntEnabled;
         bool _parityIntRaised;
@@ -382,6 +461,7 @@ namespace PERQemu.Memory
 
         MemoryController _controller;
 
+        BoardType _boardType;
         PERQSystem _system;
     }
 }

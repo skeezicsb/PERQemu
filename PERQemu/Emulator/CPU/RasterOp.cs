@@ -417,7 +417,7 @@ namespace PERQemu.Processor
                 _halfPipe = src;
 
                 // Grab the aligned source word from the shifter
-                aligned = _ropShifter.ShifterOutput;
+                aligned = _ropShifter.Output;
             }
             else
             {
@@ -484,7 +484,7 @@ namespace PERQemu.Processor
                 // xOffset is the shift amount based on current register values;
                 // set up the RasterOp shifter command.
                 _xOffset = (16 + (_destBitOffset - _srcBitOffset)) & 0xf;
-                _ropShifter.SetShifterCommand(CPU.ShifterCommand.Rotate, _xOffset, 0);
+                _ropShifter.SetCommand(CPU.ShifterCommand.Rotate, _xOffset, 0);
 
                 //
                 // Region bitmask setup

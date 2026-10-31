@@ -1,4 +1,4 @@
-﻿//
+//
 // Sequencer.cs - Copyright (c) 2006-2025 Josh Dersch (derschjo@gmail.com)
 //
 // This file is part of PERQemu.
@@ -438,7 +438,7 @@ namespace PERQemu.Processor
                             {
                                 // Dispatch
                                 _cpu._shifter.Shift(_cpu._alu.OldR.Lo);
-                                _pc.Value = (ushort)(uOp.ZFillAddress | (((~_cpu._shifter.ShifterOutput) & 0xf) << 2));
+                                _pc.Value = (ushort)(uOp.ZFillAddress | (((~_cpu._shifter.Output) & 0xf) << 2));
                                 Log.Debug(Category.Sequencer, "Dispatch to {0:x4}", _pc.Value);
                             }
                         }
